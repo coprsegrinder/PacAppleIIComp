@@ -1,0 +1,10 @@
+# Never commit original game data
+*.dsk
+*.do
+*.po
+*.nib
+*.woz
+*.bin
+build/
+out/
+scratch/

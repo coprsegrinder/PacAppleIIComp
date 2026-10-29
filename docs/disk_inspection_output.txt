@@ -1,0 +1,8 @@
+file: Pacman (1983)(Atari).dsk size: 143360
+sha256 F9E19375B15852B91776776A95755DD3F57E2B20A517AA99ED8603413E0FE805
+sha1 F80FCF39BD5C035A665DEDE00A4522961C1FCF7C
+md5 6D323B42925299E361579B50C60BD32E
+VTOC: DOS release 3 volume 254 tracks 35 sectors/track 16
+file 'HELLO' type=$02 locked=True sectors=2 bytes_read=256
+file 'PAC-MAN' type=$04 locked=True sectors=108 bytes_read=27392
+  binary: load $1000 length $6A00 end $79FF
