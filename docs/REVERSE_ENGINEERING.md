@@ -20,6 +20,8 @@ are not yet an authoritative "expected" hash for the verification module (see TA
 Reproduce: `python -I tools/inspect_dsk.py "Pacman (1983)(Atari).dsk"` (output saved in `docs/disk_inspection_output.txt`).
 
 ## 2. Game identification (I / U)
+**User statement (2026-10-29, unverified):** per online documentation the target is the **1983 US (Atari) release**, not a 1982 EU original. The user does not know which exact copy/dump this is. The image itself has not yet proven this; we treat it as the working assumption and still need an external hash match (TASK-008/009).
+
 * **Filename says Atari, 1983.** Atari published the Apple II port of Pac-Man in 1983, so this is likely that
   release, *not* a 1982 Namco/Midway arcade-derived title. The project brief says "1982"; this needs reconciling (TASK-008).
   Release year/revision is **not yet verified** from the image contents or external sources.
@@ -27,7 +29,7 @@ Reproduce: `python -I tools/inspect_dsk.py "Pacman (1983)(Atari).dsk"` (output s
 * `PAC-MAN` loads at $1000, length $6A00, so it occupies $1000-$79FF (V).
 * First bytes disassemble (I, by hand) as a relocation loop: sets pointers ($14/$15 and $16/$17), copies pages
   with `LDA ($14),Y / STA ($16),Y`, then `JSR $FE89` (IN#0), `JSR $FE93` (PR#0), `JMP $4027` (the real entry point).
-  The destination of the copy is not yet confirmed.
+  Disassembly confirmed by `tools/dis6502.py` (TASK-003): copy loops are `BNE $1010` (inner) / `BPL $1010` (outer). The destination of the copy is not yet confirmed.
 * About 13% of the program body is zero bytes; nothing else is known about layout yet.
 
 ## 3. Copy protection / special format (U)
