@@ -24,3 +24,16 @@ Listings stay in git-ignored `scratch/` (they contain original code); only these
    Unreached does **not** mean data.
 
 5. **Emulator cross-check (V, TASK-005b):** all 8,212 reached code bytes match runtime memory at $4000 exactly; one 896-byte run at $623A-$65B9 differs at runtime (data).
+
+## TASK-005c: what static analysis can and cannot tell us (`tools/xrefs.py`, V unless marked)
+Command: `python -I tools/xrefs.py scratch/extract/PAC-MAN.1000.bin 4000 4027` (analysis script; not unit-tested, results checked by hand).
+1. **Self-modifying code exists.** 21 instructions in reached code have operand bytes rewritten by other code (31 bytes in total; no opcode bytes are changed).
+   Typical use: the base address of an indexed table read is patched to choose a table. Example (value names only, no code): the `LDA $0666,X` at $55B1 has its address
+   rewritten by 10 different stores. So **$0666 is a placeholder base address, not a real table location** - this supersedes the earlier guess about text page 1.
+   Consequence: a faithful reconstruction must model these as variables (e.g. a table pointer), and the memory dump agreed with the file only because no patching had happened yet at the mode screen.
+2. **No PHA/PHA/RTS dispatch and no JMP (indirect)** were found in reached code. Code reached via other pointer tricks cannot be ruled out.
+3. **Data is mostly accessed through pointers and patched addresses.** Only 125 distinct absolute addresses into the program are referenced (clusters cover ~950 bytes of the 18,930 unreached bytes);
+   the rest is likely reached through zero-page pointers `(zp),Y` or patched operands - i.e. tables/shape/maze data (**I**).
+4. **Tried and discarded:** heuristics that guessed "code-pointer tables" and "pointer setups" from raw bytes produced mostly false positives (e.g. repeated $8080 values) and were removed.
+5. **Conclusion:** the remaining 70% cannot be classified reliably by static analysis alone. The reliable way is **dynamic**: execute the game and record which addresses are executed,
+   read, and written. That requires a small 6502 core with Apple II soft-switch stubs (planned as TASK-013), cross-checked against AppleWin.

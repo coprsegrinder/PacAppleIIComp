@@ -2,7 +2,7 @@
 
 How to use: open Claude Code in `F:\Ports\Pac-Man - Apple II`, then paste everything inside the box below as your first message.
 **Keep this file current:** whenever a task finishes, update the "Current state" and "Next task" sections (ask Claude to do it).
-Last updated: 2026-10-29 (after TASK-005b; added checkpoint-stop rule and objective limits).
+Last updated: 2026-10-29 (after TASK-005c; added checkpoint-stop rule and objective limits).
 
 ````text
 You are resuming a long-running project: a documented decompilation of the Apple II Pac-Man disk image in this folder
@@ -67,13 +67,14 @@ and wait for my "go" before starting it (rule 11). Do not re-derive facts alread
 - Startup stub relocates the program up by $3000, so it runs at $4000-$A9FF, entry $4027 (confirmed by AppleWin memory dump, TASK-005b).
 - Emulator boots the image to an input-selection screen (1 = keyboard, 2 = Apple joystick). Nothing beyond that observed yet.
 - Tools done: tools/inspect_dsk.py, dsk.py, extract_binary.py, dis6502.py, region_map.py (+ unit tests). Done tasks:
-  TASK-001..004, 005a, 005b (see ledger); runtime origin $4000 CONFIRMED by emulator dump; recdis.py reaches 30% of the program from the entry point. Region map is heuristic only.
+  TASK-001..004, 005a-c (see ledger); runtime origin $4000 CONFIRMED by emulator dump; recdis.py reaches 30% of the program from the entry point. Region map is heuristic only.
 
 ## Next task
-TASK-005c: find the other 70% of the program (see docs/CODE_COVERAGE.md): examine unreached areas, address tables,
-RTS-dispatch, and the 896-byte region $623A-$65B9 that changes at runtime. Then TASK-012 (memory dump during gameplay),
-TASK-006 (inspect boot tracks for protection), TASK-007 (web research, no downloads), TASK-008/009 (release identity and
-authoritative expected hash). Then emulator scripting for baseline observations.
+TASK-013a: write a minimal, well-tested 6502 core in Python (development/analysis tool only - never part of the shipped game).
+Then TASK-013b (Apple II soft-switch stubs; run the game headless) and TASK-013c (execution/read/write coverage, cross-checked
+against AppleWin). Why: static analysis (TASK-005c, docs/CODE_COVERAGE.md) cannot classify the remaining 70% of the program because the game
+uses self-modifying operands and pointer-based data. Also still pending: TASK-012 (memory dump during gameplay), TASK-006 (boot-track
+protection check), TASK-007 (web research, no downloads), TASK-008/009 (release identity and authoritative hash).
 
 Emulator control (verified): launch `AppleWin-x64.exe -d1 <scratch\work.dsk>`; drive it with
 `powershell -File tools/awin_ctl.ps1 -Key F7` (debugger), `-Text 'BSAVE "main.bin",0,C000'` (dump main RAM to scratch/),
