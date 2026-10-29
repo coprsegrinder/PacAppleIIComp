@@ -13,3 +13,4 @@ Statuses: Planned / In progress / Implemented / Tested / Verified / Blocked / De
 | TASK-008 | Reconcile release identity (1982 vs 1983 Atari) | Planned | 007 | Documented evidence |
 | TASK-009 | Decide authoritative expected hash for verifier | Planned | 007,008 | Hash cross-checked against a public source |
 | TASK-010 | Obtain reference emulator | Verified (boot) | approval granted 2026-10-29 | AppleWin 1.32.1.0 hash-verified; image boots from a copy (hash re-checked) to the input-selection screen. Title/attract screens still to capture |
+| TASK-011 | Maintain `docs/RESUME_PROMPT.md` after every completed task | Ongoing | - | File's Current state/Next task match the ledger |
