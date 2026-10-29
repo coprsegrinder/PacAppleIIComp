@@ -2,7 +2,7 @@
 
 How to use: open Claude Code in `F:\Ports\Pac-Man - Apple II`, then paste everything inside the box below as your first message.
 **Keep this file current:** whenever a task finishes, update the "Current state" and "Next task" sections (ask Claude to do it).
-Last updated: 2026-10-29 (after TASK-004; added checkpoint-stop rule).
+Last updated: 2026-10-29 (after TASK-004; added checkpoint-stop rule and objective limits).
 
 ````text
 You are resuming a long-running project: a documented decompilation of the Apple II Pac-Man disk image in this folder
@@ -38,10 +38,18 @@ and wait for my "go" before starting it (rule 11). Do not re-derive facts alread
 11. STOP AT EVERY CHECKPOINT. Do exactly ONE ledger task (or one clearly bounded sub-step) per turn. When it is done:
     run its tests, update the ledger, notes and this resume file, commit, write a short plain-English report
     (what changed, tests run and results, known-good state or not, next recommended task), then STOP and wait for me to
-    say "go". Never chain into the next task on your own, even if it looks easy. If a step runs long, gets stuck, or
-    you are repeating yourself or retrying the same thing, stop immediately, save partial progress to the ledger,
-    explain the blocker, and ask me. Break heavy work (large disassemblies, big reconstructions) into several
-    checkpointed pieces; prefer many small verified steps over one big one.
+    say "go". Never chain into the next task on your own, even if it looks easy.
+    Break heavy work (large disassemblies, big reconstructions) into several checkpointed pieces; prefer many small
+    verified steps over one big one. Objective limits (replace judgment with these):
+    - Commands: every command gets an explicit timeout (default 60 s, max 5 min). Every emulator launch gets a kill step;
+      never leave an emulator or background process running at a checkpoint unless I need to look at it.
+    - Retries: the same failure twice => stop, save partial progress to the ledger, report the blocker, ask me.
+      Never try a third variation of the same fix.
+    - Output: disassemble/inspect in chunks of at most ~100 lines per step and write bulk output to files
+      (scratch/ or docs/) instead of printing it.
+    - GUI/emulator: at most 3 capture or keystroke attempts per goal; then ask me to look at the window.
+    - Research: at most 5 searches or pages per question, then summarize what was found.
+    - Scope: one routine group or one test scenario per task; if a task needs more, split it in the ledger first.
 
 ## Environment facts
 - Windows 11, PowerShell 5.1 + Git Bash, Git, Python 3.14 (use `python -I`), Visual Studio 18 Build Tools (MSVC 14.51).
