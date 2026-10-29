@@ -116,3 +116,6 @@ Note: the earlier statement 'no opcode bytes are changed' still holds; the sound
 
 ## 17. Hidden menu and customised keys (TASK-020, V, 2026-10-29)
 Players prompt: Ctrl-V, Ctrl-C -> 'RANK OR CARTOON?' (start level 1-21 into $54E1, or intermission 1-3 via $8155). Customised keyboard patches the compare constants at $6FBA/$6FB6/$6FB2/$6FBE (left/right/up/down = codes 3/2/1/0). Esc pause at $6F9A. Details: docs/CONTROLS.md.
+
+## 18. Emulator cross-check at the players prompt (TASK-019, V, 2026-10-29)
+AppleWin dump vs our machine: game area identical except the 8 bytes of table-pointer operands; see docs/EMULATOR_COMPARISON.md. Intro jingle click spacings (cycles): 2,026 / 2,274 / 2,708 / 1,716 (our machine).

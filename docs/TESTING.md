@@ -17,6 +17,8 @@ Run everything: `for t in tests/test_*.py; do python -I $t; done` (stdlib `unitt
 | tests/test_play.py | scripted-session steps: keys, run with underscores, key-wait message, text page, info, CPU error reporting (synthetic) | pass (4) |
 | tests/test_cov_union.py | coverage merge/compare helpers, auto-player stop conditions and paddle driving (synthetic) | pass (3) |
 | tests/test_explore.py | explorer helpers: key constants, send, until_key, text page 2 reader (synthetic) | pass (4) |
+| tests/test_save_clicks.py | grouping clicks into constant-pitch runs (synthetic) | pass (4) |
+| tests/test_compare_dump.py | run merging, regions tile $0000-$BFFF | pass (2) |
 | tests/test_cpu6502.py | 6502 core: flags, stack, JSR/RTS, BRK/RTI, JMP-indirect bug, cycle counts, ADC/SBC (binary + decimal) | pass (18) |
 
 ## CPU core (tools/cpu6502.py) - what the tests prove and do not prove
@@ -65,3 +67,6 @@ Runs of tools/autoplay.py are deterministic (seeded) real-data scenarios, not un
 
 ## Rarely used paths (TASK-020)
 Scenarios of tools/explore.py are real-data one-off runs (results in docs/CONTROLS.md and DYNAMIC_COVERAGE.md). A shell quoting accident while writing the explorer put raw carriage returns into the source; found by a syntax error before any run, fixed, no results affected.
+
+## AppleWin memory comparison (TASK-019)
+Result and method: docs/EMULATOR_COMPARISON.md (game area identical except 8 table-pointer operands at the players prompt). This is the first memory-level check of our machine against the emulator since TASK-013b.
