@@ -9,3 +9,4 @@ build/
 out/
 scratch/
 third_party/
+__pycache__/
