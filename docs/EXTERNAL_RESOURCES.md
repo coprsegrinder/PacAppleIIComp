@@ -5,3 +5,7 @@
 
 Proposed (NOT approved, NOT downloaded): see `PROJECT_PLAN.md` section "Downloads needing approval".
 | `DOS 3.3 System Master - 680-0210-A.dsk` (bundled in the AppleWin zip above) | Read-only reference for the boot-track comparison (TASK-006) | Apple software bundled with AppleWin's distribution; legal status of using it: not assessed | Covered by the 2026-10-29 AppleWin approval (no new download) | Already on disk (`third_party/`, git-ignored) | No: read for byte comparison only; not copied or committed |
+| https://elisoftware.org/wiki/Pac-Man_(Apple_II,_5_1/4%22_Disk)_Atari_-_1983_USA,_Canada_Release | Catalogue entry for the 1983 Atari release (DX5501) | Web page (not reused) | Browsing allowed (rule 2) | No | Facts summarised in docs/RESEARCH_007.md; no text copied beyond short phrases |
+| https://en.wikipedia.org/wiki/Taxman_(video_game) | Lineage: Taxman (H.A.L. Labs 1981) and Atarisoft's Pac-Man | CC BY-SA 4.0 (article text) | Browsing allowed | No | Facts summarised only |
+| https://www.callapple.org/vintage-apple-computers/apple-ii/source-code-to-be-taxman-released/ | 2015 announcement of Taxman source release; no host or license given | Site (c) A.P.P.L.E. | Browsing allowed | No | Facts summarised only |
+| Search results only (not read): computinghistory.org.uk/det/1530/PacMan/, github.com/realdmx/retrore, 6502disassembly.com | Possible further references | - | Browsing allowed | No | Not incorporated |

@@ -122,3 +122,6 @@ AppleWin dump vs our machine: game area identical except the 8 bytes of table-po
 
 ## 19. Boot tracks (TASK-006, V/I/U, 2026-10-29)
 The image's DOS is a modified build (37 of 48 boot-track sectors differ from the System Master; delay loops NOPed; counter moved to $4E/$4F). No hidden data. Protection: Unknown. See docs/BOOT_TRACKS.md.
+
+## 20. Release and lineage research (TASK-007, 2026-10-29)
+Public pages (second-hand, see docs/RESEARCH_007.md): Atari/Atarisoft DX5501, (c)1983; reported to be a modified Taxman (H.A.L. Labs 1981, B. Fitzgerald). The game's own screen says (c)1983 Atari Inc. (V). No public hash or disassembly found.
