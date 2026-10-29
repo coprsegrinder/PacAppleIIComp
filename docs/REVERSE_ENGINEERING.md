@@ -113,3 +113,6 @@ The 7,451 bytes executed so far all fall inside the statically derived code (doc
 ## 16. Input handling (TASK-018, V, 2026-10-29)
 Keyboard poll at $6F77 (direct $C000/$C010): A/Z/left/right set $63 = 1/0/3/2; Ctrl-S toggles sound by flipping the operand of the speaker BIT ($30 <-> $20) at $7BB6/$7D07; space during demo jumps to the player prompt; $E8 = demo flag, $F5 = device. Details and caveats: docs/CONTROLS.md.
 Note: the earlier statement 'no opcode bytes are changed' still holds; the sound toggle changes an operand byte only.
+
+## 17. Hidden menu and customised keys (TASK-020, V, 2026-10-29)
+Players prompt: Ctrl-V, Ctrl-C -> 'RANK OR CARTOON?' (start level 1-21 into $54E1, or intermission 1-3 via $8155). Customised keyboard patches the compare constants at $6FBA/$6FB6/$6FB2/$6FBE (left/right/up/down = codes 3/2/1/0). Esc pause at $6F9A. Details: docs/CONTROLS.md.

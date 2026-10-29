@@ -16,6 +16,7 @@ Run everything: `for t in tests/test_*.py; do python -I $t; done` (stdlib `unitt
 | tests/test_callsites.py | call-site logging (caller = JSR address, params, loop-back excluded), hi-res row base addresses, screen render size (synthetic) | pass (4) |
 | tests/test_play.py | scripted-session steps: keys, run with underscores, key-wait message, text page, info, CPU error reporting (synthetic) | pass (4) |
 | tests/test_cov_union.py | coverage merge/compare helpers, auto-player stop conditions and paddle driving (synthetic) | pass (3) |
+| tests/test_explore.py | explorer helpers: key constants, send, until_key, text page 2 reader (synthetic) | pass (4) |
 | tests/test_cpu6502.py | 6502 core: flags, stack, JSR/RTS, BRK/RTI, JMP-indirect bug, cycle counts, ADC/SBC (binary + decimal) | pass (18) |
 
 ## CPU core (tools/cpu6502.py) - what the tests prove and do not prove
@@ -61,3 +62,6 @@ Three AppleWin window-only captures (mode screen, maze being drawn, attract scre
 
 ## Input/auto-play (TASK-018)
 Runs of tools/autoplay.py are deterministic (seeded) real-data scenarios, not unit tests; results in docs/CONTROLS.md. Gap: no AppleWin comparison of steering/joystick behavior (TASK-019).
+
+## Rarely used paths (TASK-020)
+Scenarios of tools/explore.py are real-data one-off runs (results in docs/CONTROLS.md and DYNAMIC_COVERAGE.md). A shell quoting accident while writing the explorer put raw carriage returns into the source; found by a syntax error before any run, fixed, no results affected.

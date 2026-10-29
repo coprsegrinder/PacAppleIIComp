@@ -47,3 +47,17 @@ Tool: `tools/play.py` (scripted session: keys, run N instructions, screenshot, t
 * No unknown soft-switch access and no unmodelled ROM call in ~337M cycles.
 ## Not done
 No keyboard-direction input was tried (controls not yet identified), the joystick path ('2'), nor an AppleWin gameplay comparison (only the attract screens were compared in TASK-016). Speaker click timings are logged in memory only (not saved).
+
+# Rarely used paths (TASK-020, headless)
+Tool: `tools/explore.py` (scenarios `cartoons`, `rank`, `custom`; each from a fresh boot with coverage), merged with `tools/cov_union.py`. Hidden menu and customised keyboard: docs/CONTROLS.md.
+| Run | Executed bytes | New vs earlier runs |
+|---|---|---|
+| attract (243M cycles) | 6,724 | - |
+| play, no steering | 7,451 | +727 |
+| auto-play keyboard (2 games) | 7,818 | +379 |
+| auto-play joystick (2 games) | 7,726 | +219 |
+| intermissions 1-3 via hidden menu | 7,621 | +837 |
+| start at rank 21 + random play | 7,571 | +80 |
+| customised keyboard + Esc pause | 7,661 | +181 |
+**Union: 9,147 executed bytes = 87.5% of the 10,456 static code bytes; 0 executed bytes outside the static code map.** No unknown soft-switch access in any run. Intermissions made no speaker clicks (V: 0 clicks during the three cartoons).
+Not run: the final 1,309 bytes in 125 small runs (largest 76 bytes).
