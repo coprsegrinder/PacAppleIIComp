@@ -42,3 +42,10 @@ available in a `.dsk`. No custom RWTS has been looked for yet. If protection is 
 3. Memory map: code, tables, maze data, sprite/shape data, sound routines.
 4. Graphics mode (probably hi-res), timing method, sound method (speaker clicks), input (keyboard/paddle/joystick).
 5. Is the game deterministic (RNG source)?
+
+## 5. First observed behavior in AppleWin 1.32.1.0 (V, 2026-10-29)
+Booting a hash-verified copy (`scratch/work.dsk`, emulated Apple //e enhanced, default settings) reaches a text screen:
+"PACMAN CAN BE PLAYED WITH / 1. KEYBOARD / 2. APPLE JOYSTICK / CHOOSE A MODE (1 - 2)".
+So the original offers keyboard or joystick input, chosen at startup. No protection prevented booting in the emulator.
+Note: the first launch showed only the emulator's splash until its license dialog was accepted by the user.
+Not yet observed: title screen, attract mode, gameplay, sound.
