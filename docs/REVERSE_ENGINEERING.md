@@ -140,3 +140,6 @@ $623A-$65B9 is rebuilt by $5345 at each game start and a byte is changed by $7B1
 
 ## 25. Ghost structure (TASK-030a, V/I, 2026-10-29)
 Junction graph at $760A (64 x 8 bytes), routine index at $8CBE, routine addresses at $8DBE, 48 decision routines, corner targets at $8CB4, ghost records at $84-$D3 (20 bytes, swapped with $70-$83). docs/GHOST_ANALYSIS.md.
+
+## 26. Ghost modes (TASK-030c, V/I, 2026-10-29)
+$E9 corner phase with countdown $EA/$EB (160, then 600/140), $E4 frightened with timer $E1/$E2 (table at $6DEF; level 1 = 352 ticks), per-ghost $78 frightened / $79 eyes / $80 step countdown, speed tables $8723/$8743/$8753. docs/GHOST_MODES.md.

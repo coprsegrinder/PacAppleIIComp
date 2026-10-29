@@ -38,7 +38,7 @@ Direction codes (same as the player's): **0 = down, 1 = up, 2 = right, 3 = left*
 
 ## 5. Not yet understood (next steps)
 * **030b:** exact, complete decision rules per routine (my grid uses 3 X relations and 5 Y buckets; constants such as 34 for Y appear in some routines, so a full proof of equivalence needs every compared constant covered) and the rule for ties/equalities; then express them as data for the C++ port.
-* **030c:** the modes: what `$78`, `$E9`, `$79` mean (chase/scatter/frightened/eyes, timers, switching), why decisions in corner mode appear only when both `$78` and `$E9` are 1, how `$80` (a countdown at $8763) sets speed.
+* **030c (DONE: see docs/GHOST_MODES.md):** the modes: what `$78`, `$E9`, `$79` mean (chase/scatter/frightened/eyes, timers, switching), why decisions in corner mode appear only when both `$78` and `$E9` are 1, how `$80` (a countdown at $8763) sets speed.
 * **030d:** ghost house exit and the eyes' return route (`$A360`), the junction record's last two bytes, who sets the queue pointer `$75`, how a ghost moves between junctions (per-frame step, speed per level).
 * Pac-Man's own movement uses the same junction idea? (U)
 
