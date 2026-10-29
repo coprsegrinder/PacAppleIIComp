@@ -12,4 +12,4 @@ Statuses: Planned / In progress / Implemented / Tested / Verified / Blocked / De
 | TASK-007 | Web research (no downloads): Apple II refs, existing Pac-Man Apple II disassemblies | Planned | - | Entries in EXTERNAL_RESOURCES.md |
 | TASK-008 | Reconcile release identity (1982 vs 1983 Atari) | Planned | 007 | Documented evidence |
 | TASK-009 | Decide authoritative expected hash for verifier | Planned | 007,008 | Hash cross-checked against a public source |
-| TASK-010 | Obtain reference emulator (needs approval) | Blocked | approval | Boots image, title screen captured |
+| TASK-010 | Obtain reference emulator | In progress | approval granted 2026-10-29 | AppleWin 1.32.1.0 downloaded and hash-verified. Still to do: confirm the game boots from a copy of the image and capture the title screen |
