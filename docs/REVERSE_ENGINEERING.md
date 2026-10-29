@@ -109,3 +109,7 @@ Call sites of the draw routines: docs/SPRITES.md.
 ## 15. Start-of-play flow and sound (TASK-017, V headless, 2026-10-29)
 space at "Press Space bar" -> "HOW MANY PLAYERS? (1 - 5)" -> `1` -> "PRESS <RETURN> TO PLAY OR <SPACE> TO GO BACK TO DEMO." -> Enter -> play (maze, score, lives icon, cherry). Speaker is silent in attract and clicks (thousands per second of play) after play starts.
 The 7,451 bytes executed so far all fall inside the statically derived code (docs/CODE_COVERAGE.md); details in docs/DYNAMIC_COVERAGE.md.
+
+## 16. Input handling (TASK-018, V, 2026-10-29)
+Keyboard poll at $6F77 (direct $C000/$C010): A/Z/left/right set $63 = 1/0/3/2; Ctrl-S toggles sound by flipping the operand of the speaker BIT ($30 <-> $20) at $7BB6/$7D07; space during demo jumps to the player prompt; $E8 = demo flag, $F5 = device. Details and caveats: docs/CONTROLS.md.
+Note: the earlier statement 'no opcode bytes are changed' still holds; the sound toggle changes an operand byte only.

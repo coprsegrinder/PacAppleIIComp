@@ -8,13 +8,14 @@ Run everything: `for t in tests/test_*.py; do python -I $t; done` (stdlib `unitt
 | tests/test_dis6502.py | disassembler tables, branch targets, first bytes of the real program | pass (4) |
 | tests/test_dsk.py | DOS 3.3 catalog / file extraction on a synthetic disk | pass (2) |
 | tests/test_recdis.py | recursive-descent coverage, BIT-skip overlaps, ROM/indirect targets | pass (3) |
-| tests/test_apple2.py | Soft switches (keyboard strobe, speaker log, video, buttons, paddle timer, unknown I/O), trapped ROM routines (COUT1, VTAB, RDKEY, GETLN, SETKBD, SETVID), scrolling/wrap; synthetic code only | pass (21; includes 3 coverage-tracking tests) |
+| tests/test_apple2.py | Soft switches (keyboard strobe, speaker log, video, buttons, paddle timer, unknown I/O), trapped ROM routines (COUT1, VTAB, RDKEY, GETLN, SETKBD, SETVID), scrolling/wrap; synthetic code only | pass (22; includes 3 coverage-tracking tests and an annunciator test) |
 | tests/test_static_plus.py | table-pointer reading, extra entry points find otherwise unreachable code (synthetic) | pass (2) |
 | tests/test_classify_gaps.py | gap extraction, absolute and #lo/#hi pointer detection (synthetic) | pass (2) |
 | tests/test_trace_tables.py | patched-operand read tracker: base after patch, offsets read (synthetic) | pass (1) |
 | tests/test_render_frames.py | hi-res byte decoding (bit order, palette, parity, adjacency), PNG writer, contact sheet layout, blit-row merging (synthetic) | pass (7) |
 | tests/test_callsites.py | call-site logging (caller = JSR address, params, loop-back excluded), hi-res row base addresses, screen render size (synthetic) | pass (4) |
 | tests/test_play.py | scripted-session steps: keys, run with underscores, key-wait message, text page, info, CPU error reporting (synthetic) | pass (4) |
+| tests/test_cov_union.py | coverage merge/compare helpers, auto-player stop conditions and paddle driving (synthetic) | pass (3) |
 | tests/test_cpu6502.py | 6502 core: flags, stack, JSR/RTS, BRK/RTI, JMP-indirect bug, cycle counts, ADC/SBC (binary + decimal) | pass (18) |
 
 ## CPU core (tools/cpu6502.py) - what the tests prove and do not prove
@@ -57,3 +58,6 @@ Decoder tested on synthetic bytes. The real contact sheet was checked by eye by 
 
 ## Screen comparison (TASK-016)
 Three AppleWin window-only captures (mode screen, maze being drawn, attract screen) were compared by eye with the headless render: same text, layout and maze geometry. No pixel comparison (AppleWin timing/NTSC colours differ). AppleWin was killed afterwards; original disk and scratch/work.dsk hashes unchanged.
+
+## Input/auto-play (TASK-018)
+Runs of tools/autoplay.py are deterministic (seeded) real-data scenarios, not unit tests; results in docs/CONTROLS.md. Gap: no AppleWin comparison of steering/joystick behavior (TASK-019).

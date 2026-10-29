@@ -46,6 +46,15 @@ class Switches(unittest.TestCase):
         mc.cpu.step()
         self.assertTrue(mc.switches['text'])
 
+    def test_annunciators(self):
+        mc = mach([0xAD, 0x59, 0xC0, 0xAD, 0x5B, 0xC0, 0xAD, 0x58, 0xC0])      # AN0 on, AN1 on, AN0 off
+        for _ in range(2):
+            mc.cpu.step()
+        self.assertEqual(mc.annunciators, [True, True, False, False])
+        mc.cpu.step()
+        self.assertEqual(mc.annunciators, [False, True, False, False])
+        self.assertEqual(mc.unknown_io, {})
+
     def test_buttons(self):
         mc = mach([0xAD, 0x61, 0xC0, 0xAD, 0x62, 0xC0])
         mc.buttons[0] = True

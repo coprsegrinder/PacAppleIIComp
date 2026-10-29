@@ -71,9 +71,9 @@ and wait for my "go" before starting it (rule 11). Do not re-derive facts alread
   TASK-001..004, 005a-c, 013a (see ledger); tools/cpu6502.py core verified incl. real startup stub; runtime origin $4000 CONFIRMED by emulator dump; recdis.py reaches 30% of the program from the entry point. Region map is heuristic only.
 
 ## Next task
-Pick one: TASK-018 (find keyboard controls and the joystick path; drive Pac-Man; death/levels/fruit) or TASK-019 (AppleWin gameplay comparison + saving speaker click timings). DONE: ... 016, 017 (tools/play.py scripted sessions;
-input flow: '1',Enter -> attract -> space -> players '1' -> Enter -> game; sound present; all 7,451 executed bytes inside the static code map). Unexecuted static code: 3,005 bytes.
-Also pending: TASK-012, TASK-006, TASK-007, TASK-008/009.
+Pick one: TASK-019 (AppleWin gameplay comparison + saving speaker click timings) or TASK-020 (reach the 2,407 unexecuted static-code bytes: customised keyboard, Esc, levels/intermissions, fruit).
+DONE: ... 017, 018 (docs/CONTROLS.md: keys A=1 Z=0 Left=3 Right=2, Ctrl-S sound toggle, Esc pause, Space in demo; $E8 demo flag, $F5 device, $63 direction; tools/autoplay.py, tools/cov_union.py;
+union coverage 8,049 bytes, 0 contradictions with the static map). Also pending: TASK-012, TASK-006, TASK-007, TASK-008/009.
 
 Emulator control (verified): launch `AppleWin-x64.exe -d1 <scratch\work.dsk>`; drive it with
 `powershell -File tools/awin_ctl.ps1 -Key F7` (debugger), `-Text 'BSAVE "main.bin",0,C000'` (dump main RAM to scratch/),

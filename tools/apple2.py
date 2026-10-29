@@ -37,6 +37,7 @@ class Machine:
         self.speaker = []           # cycle counts of each $C030 access
         self.switches = {'text': True, 'mixed': False, 'page2': False, 'hires': False}
         self.buttons = [False, False, False]
+        self.annunciators = [False] * 4      # $C058-$C05F: AN0-AN3 off/on pairs
         self.paddles = [127, 127, 127, 127]
         self.paddle_start = None
         self.unknown_io = {}
@@ -131,6 +132,9 @@ class Machine:
             s = self.switches
             on = bool(a & 1)
             s[('text', 'mixed', 'page2', 'hires')[(a - 0xC050) >> 1]] = on   # $C050/1 graphics/text, 52/3 full/mixed, 54/5 page1/2, 56/7 lores/hires
+            return 0
+        if 0xC058 <= a <= 0xC05F:
+            self.annunciators[(a - 0xC058) >> 1] = bool(a & 1)
             return 0
         if 0xC061 <= a <= 0xC063:
             return 0x80 if self.buttons[a - 0xC060 - 1] else 0
