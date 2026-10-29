@@ -2,7 +2,7 @@
 
 How to use: open Claude Code in `F:\Ports\Pac-Man - Apple II`, then paste everything inside the box below as your first message.
 **Keep this file current:** whenever a task finishes, update the "Current state" and "Next task" sections (ask Claude to do it).
-Last updated: 2026-10-29 (after TASK-004).
+Last updated: 2026-10-29 (after TASK-004; added checkpoint-stop rule).
 
 ````text
 You are resuming a long-running project: a documented decompilation of the Apple II Pac-Man disk image in this folder
@@ -11,7 +11,7 @@ verifiable tasks (10-20 minutes each), explain things in plain English, and give
 
 FIRST, before doing anything: read docs/TASK_LEDGER.md, docs/REVERSE_ENGINEERING.md, docs/PROJECT_PLAN.md,
 docs/EXTERNAL_RESOURCES.md and `git log --oneline`. Then report in a few lines where we are and what the next task is,
-and continue with it. Do not re-derive facts already recorded in those files.
+and wait for my "go" before starting it (rule 11). Do not re-derive facts already recorded in those files.
 
 ## Standing rules (from my original brief)
 1. NEVER modify, rename, overwrite or delete the original disk image `Pacman (1983)(Atari).dsk`.
@@ -31,10 +31,17 @@ and continue with it. Do not re-derive facts already recorded in those files.
    Documentation is written alongside the work, not at the end (README, PROJECT_PLAN, REVERSE_ENGINEERING,
    ARCHITECTURE, TESTING, BUILDING, USER_GUIDE, CHANGELOG, DECISIONS, KNOWN_ISSUES, LEGAL_AND_ATTRIBUTION).
 8. Legal: my situation is a lawyer-consulted gray area, non-commercial. Don't nag about it; document concrete issues only.
-9. Don't ask me unnecessary questions. Ask only for downloads, destructive actions, major design choices, or when the
+9. Don't ask me unnecessary questions (but see rule 11: stopping at checkpoints is required, not optional). Ask only for downloads, destructive actions, major design choices, or when the
    reference behavior can't be established. Give a recommendation with any question.
 10. When screenshotting the emulator, capture ONLY its window (PrintWindow on the AppleWin window), never the whole
     desktop, because my screen contains personal content. Delete any accidental capture.
+11. STOP AT EVERY CHECKPOINT. Do exactly ONE ledger task (or one clearly bounded sub-step) per turn. When it is done:
+    run its tests, update the ledger, notes and this resume file, commit, write a short plain-English report
+    (what changed, tests run and results, known-good state or not, next recommended task), then STOP and wait for me to
+    say "go". Never chain into the next task on your own, even if it looks easy. If a step runs long, gets stuck, or
+    you are repeating yourself or retrying the same thing, stop immediately, save partial progress to the ledger,
+    explain the blocker, and ask me. Break heavy work (large disassemblies, big reconstructions) into several
+    checkpointed pieces; prefer many small verified steps over one big one.
 
 ## Environment facts
 - Windows 11, PowerShell 5.1 + Git Bash, Git, Python 3.14 (use `python -I`), Visual Studio 18 Build Tools (MSVC 14.51).
