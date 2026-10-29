@@ -12,6 +12,7 @@ Run everything: `for t in tests/test_*.py; do python -I $t; done` (stdlib `unitt
 | tests/test_static_plus.py | table-pointer reading, extra entry points find otherwise unreachable code (synthetic) | pass (2) |
 | tests/test_classify_gaps.py | gap extraction, absolute and #lo/#hi pointer detection (synthetic) | pass (2) |
 | tests/test_trace_tables.py | patched-operand read tracker: base after patch, offsets read (synthetic) | pass (1) |
+| tests/test_render_frames.py | hi-res byte decoding (bit order, palette, parity, adjacency), PNG writer, contact sheet layout, blit-row merging (synthetic) | pass (7) |
 | tests/test_cpu6502.py | 6502 core: flags, stack, JSR/RTS, BRK/RTI, JMP-indirect bug, cycle counts, ADC/SBC (binary + decimal) | pass (18) |
 
 ## CPU core (tools/cpu6502.py) - what the tests prove and do not prove
@@ -48,3 +49,6 @@ Limits: the classification only knows what the 243M-cycle scenario read; "data" 
 
 ## Table tracing (TASK-014)
 Real-data runs of tools/trace_tables.py are one-off (not unit tests); results in docs/TABLES.md. Re-run after refactoring the tracker produced byte-identical output. Limits: scenario-bound (only tables used in the 243M-cycle run), sizes are read extents.
+
+## Frame rendering (TASK-015)
+Decoder tested on synthetic bytes. The real contact sheet was checked by eye by me only (not yet compared with an AppleWin screenshot); colours are an approximation. Images stay in scratch/ (git-ignored).
