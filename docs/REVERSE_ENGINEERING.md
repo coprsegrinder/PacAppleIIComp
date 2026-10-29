@@ -49,3 +49,15 @@ Booting a hash-verified copy (`scratch/work.dsk`, emulated Apple //e enhanced, d
 So the original offers keyboard or joystick input, chosen at startup. No protection prevented booting in the emulator.
 Note: the first launch showed only the emulator's splash until its license dialog was accepted by the user.
 Not yet observed: title screen, attract mode, gameplay, sound.
+
+## 6. Extraction and memory layout (TASK-004)
+* `PAC-MAN` body extracted with `tools/extract_binary.py` to `scratch/extract/PAC-MAN.1000.bin` (git-ignored).
+  27,136 bytes (matches the declared $6A00); body SHA-256 `EFF5B2635EDF0E3B6A227BEE0A477EB697AAEBC29EBC57089167DF5F10EE182C`.
+  The 252 bytes after it in the final sector are all zero. (V)
+* Independent check: each of the 107 sector-sized chunks of the body was found exactly once in the raw image (T/S list not used). The file is stored in descending sector order (the first chunk is at T18/S12). (V)
+* **Relocation (I, supported by arithmetic and by a sanity check):** the startup stub copies page-by-page from the top downward,
+  src $7F00..$0F00 -> dst $AF00..$3F00, i.e. the whole program moves up by **$3000**. The game therefore runs at **$4000-$A9FF**,
+  entry `JMP $4027` = file offset $27. Sanity check: the call target `$54D4` made from the entry code is a clean routine start
+  (variable initialisation ending in a loop), as expected if the origin is $4000. Still to confirm in the emulator (memory dump after startup).
+* Heuristic code/data map: see `docs/REGION_MAP.md`. Code and data are interleaved at fine granularity.
+* Side effect to remember: the move overwrites $3F00-$AFFF, which includes DOS 3.3 in RAM; the game then cannot use DOS services (U: whether it loads anything further from disk - check disk-access behavior in the emulator).
