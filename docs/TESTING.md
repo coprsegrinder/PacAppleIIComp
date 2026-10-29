@@ -8,7 +8,7 @@ Run everything: `for t in tests/test_*.py; do python -I $t; done` (stdlib `unitt
 | tests/test_dis6502.py | disassembler tables, branch targets, first bytes of the real program | pass (4) |
 | tests/test_dsk.py | DOS 3.3 catalog / file extraction on a synthetic disk | pass (2) |
 | tests/test_recdis.py | recursive-descent coverage, BIT-skip overlaps, ROM/indirect targets | pass (3) |
-| tests/test_apple2.py | Soft switches (keyboard strobe, speaker log, video, buttons, paddle timer, unknown I/O), trapped ROM routines (COUT1, VTAB, RDKEY, GETLN, SETKBD, SETVID), scrolling/wrap; synthetic code only | pass (18) |
+| tests/test_apple2.py | Soft switches (keyboard strobe, speaker log, video, buttons, paddle timer, unknown I/O), trapped ROM routines (COUT1, VTAB, RDKEY, GETLN, SETKBD, SETVID), scrolling/wrap; synthetic code only | pass (21; includes 3 coverage-tracking tests) |
 | tests/test_cpu6502.py | 6502 core: flags, stack, JSR/RTS, BRK/RTI, JMP-indirect bug, cycle counts, ADC/SBC (binary + decimal) | pass (18) |
 
 ## CPU core (tools/cpu6502.py) - what the tests prove and do not prove
@@ -33,3 +33,8 @@ AppleWin 1.32.1.0 memory dumps are the current ground truth for memory state (se
   text page 2 identical except the cursor cell ($0B96); soft switches end as text+page 2 (as on the emulator screen). Zero page, stack, $200-$3FF, page 1 text and $AA00+ differ (DOS/monitor/cursor state we do not model; expected).
 * Feeding '1' is accepted and the game proceeds to a second menu, "NORMAL OR CUSTOMIZED KEYBOARD (N/C)?" (parked in RDKEY, caller $494E).
 * Timing assumption (Inferred, unverified): paddle timers count 11 cycles per unit.
+
+## Coverage run (TASK-013c-1)
+* Unit tests: exec/read/write/writer tracking, fetches not counted as reads, stack writes attributed to the JSR, self-modified operand visible. Real-data runs are one-off scripts (tools/trace_coverage.py, tools/cov_report.py), not unit tests.
+* Caveat (V): writes made by the Python ROM stand-ins (e.g. COUT1 storing text) are not in the write coverage; only CPU-executed instructions are tracked.
+* Caveat: the startup stub's relocation writes are deliberately discarded before the game starts. Result numbers and findings: docs/DYNAMIC_COVERAGE.md. Not yet cross-checked against AppleWin for this scenario (TASK-013c-2).

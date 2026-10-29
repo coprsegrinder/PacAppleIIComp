@@ -80,3 +80,7 @@ Method: AppleWin 1.32.1.0 booted a copy of the image to the input-selection scre
 * The $623A-$65B9 run that differed from the file in the AppleWin dump is written by game code during startup: our headless run reproduces it exactly (U: which routine; find it with write-coverage in 013c).
 * Menu flow: mode screen (RDKEY at $48C2: '1' keyboard / '2' joystick, stores $F5 = 0/1) -> "NORMAL OR CUSTOMIZED KEYBOARD (N/C)?" (RDKEY at $494B; 'C' leads to key-customizing; anything else jumps to $4A00).
 * $4A6A is the game's own character output (CR handling, else JMP $FDF0).
+
+## 9. Dynamic coverage findings (TASK-013c-1, V, 2026-10-29)
+See docs/DYNAMIC_COVERAGE.md. Key points: the `$0666` text-page-table hypothesis (section 7) is **withdrawn for the call at $8CA6**: it is a patched `JSR` whose real target is `$901A`;
+code at `$8E1E-$96E7+` is reachable only through such patched calls; `$623A-$65B9` is written by code at `$5345` and `$7B2A`. Other `$0666,X/Y` table reads are not yet examined (U).

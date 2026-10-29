@@ -6,7 +6,9 @@ No ROM image is used. Instead:
     monitor behavior and then does an RTS. Any other code executed in $C100-$FFFF raises CPUError.
 Behavior of the trapped routines is from documented monitor behavior (Inferred), not from a ROM dump.
 """
+from array import array
 from cpu6502 import CPU, CPUError
+from dis6502 import OPS
 
 SCREEN_COLS, SCREEN_ROWS = 40, 24
 # zero-page monitor variables
@@ -39,8 +41,10 @@ class Machine:
         self.paddle_start = None
         self.unknown_io = {}
         self.rom_writes = 0
+        self.cur_pc = 0
         self.rom_calls = {}
         self._getln = None          # in-progress GETLN state
+        self.cov = None             # set by enable_coverage()
         for a in self.TRAPS:
             self.m[a] = 0x60
 
@@ -71,13 +75,38 @@ class Machine:
             out.append(s.rstrip())
         return out
 
+    # ---- coverage (TASK-013c) ----
+    def enable_coverage(self):
+        """Track executed, read and written addresses, and the PC of the last instruction that wrote each address.
+        Opcode/operand fetches count as 'executed' only, not 'read'."""
+        n = 65536
+        self.cov = {'exec': bytearray(n), 'read': bytearray(n), 'write': bytearray(n),
+                    'writer': array('H', [0]) * n, 'opstart': bytearray(n)}
+        m = self.m
+        cpu = self.cpu
+
+        def fetch():                        # instruction-stream reads bypass the 'read' tracking
+            v = m[cpu.pc]
+            cpu.pc = (cpu.pc + 1) & 0xFFFF
+            return v
+        cpu.fetch = fetch
+
+    def _length(self, op):
+        mode = OPS[op][1]
+        return 1 if mode in ('imp', 'acc') else 2 if mode in ('imm', 'zp', 'zpx', 'zpy', 'izx', 'izy', 'rel') else 3
+
     # ---- bus ----
     def read(self, a):
+        if self.cov is not None:
+            self.cov['read'][a] = 1
         if 0xC000 <= a <= 0xC0FF:
             return self.io(a, None)
         return self.m[a]
 
     def write(self, a, v):
+        if self.cov is not None:
+            self.cov['write'][a] = 1
+            self.cov['writer'][a] = self.cur_pc
         if 0xC000 <= a <= 0xC0FF:
             self.io(a, v)
         elif a >= 0xC100:
@@ -141,6 +170,13 @@ class Machine:
                 continue
             if cpu.pc >= 0xC100:
                 raise CPUError(f"executing unmodelled ROM/slot address ${cpu.pc:04X}")
+            if self.cov is not None:
+                self.cur_pc = cpu.pc
+                op = self.m[cpu.pc]
+                if op in OPS:
+                    self.cov['opstart'][cpu.pc] = 1
+                    for i in range(self._length(op)):
+                        self.cov['exec'][(cpu.pc + i) & 0xFFFF] = 1
             cpu.step()
             n += 1
         return n

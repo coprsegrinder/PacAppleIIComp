@@ -71,11 +71,10 @@ and wait for my "go" before starting it (rule 11). Do not re-derive facts alread
   TASK-001..004, 005a-c, 013a (see ledger); tools/cpu6502.py core verified incl. real startup stub; runtime origin $4000 CONFIRMED by emulator dump; recdis.py reaches 30% of the program from the entry point. Region map is heuristic only.
 
 ## Next task
-TASK-013c: coverage logging on the headless machine (tools/apple2.py + tools/cpu6502.py). Record executed / read / written addresses, feed the keys '1' then 'N' (the game now
-reaches a second menu "NORMAL OR CUSTOMIZED KEYBOARD (N/C)?" at RDKEY $494B) and continue until the next wait/loop, in bounded steps; replace the heuristic region map with an executed-code map;
-cross-check against an AppleWin memory dump at the same point. TASK-013b is DONE: tools/apple2.py (soft switches + trapped ROM routines $FC22 $FD0C $FD6F $FDF0 $FE89 $FE93), tests/test_apple2.py (18),
-tools/run_headless.py; the headless run matches AppleWin on $4000-$A9FF and on text page 2 at the mode screen (docs/TESTING.md). Menus use text page 2 ($0800).
-Memory-model note: no ROM is used or copied; stubs only. Not modelled yet: cursor, bell, language card, interrupts.
+TASK-013c-2 (or 013d first - ask Claude for a recommendation): cross-check the coverage scenario vs AppleWin and identify the screen the game sits on after menus '1','N'
+(it runs freely in hi-res, no speaker clicks, no key waits in 243M cycles); then add input to reach gameplay. TASK-013d: feed the 1,031 dynamically found bytes ($8E1E+) and patched-call
+targets into the static disassembler as new entry points. DONE: 013b (stubs, tools/apple2.py), 013c-1 (coverage; tools/trace_coverage.py, tools/cov_report.py, docs/DYNAMIC_COVERAGE.md).
+Withdrawn hypothesis: $0666 text-page table for the call at $8CA6 (it is patched to JSR $901A).
 Also pending: TASK-012, TASK-006, TASK-007, TASK-008/009.
 
 Emulator control (verified): launch `AppleWin-x64.exe -d1 <scratch\work.dsk>`; drive it with

@@ -17,7 +17,7 @@ Listings stay in git-ignored `scratch/` (they contain original code); only these
    This is deliberate and explains all 6 overlaps. The reconstruction must preserve it (e.g. as a routine with a parameter or three entry points).
 2. **ROM calls (V):** the code calls Apple II monitor routines at $FC22, $FD0C, $FD6F and $FDF0 (names: to be confirmed against the monitor listing; probably VTAB, RDKEY, GETLN, COUT1 - **I**).
    It uses the ROM for text/keyboard input only so far.
-3. **Open: `JSR $0666` at $8CA6 (U):** $0666 is in low RAM. Several instructions index a table at $0666 (`LDA $0666,X/Y`, `ORA $0666,X`).
+3. **RESOLVED by TASK-013c-1 (see DYNAMIC_COVERAGE.md): `JSR $0666` at $8CA6 is a placeholder operand patched at runtime to `JSR $901A`.** Old note follows. **(U, superseded):** $0666 is in low RAM. Several instructions index a table at $0666 (`LDA $0666,X/Y`, `ORA $0666,X`).
    Resolved in part (TASK-005b): $0400-$07FF is text page 1, and the game most likely reuses it as RAM during hi-res play (**I**). See REVERSE_ENGINEERING.md section 7; confirm with a dump taken during gameplay.
 4. **Coverage gap (V):** 70% of bytes are not reached from the single entry. Reasons not yet known: data tables (expected), code reached via
    RTS-dispatch or other address tables (not followed), RAM-resident code, or code only reachable from additional entry points (e.g. interrupt/other loaders).

@@ -150,5 +150,35 @@ class Input(unittest.TestCase):
         self.assertEqual(mc.m[0x200:0x203], bytes([0xB1, 0xB3, 0x8D]))
 
 
+class Coverage(unittest.TestCase):
+    def test_exec_read_write_and_writer(self):
+        # LDA $0400 ; STA $0500 ; JSR $0400+... -> use: LDA $0400 / STA $0500 / NOP
+        mc = mach([0xAD, 0x00, 0x04, 0x8D, 0x00, 0x05, 0xEA])
+        mc.enable_coverage()
+        mc.run(3)
+        c = mc.cov
+        self.assertEqual([i for i in range(0x300, 0x308) if c['exec'][i]], list(range(0x300, 0x307)))
+        self.assertEqual(c['read'][0x400], 1)
+        self.assertEqual(c['write'][0x500], 1)
+        self.assertEqual(c['writer'][0x500], 0x303)           # PC of the STA
+        self.assertEqual(sum(c['read'][0x300:0x307]), 0)      # instruction fetches are not data reads
+        self.assertEqual([i for i in range(0x300, 0x307) if c['opstart'][i]], [0x300, 0x303, 0x306])
+
+    def test_stack_writes_are_attributed_to_the_jsr(self):
+        mc = mach([0x20, 0x10, 0x03])                          # JSR $0310
+        mc.enable_coverage()
+        mc.m[0x310] = 0x60
+        mc.run(2)
+        self.assertEqual(mc.cov['writer'][0x1FD], 0x300)
+
+    def test_self_modifying_operand_is_visible(self):
+        # LDA #$07 ; STA $0306 ; LDA #$00 (operand patched to #$07)
+        mc = mach([0xA9, 0x07, 0x8D, 0x06, 0x03, 0xA9, 0x00])
+        mc.enable_coverage()
+        mc.run(3)
+        self.assertEqual(mc.cpu.a, 0x07)
+        self.assertTrue(mc.cov['write'][0x306] and mc.cov['exec'][0x306])
+
+
 if __name__ == '__main__':
     unittest.main()
