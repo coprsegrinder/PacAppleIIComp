@@ -17,6 +17,6 @@ Statuses: Planned / In progress / Implemented / Tested / Verified / Blocked / De
 | TASK-010 | Obtain reference emulator | Verified (boot) | approval granted 2026-10-29 | AppleWin 1.32.1.0 hash-verified; image boots from a copy (hash re-checked) to the input-selection screen. Title/attract screens still to capture |
 | TASK-011 | Maintain `docs/RESUME_PROMPT.md` after every completed task | Ongoing | - | File's Current state/Next task match the ledger |
 | TASK-012 | Dump memory during gameplay (confirm $0666 table, find what writes $623A-$65B9) | Planned | 005b | Dump + explanation in notes |
-| TASK-013a | Minimal 6502 core in Python (all documented opcodes, flags, BCD) with unit tests | Planned | 003 | Known-instruction tests pass; optionally a standard 6502 functional test if approved/obtained |
+| TASK-013a | Minimal 6502 core in Python (all documented opcodes, flags, BCD) with unit tests | Verified (18 tests + real-stub run); no external reference suite yet | 003 | See docs/TESTING.md |
 | TASK-013b | Apple II soft-switch stubs (keyboard, speaker, video switches, paddles, ROM entry points), run game from the startup memory image | Planned | 013a | Game reaches the mode screen and accepts '1' headless |
 | TASK-013c | Execution/read/write coverage logging; cross-check against AppleWin (same inputs, same memory) | Planned | 013b | Coverage map replaces heuristic region map; traces agree with AppleWin on checkpoints |
