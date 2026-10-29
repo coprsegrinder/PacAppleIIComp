@@ -71,8 +71,8 @@ and wait for my "go" before starting it (rule 11). Do not re-derive facts alread
   TASK-001..004, 005a-c, 013a (see ledger); tools/cpu6502.py core verified incl. real startup stub; runtime origin $4000 CONFIRMED by emulator dump; recdis.py reaches 30% of the program from the entry point. Region map is heuristic only.
 
 ## Next task
-Pick one: TASK-013e (classify the remaining 61.5%: more dispatch tables from the other self-modified operands; data-vs-code for the big gaps) or TASK-013c-2 (AppleWin cross-check, identify the on-screen state
-after menus '1','N', add input to reach gameplay). DONE: 013b, 013c-1, 013d (tools/static_plus.py: 48-entry dispatch table at $8DBE/$8CBE index table; static coverage now 38.5%).
+Pick one: TASK-014 (name and size the tables used by the 4 key table-reader routines: $55B1 patch values, $5343 copy, $5275 streams, $6A4A) or TASK-013c-2 (AppleWin cross-check, identify the screen
+after menus '1','N', reach gameplay with input). DONE: 013b, 013c-1, 013d (static coverage 38.5%), 013e (docs/DATA_REGIONS.md: 58.8% read as data, 2.6% pointer-only, 0 unclassified; heuristic).
 Also pending: TASK-012, TASK-006, TASK-007, TASK-008/009.
 
 Emulator control (verified): launch `AppleWin-x64.exe -d1 <scratch\work.dsk>`; drive it with

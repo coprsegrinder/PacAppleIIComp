@@ -88,3 +88,8 @@ code at `$8E1E-$96E7+` is reachable only through such patched calls; `$623A-$65B
 ## 10. Dispatch table (TASK-013d, V/I, 2026-10-29)
 Code at $8C6C-$8C84 computes `idx = byte[$8CBE + 4*$73 + $E0 - 1]` and copies the word at `$8DBE + 2*idx` into the operand of the `JSR` at $8CA6 ($8CA7/$8CA8). The 256-byte index table is at $8CBE-$8DBD;
 the 48-word routine table is at $8DBE-$8E1D (V that targets are executed code for 40 of 48; table length I, from the first routine starting at $8E1E). Looks like per-level/per-ghost behavior or movement routines (U: purpose not yet analysed; $73 and $E0 meanings unknown).
+
+## 11. Data tables and their readers (TASK-013e, 2026-10-29)
+See docs/DATA_REGIONS.md. V: 15,969 non-code bytes were read at runtime; the `LDA $0666,X` at $55B1 reads 2,798 distinct bytes across $450A-$A543 (its base is patched at runtime).
+V: code at $5343 copies a 896-byte table from $65BA-$6939 into $623A-$65B9 at startup (this is the "runtime-written block"; the earlier note that its writer was unknown is closed).
+I: three 672-byte interleaved streams at $4A7A-$5259 (read by $5275/$527A/$527F).

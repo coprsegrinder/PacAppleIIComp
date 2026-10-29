@@ -9,6 +9,8 @@ Run everything: `for t in tests/test_*.py; do python -I $t; done` (stdlib `unitt
 | tests/test_dsk.py | DOS 3.3 catalog / file extraction on a synthetic disk | pass (2) |
 | tests/test_recdis.py | recursive-descent coverage, BIT-skip overlaps, ROM/indirect targets | pass (3) |
 | tests/test_apple2.py | Soft switches (keyboard strobe, speaker log, video, buttons, paddle timer, unknown I/O), trapped ROM routines (COUT1, VTAB, RDKEY, GETLN, SETKBD, SETVID), scrolling/wrap; synthetic code only | pass (21; includes 3 coverage-tracking tests) |
+| tests/test_static_plus.py | table-pointer reading, extra entry points find otherwise unreachable code (synthetic) | pass (2) |
+| tests/test_classify_gaps.py | gap extraction, absolute and #lo/#hi pointer detection (synthetic) | pass (2) |
 | tests/test_cpu6502.py | 6502 core: flags, stack, JSR/RTS, BRK/RTI, JMP-indirect bug, cycle counts, ADC/SBC (binary + decimal) | pass (18) |
 
 ## CPU core (tools/cpu6502.py) - what the tests prove and do not prove
@@ -38,3 +40,7 @@ AppleWin 1.32.1.0 memory dumps are the current ground truth for memory state (se
 * Unit tests: exec/read/write/writer tracking, fetches not counted as reads, stack writes attributed to the JSR, self-modified operand visible. Real-data runs are one-off scripts (tools/trace_coverage.py, tools/cov_report.py), not unit tests.
 * Caveat (V): writes made by the Python ROM stand-ins (e.g. COUT1 storing text) are not in the write coverage; only CPU-executed instructions are tracked.
 * Caveat: the startup stub's relocation writes are deliberately discarded before the game starts. Result numbers and findings: docs/DYNAMIC_COVERAGE.md. Not yet cross-checked against AppleWin for this scenario (TASK-013c-2).
+
+## Gap classification (TASK-013e)
+Real-data results (one-off scripts, not unit tests): tools/classify_gaps.py, tools/trace_readers.py; numbers in docs/DATA_REGIONS.md. The trace_readers run was repeated once after turning the scratch script into the committed tool; both gave the same top readers.
+Limits: the classification only knows what the 243M-cycle scenario read; "data" means used as data, a gap may also contain unreached code; no AppleWin cross-check yet (TASK-013c-2).
