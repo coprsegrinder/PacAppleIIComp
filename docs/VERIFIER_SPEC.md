@@ -1,6 +1,6 @@
 # Disk-image verifier: rule and reference hashes (TASK-009)
 
-Status: **PROVISIONAL**, pending the user's confirmation. No public source confirms the hashes (searches below). Reference implementation: `tools/verify_image.py` (tests/test_verify_image.py, 6 tests).
+Status: **rule confirmed by the user on 2026-10-29**; the hash values remain publicly uncorroborated. No public source confirms the hashes (searches below). Reference implementation: `tools/verify_image.py` (tests/test_verify_image.py, 6 tests).
 
 ## Search for a public hash (V: what was searched; browsing only)
 Three web searches, 2026-10-29: the image's SHA-1 string; its MD5 string with "Pac-Man Apple II"; its file name `Pacman (1983)(Atari).dsk`. **No page contained either hash or the file name.** Earlier (TASK-007) catalogue pages listed no checksums either.
@@ -14,7 +14,7 @@ Not tried: dedicated preservation databases that need an account or a download, 
 | Whole image SHA-1 / MD5 | F80FCF39BD5C035A665DEDE00A4522961C1FCF7C / 6D323B42925299E361579B50C60BD32E |
 | Game file `PAC-MAN` (DOS 3.3 binary, load $1000, length $6A00 = 27,136 bytes) body SHA-256 | EFF5B2635EDF0E3B6A227BEE0A477EB697AAEBC29EBC57089167DF5F10EE182C |
 
-## Rule recommended
+## Rule (confirmed)
 1. Accept a 140K (143,360-byte) image in **DOS sector order** (.dsk/.do). Other containers (.po, .woz, .nib, .2mg) are **not supported yet**; the verifier says so instead of guessing.
 2. **Exact match**: whole-image SHA-256 equals the value above, or
 3. **Program match**: the image parses as DOS 3.3 (VTOC at T17/S0, catalog chain), has a binary file named `PAC-MAN` with load $1000 and length $6A00, and the SHA-256 of its body equals the value above.

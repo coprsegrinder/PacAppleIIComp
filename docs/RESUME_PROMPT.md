@@ -71,10 +71,10 @@ and wait for my "go" before starting it (rule 11). Do not re-derive facts alread
   TASK-001..004, 005a-c, 013a (see ledger); tools/cpu6502.py core verified incl. real startup stub; runtime origin $4000 CONFIRMED by emulator dump; recdis.py reaches 30% of the program from the entry point. Region map is heuristic only.
 
 ## Next task
-User asked (2026-10-29): 'Go 4, then 3' = housekeeping first (TASK-006, 007, 008, 009 DONE/PROVISIONAL; remaining: TASK-012 gameplay dump), THEN the port plan (module split + build plan, no code). One task per 'go' (rule 11).
-Next: TASK-012 (mostly covered by TASK-019; propose to mark it covered or do one gameplay-time dump), then the port plan.
-AWAITING USER: confirm the provisional verifier rule (docs/VERIFIER_SPEC.md). TASK-023 (Taxman source) is LOGGED ONLY, no download permission.
-DONE: ... 006, 007, 008, 009 (provisional).
+User asked (2026-10-29): 'Go 4, then 3'. Item 4 (housekeeping: TASK-006, 007, 008, 009, 012) is now COMPLETE. Next is item 3: the PORT PLAN (module split + build plan + data strategy, no code), for the user's approval. One task per 'go' (rule 11).
+Verifier rule CONFIRMED by the user (docs/VERIFIER_SPEC.md). TASK-023 (Taxman source) is LOGGED ONLY, no download permission.
+Playfield map: $623A-$65B9 = 32x28 bytes (0 empty, 1 dot, 2 energizer: Inferred), reloaded by $5345 each game, cleared by $7B10 per dot eaten.
+DONE: ... 006, 007, 008, 009, 012.
 
 Emulator control (verified): launch `AppleWin-x64.exe -d1 <scratch\work.dsk>`; drive it with
 `powershell -File tools/awin_ctl.ps1 -Key F7` (debugger), `-Text 'BSAVE "main.bin",0,C000'` (dump main RAM to scratch/),

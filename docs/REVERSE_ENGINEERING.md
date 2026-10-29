@@ -131,3 +131,6 @@ The program contains a 215-byte legal notice at $4064 beginning '(C) 1983 ATARI,
 
 ## 22. Verifier reference values (TASK-009, 2026-10-29)
 No public hash found. Provisional rule: exact image SHA-256 or PAC-MAN body SHA-256 (docs/VERIFIER_SPEC.md, tools/verify_image.py).
+
+## 23. Playfield table (TASK-012, V/I, 2026-10-29)
+$623A-$65B9 is rebuilt by $5345 at each game start and a byte is changed by $7B10 per dot eaten (stride $20): a 32x28 playfield map, values 0/1/2 (I). $0660-$066F holds $A0 during play in AppleWin and in our machine: no table at $0666.

@@ -31,3 +31,23 @@ AppleWin cannot be compared here without audio capture (not done).
 
 ## Limits
 One checkpoint (the players prompt) in one scenario; no gameplay dump comparison (would need frame-exact input timing); the hi-res picture and animation variables cannot be compared without synchronised timing; the keyboard 'Enter' appended by the helper reaches the players prompt as a harmless ignored key.
+
+# Gameplay checkpoint (TASK-012)
+
+Session 2026-10-29, same method as above plus the Esc pause as a quiet state: AppleWin from `scratch/`, keys `1`, ~12 s attract, Space, `1` (Enter appended: starts the game), ~8 s of play, **Esc** (`-Key Esc`), F7. The debugger showed **PC = $6F9A**, the pause loop of the keyboard poll (V: the code listing on screen is the routine decoded in CONTROLS.md), then `BSAVE "gp.bin",0,C000` (49,152 bytes, cycle counter 57,990,439). AppleWin killed afterwards; disk hashes unchanged. Screenshot: real gameplay, score 30, Pac-Man and four ghosts.
+Our side: `python -I tools/compare_dump.py scratch/gp.bin play:3_000_000:3_500_000` (start a game after 3M attract instructions, play 3.5M instructions, press Esc, run to $6F9A).
+
+## Result (V: measured). Because play is not frame-synchronised, four play lengths were tried; the best is reported and the others are listed
+| Play length (instructions) | Game area $4000-$A9FF differing bytes (code operands / data) | Hi-res page 1 differing bytes |
+|---|---|---|
+| 2.0M | 13 (10 / 3) | 182 of 8,192 |
+| **3.5M** | **7 (4 / 3)** | **140** |
+| 5.0M | 10 (6 / 4) | 217 |
+| 7.0M | 48 (14 / 34) | 200 |
+At 3.5M: zero page game variables $63, $E8, $F5, $51 are identical to AppleWin ($63 = 3 left, $E8 = 0 in play, $F5 = 0 keyboard, $51 = 1 player); text page 2 identical; the pause loop PC matches.
+The 7 differing game bytes: the usual **table-pointer operands** ($6951-$6952, $695A-$695B: 4 bytes) and **3 bytes of the playfield table** ($6331, $6351, $6371: ours 0, AppleWin 1), i.e. AppleWin's Pac-Man had not yet eaten three dots our run had; this is a timing difference, not a logic difference.
+
+## Answers to the TASK-012 questions
+1. **Is there a table at $0666 during play?** No. $0660-$066F holds $A0 (the blank text-page fill) in both AppleWin and our machine. The `$0666` operands in the file are placeholders patched at runtime (confirmed in two independent emulators; TASK-013c-1).
+2. **What writes $623A-$65B9?** Code at **$5345** copies a fresh 896-byte source block into it at the start of each game (890 bytes written per game start), and code at **$7B10** (`STA ($16),Y`) changes single bytes during play: 6 bytes at stride $20 ($6331, $6351, ...) in 3.5M instructions. Values seen: 0, 1, 2.
+3. **What is the block? (I)** A **playfield map of 32 columns x 28 rows (896 bytes)**: 1 = dot, 2 = energizer, 0 = empty/eaten, rewritten from the master copy at every new game; a byte is cleared when its dot is eaten (stride $20 = one row of 32). Not yet checked cell by cell against the picture.

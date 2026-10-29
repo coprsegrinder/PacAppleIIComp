@@ -16,5 +16,13 @@ class Helpers(unittest.TestCase):
             self.assertEqual(h1, l2)
 
 
+class Scenarios(unittest.TestCase):
+    def test_parse_scenario_labels(self):
+        from compare_dump import parse_scenario
+        self.assertEqual(parse_scenario('3_000_000')[0], '3000000 attract instructions')
+        self.assertEqual(parse_scenario('play:3_000_000:3_500_000')[0], 'play after 3_000_000 attract + 3_500_000 play instructions')
+        self.assertTrue(callable(parse_scenario('play:1:2')[1]))
+
+
 if __name__ == '__main__':
     unittest.main()

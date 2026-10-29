@@ -43,17 +43,42 @@ def our_state(n_attract):
     return mc
 
 
+def our_state_play(n_attract, n_play):
+    """Gameplay checkpoint: start a game (1, Enter, attract, Space, '1', Enter), play n_play instructions, press Esc and run until the pause loop at $6F9A."""
+    mc = our_state(n_attract)
+    mc.push_key('1')
+    try:
+        mc.run(20_000_000)
+    except NeedKey:
+        pass
+    mc.push_key(0x0D)
+    mc.run(n_play)
+    mc.push_key(0x1B)
+    mc.run(20_000_000, stop_pc=0x6F9A)
+    return mc
+
+
+def parse_scenario(arg):
+    """'3_000_000' = players-prompt checkpoint after that many attract instructions; 'play:A:B' = gameplay/Esc checkpoint."""
+    if arg.startswith('play:'):
+        _, a, b = arg.split(':')
+        return 'play after %s attract + %s play instructions' % (a, b), lambda: our_state_play(int(a.replace('_', '')), int(b.replace('_', '')))
+    n = int(arg.replace('_', ''))
+    return '%d attract instructions' % n, lambda: our_state(n)
+
+
 def main():
     dump = open(sys.argv[1], 'rb').read()
     body = open('scratch/extract/PAC-MAN.1000.bin', 'rb').read()
     code, *_ = analyse(body, 0x4000, [0x4027] + table_targets(body))
     static = bytes_of(code)
     last = None
-    for n in [int(a.replace('_', '')) for a in sys.argv[2:]]:
-        mc = our_state(n)
-        at_prompt = mc.cpu.pc == 0xFD0C
+    for arg in sys.argv[2:]:
+        label, make = parse_scenario(arg)
+        mc = make()
+        at_prompt = mc.cpu.pc in (0xFD0C, 0x6F9A)
         diff = {a for a in range(0xC000) if mc.m[a] != dump[a]}
-        print('--- %d attract instructions, parked in RDKEY: %s, cycles %d' % (n, at_prompt, mc.cpu.cycles))
+        print('--- %s, parked in a key wait: %s (pc=%04X), cycles %d' % (label, at_prompt, mc.cpu.pc, mc.cpu.cycles))
         for name, lo, hi in REGIONS:
             d = [a for a in diff if lo <= a < hi]
             extra = ''
