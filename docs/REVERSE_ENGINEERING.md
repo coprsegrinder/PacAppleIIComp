@@ -90,7 +90,7 @@ Code at $8C6C-$8C84 computes `idx = byte[$8CBE + 4*$73 + $E0 - 1]` and copies th
 the 48-word routine table is at $8DBE-$8E1D (V that targets are executed code for 40 of 48; table length I, from the first routine starting at $8E1E). Looks like per-level/per-ghost behavior or movement routines (U: purpose not yet analysed; $73 and $E0 meanings unknown).
 
 ## 11. Data tables and their readers (TASK-013e, 2026-10-29)
-See docs/DATA_REGIONS.md. V: 15,969 non-code bytes were read at runtime; the `LDA $0666,X` at $55B1 reads 2,798 distinct bytes across $450A-$A543 (its base is patched at runtime).
+See docs/DATA_REGIONS.md. V: 15,166 non-code bytes were read at runtime (first reported as 15,969; corrected, see DATA_REGIONS.md); the `LDA $0666,X` at $55B1 reads 2,798 distinct bytes across $450A-$A543 (its base is patched at runtime).
 V: code at $5343 copies a 896-byte table from $65BA-$6939 into $623A-$65B9 at startup (this is the "runtime-written block"; the earlier note that its writer was unknown is closed).
 I: three 672-byte interleaved streams at $4A7A-$5259 (read by $5275/$527A/$527F).
 
@@ -125,3 +125,6 @@ The image's DOS is a modified build (37 of 48 boot-track sectors differ from the
 
 ## 20. Release and lineage research (TASK-007, 2026-10-29)
 Public pages (second-hand, see docs/RESEARCH_007.md): Atari/Atarisoft DX5501, (c)1983; reported to be a modified Taxman (H.A.L. Labs 1981, B. Fitzgerald). The game's own screen says (c)1983 Atari Inc. (V). No public hash or disassembly found.
+
+## 21. Release identity (TASK-008, V, 2026-10-29)
+The program contains a 215-byte legal notice at $4064 beginning '(C) 1983 ATARI, INC.' (never read at runtime) and prints '(c)1983 Atari Inc.' on the attract screen; no 1982 text anywhere. An unused prompt 'BLACK & WHITE OR COLOR? (B / C)' sits at $4886. Details: docs/RELEASE_IDENTITY.md.

@@ -36,6 +36,7 @@ def main():
     mc.run(10_000_000, stop_pc=0x4027)          # let the startup stub relocate the program, then forget its writes
     assert mc.cpu.pc == 0x4027
     mc.cov['write'][:] = bytes(65536)
+    mc.cov['read'][:] = bytes(65536)            # the stub's own reads of the source copy are not game reads
     mc.cov['writer'][:] = type(mc.cov['writer'])('H', [0]) * 65536
     stages = []
     pending = list(keys) + [None]

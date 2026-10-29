@@ -1,0 +1,8 @@
+# Decisions log
+
+| Date | Decision | Who | Notes |
+|---|---|---|---|
+| 2026-10-29 | The project targets the **Atari/Atarisoft 1983 Apple II Pac-Man** as identified in docs/RELEASE_IDENTITY.md; no revision number is claimed. | Claude (recorded; evidence in the image), user's earlier statement of the 1983 US release | The brief's "1982" is an open discrepancy, not a target. |
+| 2026-10-29 | **TASK-023 (Taxman source) is logged in the project.** The user gave permission to *log* it. This is **not** permission to download, clone or read files from any host; any download needs a separate explicit approval (rule 2) after the host and license are known. | User | Browsing public web pages remains allowed. |
+| 2026-10-29 | Tracking of reads before the program starts is discarded in the coverage tool; earlier "read as data" numbers were corrected (docs/DATA_REGIONS.md). | Claude | Found while working on TASK-008; disclosed in the ledger and the report. |
+| 2026-10-29 | Work proceeds one ledger task per "go" even when the user lists several (e.g. "4, then 3"); each stops at its checkpoint (rule 11). | User's standing rule | |

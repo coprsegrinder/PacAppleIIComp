@@ -71,10 +71,11 @@ and wait for my "go" before starting it (rule 11). Do not re-derive facts alread
   TASK-001..004, 005a-c, 013a (see ledger); tools/cpu6502.py core verified incl. real startup stub; runtime origin $4000 CONFIRMED by emulator dump; recdis.py reaches 30% of the program from the entry point. Region map is heuristic only.
 
 ## Next task
-User asked (2026-10-29): 'Go 4, then 3' = housekeeping first (TASK-006 DONE, TASK-007 DONE this session; remaining: TASK-008 release identity, TASK-009 expected hash, TASK-012 gameplay dump), THEN the port plan (module split + build plan, no code). One task per 'go' (rule 11).
-Next: TASK-008 (reconcile release identity using docs/RESEARCH_007.md) then TASK-009 (search the web for our SHA-1/MD5 strings; decide the verifier's reference hash with the user).
-OPEN QUESTION FOR USER (TASK-023): allow reading/downloading the Taxman source (Atarisoft Pac-Man appears to derive from it), if a public host is found? Not downloaded.
-DONE: ... 019, 006, 007 (docs/RESEARCH_007.md).
+User asked (2026-10-29): 'Go 4, then 3' = housekeeping first (TASK-006, 007, 008 DONE; remaining: TASK-009 expected hash, TASK-012 gameplay dump), THEN the port plan (module split + build plan, no code). One task per 'go' (rule 11).
+Next: TASK-009 (search the web for our SHA-1/MD5/file name; decide the verifier's reference hash with the user).
+TASK-023 (Taxman source) is LOGGED ONLY: the user did not permit any download. See docs/DECISIONS.md.
+NOTE: earlier 'read as data' numbers were corrected (DATA_REGIONS.md): 55.9% read, 5.0% referenced-only, 0.5% unclassified; trace_coverage now discards stub reads.
+DONE: ... 019, 006, 007, 008 (docs/RELEASE_IDENTITY.md).
 
 Emulator control (verified): launch `AppleWin-x64.exe -d1 <scratch\work.dsk>`; drive it with
 `powershell -File tools/awin_ctl.ps1 -Key F7` (debugger), `-Text 'BSAVE "main.bin",0,C000'` (dump main RAM to scratch/),

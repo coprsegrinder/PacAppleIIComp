@@ -12,9 +12,9 @@ then the game runs freely for 80M instructions = 242,947,502 cycles (~4 min of A
 | ...of which already found by static analysis | 5,693 |
 | ...of which NOT found statically | **1,031 bytes in 84 runs, e.g. $8E1E-$96E7+** (list: scratch/cov_detail.txt) |
 | Statically reached but not executed in this run | 2,513 (other game states: gameplay, death, sound, etc.) |
-| Bytes read as data (not executed) | 15,149 in 165 runs |
+| Bytes read as data (not executed) | 9,687 in 364 runs (corrected 2026-10-29; first reported 15,149) |
 | Bytes written by the game itself (after relocation) | 947 |
-| Neither executed, read nor written in this run | 5,263 (19.4%) |
+| Neither executed, read nor written in this run | 10,723 (39.5%) (corrected 2026-10-29; first reported 5,263 / 19.4%) |
 
 Combined with the static result, executed + static-reached code is well over the 30% from TASK-005a, but "executed in one scenario" is not "all code": gameplay and sound paths have not run.
 
@@ -61,3 +61,5 @@ Tool: `tools/explore.py` (scenarios `cartoons`, `rank`, `custom`; each from a fr
 | customised keyboard + Esc pause | 7,661 | +181 |
 **Union: 9,147 executed bytes = 87.5% of the 10,456 static code bytes; 0 executed bytes outside the static code map.** No unknown soft-switch access in any run. Intermissions made no speaker clicks (V: 0 clicks during the three cartoons).
 Not run: the final 1,309 bytes in 125 small runs (largest 76 bytes).
+
+> Correction note: the read-based rows of the first table were recomputed after discarding the startup stub's own reads (see DATA_REGIONS.md, Correction). Execution and write results were not affected.
