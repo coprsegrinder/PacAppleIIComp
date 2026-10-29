@@ -39,7 +39,11 @@ Statuses: Planned / In progress / Implemented / Tested / Verified / Blocked / De
 | TASK-027 | M2: hires layer (row math, two blitters, font) | Planned | 026 | Byte-exact hi-res pages vs oracle |
 | TASK-028 | M3: video + app window, menus, attract screens | Planned | 027 | Frames equal oracle pages; visual match with AppleWin |
 | TASK-029 | M4: game core without ghosts (+ scoring/level-table analysis first) | Planned | 028 | Scenario traces match oracle |
-| TASK-030 | Ghost AI analysis (48 jump-table routines, speeds), then M5 reconstruction | Planned | 029 | Ghost positions match oracle step by step |
+| TASK-030a | Ghost analysis part 1: structure | Verified (7 + 5 unit tests; traces of 183 decisions, 0 dispatch mismatches; graph 64 junctions/168 links, 0 broken; all 256 junction-ghost answers inside real exits) | 029 analysis | docs/GHOST_ANALYSIS.md; tools/listing.py, trace_ghosts.py, ghost_routines.py, junction_graph.py |
+| TASK-030b | Exact decision rules of the 48 routines (full constant coverage, ties) expressed as data for C++; check 8 never-executed routines by standalone runs | Planned | 030a | Routine tables proven equal on a complete input partition |
+| TASK-030c | Ghost modes and timers: meaning of $78/$E9/$79, scatter/chase/frightened/eyes switching, speed (countdown $80) per level | Planned | 030a | Mode timeline matches oracle traces |
+| TASK-030d | Ghost house exit, eyes route ($A360), junction record bytes 6-7, movement between junctions, Pac-Man movement | Planned | 030a | Positions match oracle step by step |
+| TASK-030e | Reconstruct ghost logic in C++ (M5) | Planned | 030b-d, 027 | Ghost positions match oracle in recorded scenarios |
 | TASK-031 | M6: levels, fruit, intermissions (needs TASK-021) | Planned | 030, 021 | Sequences and cartoons match oracle |
 | TASK-032 | Sound-data analysis, then M7 sound | Planned | 029 | Click lists equal oracle cycle-exactly |
 | TASK-033 | M8: faithful pacing, modern options (separate switches), packaging, clean-machine test | Planned | 031, 032 | Per-option tests; clean-machine run |

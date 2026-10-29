@@ -8,7 +8,7 @@ Written 2026-10-29 after the decompilation groundwork (TASK-013 to TASK-020) and
 | Code map | 38.5% of the program is code (10,456 bytes, 5,165 instructions); every byte executed in 7 coverage runs lies inside it; 87.5% of it has been executed |
 | Data | 55.9% read as data, 5.0% referenced only, 0.5% unclassified; tables and frame formats catalogued (TABLES.md, SPRITES.md) |
 | Behavior known | controls, menus, hidden rank/cartoon menu, intermissions, pause, sound toggle, joystick/paddle reading, playfield map, draw routines |
-| Behavior NOT yet understood | **ghost movement rules (48 jump-table routines)**, speeds per level, fruit rules, scoring/extra-life rules, level progression tables, sound data (jingle and effects), intermission scripts |
+| Behavior NOT yet understood | **ghost modes, timers and speeds (the junction graph, the 48 decision routines and their dispatch are now understood: GHOST_ANALYSIS.md)**, speeds per level, fruit rules, scoring/extra-life rules, level progression tables, sound data (jingle and effects), intermission scripts |
 | Oracle | Python 6502 core + Apple II stubs, compared with AppleWin at two checkpoints |
 | Toolchain (V, checked today) | Visual Studio Build Tools 2026 with `cl`, `nmake`, MSBuild and a **bundled CMake 4.3.1** (not on PATH); Windows SDK 10.0.26100 with Direct3D 11, XAudio2/WASAPI, XInput and DXGI 1.6 (HDR). **No download is needed for building** (this removes the "CMake download" item from PROJECT_PLAN.md) |
 

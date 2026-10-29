@@ -71,10 +71,9 @@ and wait for my "go" before starting it (rule 11). Do not re-derive facts alread
   TASK-001..004, 005a-c, 013a (see ledger); tools/cpu6502.py core verified incl. real startup stub; runtime origin $4000 CONFIRMED by emulator dump; recdis.py reaches 30% of the program from the entry point. Region map is heuristic only.
 
 ## Next task
-TASK-026 (M1) DONE: port/src/datapack (builder, loader, generated manifest of 60 ranges / 16,680 data bytes), pacman_pack CLI, 27 C++ tests, docs/DATAPACK_SPEC.md. Build/test: `& .\port\build.bat test` (PowerShell) or CMake route in docs/BUILDING.md.
-Decided earlier: D1-A, D2-A, final result based only on the supplied .dsk. TASK-023: no public Taxman host.
-Next options: TASK-027 (M2: hires layer: row-address math, the two blitters, font drawing, pixel decoding; byte-exact vs oracle pages) - recommended; or analysis in parallel: TASK-021, ghost-AI, sound data, scoring/level tables, TASK-022.
-NOTE for the tool shell: its working directory may change to port/ - use absolute paths. Pack files (*.pmpk) are git-ignored; out/ is git-ignored.
+User chose analysis before more C++ (2026-10-29). TASK-030a DONE: docs/GHOST_ANALYSIS.md (junction graph at $760A: 64 records; decision dispatch index[$73*4+$E0-1] -> 48 routines; targets: corner via $8CB4 when $78 or $E9, else Pac-Man $60/$61; no reversals; answers always real exits).
+Next analysis options: TASK-030b (exact rules of the 48 routines), 030c (modes/timers/speed: $78,$E9,$79,$80), 030d (ghost house, eyes, movement between junctions), then scoring/level tables, sound data, TASK-021. Recommended: 030c (modes decide the behavior the user sees), then 030b.
+C++ side: M0 and M1 done (port/, 27 tests); M2 (hires layer, TASK-027) waits.
 
 Emulator control (verified): launch `AppleWin-x64.exe -d1 <scratch\work.dsk>`; drive it with
 `powershell -File tools/awin_ctl.ps1 -Key F7` (debugger), `-Text 'BSAVE "main.bin",0,C000'` (dump main RAM to scratch/),

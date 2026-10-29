@@ -22,6 +22,8 @@ Run everything: `for t in tests/test_*.py; do python -I $t; done` (stdlib `unitt
 | tests/test_boot_compare.py | boot-track diff, owned-sector walk (catalog, T/S lists), deleted entries, hidden-data scan on synthetic disks | pass (5) |
 | tests/test_verify_image.py | verifier rule on synthetic disks: exact, program-only match, tampered program, wrong name/type/load, wrong size, damaged catalog | pass (6) |
 | tests/test_make_manifest.py | manifest generator: gaps between code, rendering without data, content hash order | pass (4) |
+| tests/test_ghost_tools.py | running a routine on the oracle, dependency/outputs analysis, dispatch check, event hook (synthetic code) | pass (7) |
+| tests/test_junction_graph.py | graph parsing, symmetry/geometry/missing-link detection, tunnel wrap, routine-vs-exit check (synthetic) | pass (5) |
 | tests/test_cpu6502.py | 6502 core: flags, stack, JSR/RTS, BRK/RTI, JMP-indirect bug, cycle counts, ADC/SBC (binary + decimal) | pass (18) |
 
 ## CPU core (tools/cpu6502.py) - what the tests prove and do not prove
@@ -89,3 +91,6 @@ Not covered: no fuzzing of the DOS reader beyond the damaged-catalog and out-of-
 
 ## Data pack (TASK-026)
 C++ (port/tests/test_datapack.cpp, 10 tests; plus a real-image test): round trip, exact bytes, code/DOS not stored (size arithmetic), identical pack for other DOS tracks, refusal of unverified images and invalid manifests, **every single-byte change and every truncation refused**, wrong-program pack refused, inconsistent tables with valid hashes refused. Real image: content hash equals tools/make_manifest.py's independent value; `python -I tools/make_manifest.py --check` confirms the committed manifest matches a fresh analysis. Limit: integrity only; the manifest is only as good as the code map (docs/DATAPACK_SPEC.md).
+
+## Ghost analysis (TASK-030a)
+Real-data runs: trace_ghosts (2 games, seed 3: 183 decisions), ghost_routines (48 routines x 60 inputs), junction_graph (checks printed as counts). Corrections made while testing: my first dependency check compared whole register tuples (every routine looked input-dependent); fixed to compare A only. A junction-graph test expectation had wrong arithmetic (code was right); corrected and tightened. Limits: only 183 decisions, one seed; the grid is not a proof of equivalence (030b).

@@ -137,3 +137,6 @@ $623A-$65B9 is rebuilt by $5345 at each game start and a byte is changed by $7B1
 
 ## 24. Pacing and scale facts for the port (TASK-024, V, 2026-10-29)
 129 routines called by JSR plus 48 jump-table routines; main-loop pass ($530F) costs 2,987 cycles in 59% of passes and up to 27,950 otherwise (mean 4,823): game speed depends on cycles, there is no vblank pacing. See docs/ARCHITECTURE.md.
+
+## 25. Ghost structure (TASK-030a, V/I, 2026-10-29)
+Junction graph at $760A (64 x 8 bytes), routine index at $8CBE, routine addresses at $8DBE, 48 decision routines, corner targets at $8CB4, ghost records at $84-$D3 (20 bytes, swapped with $70-$83). docs/GHOST_ANALYSIS.md.

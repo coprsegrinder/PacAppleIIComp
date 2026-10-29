@@ -34,3 +34,6 @@ Code that only runs in game states this scenario never reached (play, death, sou
 ## Correction (2026-10-29, found during TASK-008)
 The first version of this document (TASK-013e) used a coverage file that still contained the startup stub's own reads of its source copy ($1000-$79FF); in the game area $4000-$803E those reads were counted as the game reading data. tools/trace_coverage.py now discards reads made before the program starts, and the numbers above, in DYNAMIC_COVERAGE.md and in the ledger were recomputed. Earlier values were 15,969 bytes / 58.8% read, 711 / 2.6% referenced-only, 0 unclassified. The reader list (trace_readers / trace_tables / render_frames) was not affected: those tools start tracking after the relocation.
 Example of what changed: the 224-byte copyright notice at $4064-$4143 was shown as 'read'; it is **never read** at runtime (it is referenced-only/unread text).
+
+## Update (TASK-030a)
+The 512-byte gap $760A-$7809 is the **maze junction graph** (64 records x 8 bytes; docs/GHOST_ANALYSIS.md). The 512-byte routine index table at $8CBE-$8DBD and the corner targets at $8CB4 are also now explained.
