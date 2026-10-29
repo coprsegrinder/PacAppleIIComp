@@ -93,3 +93,7 @@ the 48-word routine table is at $8DBE-$8E1D (V that targets are executed code fo
 See docs/DATA_REGIONS.md. V: 15,969 non-code bytes were read at runtime; the `LDA $0666,X` at $55B1 reads 2,798 distinct bytes across $450A-$A543 (its base is patched at runtime).
 V: code at $5343 copies a 896-byte table from $65BA-$6939 into $623A-$65B9 at startup (this is the "runtime-written block"; the earlier note that its writer was unknown is closed).
 I: three 672-byte interleaved streams at $4A7A-$5259 (read by $5275/$527A/$527F).
+
+## 12. Shape blitter and tables (TASK-014, 2026-10-29)
+$55A6-$55C6 is a sprite blitter (ORs shape rows into hi-res memory; I). Its table base ($55B2/$55B3) is patched per shape; 51 bases seen, frame sizes 9, 28, 49 and 210 bytes (docs/TABLES.md).
+Word table at $8A3A (indexed by $E0 x 2) feeds the reader at $6EB7 (4 entries, possibly one per ghost, U).

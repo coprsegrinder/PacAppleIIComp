@@ -11,6 +11,7 @@ Run everything: `for t in tests/test_*.py; do python -I $t; done` (stdlib `unitt
 | tests/test_apple2.py | Soft switches (keyboard strobe, speaker log, video, buttons, paddle timer, unknown I/O), trapped ROM routines (COUT1, VTAB, RDKEY, GETLN, SETKBD, SETVID), scrolling/wrap; synthetic code only | pass (21; includes 3 coverage-tracking tests) |
 | tests/test_static_plus.py | table-pointer reading, extra entry points find otherwise unreachable code (synthetic) | pass (2) |
 | tests/test_classify_gaps.py | gap extraction, absolute and #lo/#hi pointer detection (synthetic) | pass (2) |
+| tests/test_trace_tables.py | patched-operand read tracker: base after patch, offsets read (synthetic) | pass (1) |
 | tests/test_cpu6502.py | 6502 core: flags, stack, JSR/RTS, BRK/RTI, JMP-indirect bug, cycle counts, ADC/SBC (binary + decimal) | pass (18) |
 
 ## CPU core (tools/cpu6502.py) - what the tests prove and do not prove
@@ -44,3 +45,6 @@ AppleWin 1.32.1.0 memory dumps are the current ground truth for memory state (se
 ## Gap classification (TASK-013e)
 Real-data results (one-off scripts, not unit tests): tools/classify_gaps.py, tools/trace_readers.py; numbers in docs/DATA_REGIONS.md. The trace_readers run was repeated once after turning the scratch script into the committed tool; both gave the same top readers.
 Limits: the classification only knows what the 243M-cycle scenario read; "data" means used as data, a gap may also contain unreached code; no AppleWin cross-check yet (TASK-013c-2).
+
+## Table tracing (TASK-014)
+Real-data runs of tools/trace_tables.py are one-off (not unit tests); results in docs/TABLES.md. Re-run after refactoring the tracker produced byte-identical output. Limits: scenario-bound (only tables used in the 243M-cycle run), sizes are read extents.
