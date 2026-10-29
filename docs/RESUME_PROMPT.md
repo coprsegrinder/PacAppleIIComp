@@ -71,10 +71,8 @@ and wait for my "go" before starting it (rule 11). Do not re-derive facts alread
   TASK-001..004, 005a-c, 013a (see ledger); tools/cpu6502.py core verified incl. real startup stub; runtime origin $4000 CONFIRMED by emulator dump; recdis.py reaches 30% of the program from the entry point. Region map is heuristic only.
 
 ## Next task
-TASK-013c-2 (or 013d first - ask Claude for a recommendation): cross-check the coverage scenario vs AppleWin and identify the screen the game sits on after menus '1','N'
-(it runs freely in hi-res, no speaker clicks, no key waits in 243M cycles); then add input to reach gameplay. TASK-013d: feed the 1,031 dynamically found bytes ($8E1E+) and patched-call
-targets into the static disassembler as new entry points. DONE: 013b (stubs, tools/apple2.py), 013c-1 (coverage; tools/trace_coverage.py, tools/cov_report.py, docs/DYNAMIC_COVERAGE.md).
-Withdrawn hypothesis: $0666 text-page table for the call at $8CA6 (it is patched to JSR $901A).
+Pick one: TASK-013e (classify the remaining 61.5%: more dispatch tables from the other self-modified operands; data-vs-code for the big gaps) or TASK-013c-2 (AppleWin cross-check, identify the on-screen state
+after menus '1','N', add input to reach gameplay). DONE: 013b, 013c-1, 013d (tools/static_plus.py: 48-entry dispatch table at $8DBE/$8CBE index table; static coverage now 38.5%).
 Also pending: TASK-012, TASK-006, TASK-007, TASK-008/009.
 
 Emulator control (verified): launch `AppleWin-x64.exe -d1 <scratch\work.dsk>`; drive it with

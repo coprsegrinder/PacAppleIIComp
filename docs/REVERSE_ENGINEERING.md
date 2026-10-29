@@ -84,3 +84,7 @@ Method: AppleWin 1.32.1.0 booted a copy of the image to the input-selection scre
 ## 9. Dynamic coverage findings (TASK-013c-1, V, 2026-10-29)
 See docs/DYNAMIC_COVERAGE.md. Key points: the `$0666` text-page-table hypothesis (section 7) is **withdrawn for the call at $8CA6**: it is a patched `JSR` whose real target is `$901A`;
 code at `$8E1E-$96E7+` is reachable only through such patched calls; `$623A-$65B9` is written by code at `$5345` and `$7B2A`. Other `$0666,X/Y` table reads are not yet examined (U).
+
+## 10. Dispatch table (TASK-013d, V/I, 2026-10-29)
+Code at $8C6C-$8C84 computes `idx = byte[$8CBE + 4*$73 + $E0 - 1]` and copies the word at `$8DBE + 2*idx` into the operand of the `JSR` at $8CA6 ($8CA7/$8CA8). The 256-byte index table is at $8CBE-$8DBD;
+the 48-word routine table is at $8DBE-$8E1D (V that targets are executed code for 40 of 48; table length I, from the first routine starting at $8E1E). Looks like per-level/per-ghost behavior or movement routines (U: purpose not yet analysed; $73 and $E0 meanings unknown).

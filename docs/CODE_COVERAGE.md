@@ -37,3 +37,16 @@ Command: `python -I tools/xrefs.py scratch/extract/PAC-MAN.1000.bin 4000 4027` (
 4. **Tried and discarded:** heuristics that guessed "code-pointer tables" and "pointer setups" from raw bytes produced mostly false positives (e.g. repeated $8080 values) and were removed.
 5. **Conclusion:** the remaining 70% cannot be classified reliably by static analysis alone. The reliable way is **dynamic**: execute the game and record which addresses are executed,
    read, and written. That requires a small 6502 core with Apple II soft-switch stubs (planned as TASK-013), cross-checked against AppleWin.
+
+## TASK-013d: extra entry points from the dynamic run (`tools/static_plus.py`, V for measured numbers)
+Command: `python -I tools/static_plus.py` (needs scratch/cov.json from `tools/trace_coverage.py`).
+The patched `JSR` at $8CA6 gets its target from a **dispatch table**: a 256-byte index table at $8CBE (index = f(level/phase)) selects one of **48 routine addresses** stored as words at $8DBE-$8E1D
+(the word table ends exactly where the first routine, $8E1E, begins; 40 of the 48 targets were actually executed in the 243M-cycle run, which supports the table size; 8 were not: $8F6C $8FBE $8FED $951F $954A $956B $95EA $969D - Inferred code starts).
+| Entry points used | Instructions | Code bytes | % of 27,136 |
+|---|---|---|---|
+| $4027 only (TASK-005a) | 3,963 | 8,206 | 30.2% |
+| + 48 dispatch-table targets | 5,165 | 10,456 | **38.5%** |
+| + all 3,340 executed instruction starts | 5,165 | 10,456 | 38.5% (the run adds nothing the table did not already reach) |
+* All 3,340 executed instruction starts decode as instruction starts in the static result (0 conflicts). Overlaps stay at the 6 explained BIT-skip pairs.
+* Largest remaining unreached gaps (likely data, **not** proven): $96E8 (4,888 bytes, right after the last table routine), $4A7A (2,022), $61CA (1,904), $717D (1,140), $5DBF (852). 60 gaps in total.
+* Still open: other self-modified operands from the TASK-005c list may hide further tables; unexecuted game states (gameplay details, sound) will show whether the gaps are data or code.
