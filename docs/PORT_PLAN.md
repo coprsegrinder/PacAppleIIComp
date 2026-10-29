@@ -12,7 +12,7 @@ Written 2026-10-29 after the decompilation groundwork (TASK-013 to TASK-020) and
 | Oracle | Python 6502 core + Apple II stubs, compared with AppleWin at two checkpoints |
 | Toolchain (V, checked today) | Visual Studio Build Tools 2026 with `cl`, `nmake`, MSBuild and a **bundled CMake 4.3.1** (not on PATH); Windows SDK 10.0.26100 with Direct3D 11, XAudio2/WASAPI, XInput and DXGI 1.6 (HDR). **No download is needed for building** (this removes the "CMake download" item from PROJECT_PLAN.md) |
 
-## 2. Decisions I need from you
+## 2. Decisions (D1 = A and D2 = A DECIDED by the user on 2026-10-29; D3-D5 defaults stand; constraint: the final result must be based only on the supplied .dsk)
 ### D1. Where does the game data come from? (major, affects rule 4 and the legal position)
 | Option | What it means | For | Against |
 |---|---|---|---|

@@ -28,3 +28,10 @@ What our own evidence adds (V): the game prints **"(c)1983 Atari Inc."** and "Pr
 
 ## Not found / limits
 No hash, no revision list, no existing disassembly, no programmer credit for the Atarisoft port, no technical notes on its hi-res sprite routines. Everything above is from public web pages read once; none was cross-checked against a second independent source except the DX5501/1983 identity (catalogue + museum snippet + the game's own text).
+
+## Addendum 2026-10-29 (TASK-023: where is the Taxman source?)
+3 searches + 3 page reads (callapple.org 2015, a2central.com 2015, Wikipedia). Result: **no public host and no license found.**
+* A2Central (7 Aug 2015): Rebecca Heineman announced on Facebook that Brian Fitzgerald permitted release; 'as soon as the source hits GitHub, we'll post a link here' - the page has no link, no update, no terms (https://a2central.com/2015/08/brian-fitzgerald-grants-release-of-source-code-to-taxman-pac-man-clone/). The Facebook post it cites was not fetched (login-gated, https://www.facebook.com/groups/5251478676/permalink/10154160061678677/).
+* The same article states: 'AtariSoft sued and then as part of the subsequent settlement, used TAXMAN's source code to produce their own Pac-Man port for the Apple II.' That is a statement on a fan-news site (second-hand, no date or document cited): weak evidence for the lineage, consistent with Wikipedia's wording. The image itself contains no Taxman text (docs/RELEASE_IDENTITY.md).
+* The searches also returned a 2021-22 patch file named super.taxman from another project (4cade); it is not the original source.
+* Not tried: a Facebook or GitHub account search (needs login), Heineman's own sites. Nothing was downloaded.

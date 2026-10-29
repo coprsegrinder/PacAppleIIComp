@@ -71,10 +71,10 @@ and wait for my "go" before starting it (rule 11). Do not re-derive facts alread
   TASK-001..004, 005a-c, 013a (see ledger); tools/cpu6502.py core verified incl. real startup stub; runtime origin $4000 CONFIRMED by emulator dump; recdis.py reaches 30% of the program from the entry point. Region map is heuristic only.
 
 ## Next task
-The user's 'Go 4, then 3' is COMPLETE (housekeeping 006-012 done; port plan TASK-024 written: docs/PORT_PLAN.md, docs/ARCHITECTURE.md).
-AWAITING USER DECISIONS: D1 data source (recommend A: local data pack from the verified disk) and D2 code strategy (recommend A: oracle-driven hand reconstruction). Then TASK-025 (M0 skeleton, docs, C++ verifier).
-Analysis that can proceed without those decisions: TASK-021 (last 1,309 unexecuted code bytes), ghost-AI analysis (TASK-030 part 1), sound-data analysis, scoring/level tables, TASK-022 (synchronised AppleWin comparison).
-Verifier rule CONFIRMED (docs/VERIFIER_SPEC.md). TASK-023 (Taxman source) is LOGGED ONLY, no download permission. Toolchain: cl, nmake, MSBuild, bundled CMake 4.3.1, Windows SDK 10.0.26100 (D3D11, XAudio2, XInput).
+DECIDED (2026-10-29): D1-A (local data pack from the verified disk), D2-A (oracle-driven hand reconstruction), D3-D5 defaults. CONSTRAINT: everything in the final result must be based only on the supplied .dsk (outside references may only help understanding).
+TASK-023 (Taxman source): browsing found no public host/license; nothing downloaded; re-check only if a host appears.
+Next: TASK-025 (M0: port skeleton with CMake + build.bat, test runner, README/BUILDING/USER_GUIDE/CHANGELOG/KNOWN_ISSUES/LEGAL_AND_ATTRIBUTION, C++ verifier). Parallel analysis options: TASK-021, ghost-AI analysis (TASK-030 part 1), sound-data analysis, scoring/level tables, TASK-022.
+Verifier rule CONFIRMED (docs/VERIFIER_SPEC.md). Toolchain: cl, nmake, MSBuild, bundled CMake 4.3.1 (C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin), Windows SDK 10.0.26100.
 
 Emulator control (verified): launch `AppleWin-x64.exe -d1 <scratch\work.dsk>`; drive it with
 `powershell -File tools/awin_ctl.ps1 -Key F7` (debugger), `-Text 'BSAVE "main.bin",0,C000'` (dump main RAM to scratch/),

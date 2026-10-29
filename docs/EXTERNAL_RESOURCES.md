@@ -9,3 +9,4 @@ Proposed (NOT approved, NOT downloaded): see `PROJECT_PLAN.md` section "Download
 | https://en.wikipedia.org/wiki/Taxman_(video_game) | Lineage: Taxman (H.A.L. Labs 1981) and Atarisoft's Pac-Man | CC BY-SA 4.0 (article text) | Browsing allowed | No | Facts summarised only |
 | https://www.callapple.org/vintage-apple-computers/apple-ii/source-code-to-be-taxman-released/ | 2015 announcement of Taxman source release; no host or license given | Site (c) A.P.P.L.E. | Browsing allowed | No | Facts summarised only |
 | Search results only (not read): computinghistory.org.uk/det/1530/PacMan/, github.com/realdmx/retrore, 6502disassembly.com | Possible further references | - | Browsing allowed | No | Not incorporated |
+| https://a2central.com/2015/08/brian-fitzgerald-grants-release-of-source-code-to-taxman-pac-man-clone/ | Taxman source release announcement (no link, no terms) | Site content, not reused | Browsing allowed | No | Facts summarised only |
