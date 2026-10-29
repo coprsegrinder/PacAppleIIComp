@@ -25,6 +25,7 @@ Run everything: `for t in tests/test_*.py; do python -I $t; done` (stdlib `unitt
 | tests/test_ghost_tools.py | running a routine on the oracle, dependency/outputs analysis, dispatch check, event hook (synthetic code) | pass (7) |
 | tests/test_junction_graph.py | graph parsing, symmetry/geometry/missing-link detection, tunnel wrap, routine-vs-exit check (synthetic) | pass (5) |
 | tests/test_trace_modes.py | simulated JSR injection, watched-variable log with writer pc, routine entry counters, ghost record flags, zero-page reference finder (synthetic) | pass (5) |
+| tests/test_movement_tools.py | eyes-table walk (steps, broken walks, loops), eyes route extraction, record flag setting, house-record change log (synthetic) | pass (5) |
 | tests/test_cpu6502.py | 6502 core: flags, stack, JSR/RTS, BRK/RTI, JMP-indirect bug, cycle counts, ADC/SBC (binary + decimal) | pass (18) |
 
 ## CPU core (tools/cpu6502.py) - what the tests prove and do not prove
@@ -98,3 +99,6 @@ Real-data runs: trace_ghosts (2 games, seed 3: 183 decisions), ghost_routines (4
 
 ## Ghost modes (TASK-030c)
 Real-data checks (one-off): trace_modes with the energizer routine called on the oracle at the top of the main loop (an earlier attempt called it in the middle of a ghost update and produced corrupted state: injected at a quiet moment instead; the printout also read the flags before the routine finished, fixed). Results in docs/GHOST_MODES.md. Limits: one level (1), one run; injected energizer, not a played one; eaten-ghost path not run.
+
+## Movement, house and eyes (TASK-030d)
+Real-data: trace_house (one run, 12M instructions), trace_eyes (ghost 1, one path), junction_graph (eyes table fully checked statically). The eyes experiment sets a flag between passes (not a played ghost-eating). Limits: single seed/level; Pac-Man movement is read, not traced.

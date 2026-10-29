@@ -71,10 +71,9 @@ and wait for my "go" before starting it (rule 11). Do not re-derive facts alread
   TASK-001..004, 005a-c, 013a (see ledger); tools/cpu6502.py core verified incl. real startup stub; runtime origin $4000 CONFIRMED by emulator dump; recdis.py reaches 30% of the program from the entry point. Region map is heuristic only.
 
 ## Next task
-TASK-030a and 030c DONE (docs/GHOST_ANALYSIS.md, docs/GHOST_MODES.md): junction graph + 48 decision routines; modes: corner 160/600/140 tick cycle, energizer (352 ticks at level 1, flags, reversal), speed delay tables, eyes/eaten (read only).
-Remaining analysis: TASK-030b (exact rules of the 48 routines), 030d (ghost house release, eyes route, movement between junctions, Pac-Man movement and speed), scoring/lives/level tables, sound data, TASK-021 (and run the eaten-ghost and eyes paths on the oracle).
-Suggested next: 030d (movement and the ghost house: needed to move the ghosts at all), or run-the-eyes-path first as a small step.
-C++: M0, M1 done (27 tests). M2 (hires layer) waits as the user prefers analysis first.
+Analysis done so far: 030a structure, 030c modes, 030d movement/house/eyes (docs/GHOST_ANALYSIS.md, GHOST_MODES.md, MOVEMENT.md). Eyes table $A360 verified complete; release tables $54A4/$54B4/$54C4; Pac-Man uses the same junction graph; attract demo = replayed move stream (I).
+Remaining analysis: TASK-031a (Pac-Man side: dots, energizers, collisions, lives, scoring), TASK-030b (exact rules of the 48 routines), sound data, level/fruit tables ($6AFE, $7851, ...), TASK-021 (unexecuted code).
+Suggested next: 031a (completes the gameplay rules), then 030b, then sound. After that the analysis is ready for M2+ C++ (hires layer first).
 
 Emulator control (verified): launch `AppleWin-x64.exe -d1 <scratch\work.dsk>`; drive it with
 `powershell -File tools/awin_ctl.ps1 -Key F7` (debugger), `-Text 'BSAVE "main.bin",0,C000'` (dump main RAM to scratch/),

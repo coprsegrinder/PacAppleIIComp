@@ -61,6 +61,25 @@ def routine_exit_check(recs, index_table, routine_outputs):
     return checked, bad
 
 
+def follow_table(recs, table, doors=(23, 24)):
+    """Follow `table[junction]` (a direction per junction) from every junction.
+    Returns {junction: steps to a door junction, or None if the walk is not a real exit or loops}."""
+    result = {}
+    for start in range(len(recs)):
+        j, steps, seen = start, 0, set()
+        while True:
+            if j in doors:
+                result[start] = steps
+                break
+            if j in seen or table[j] > 3 or recs[j]['next'][table[j]] == NONE:
+                result[start] = None
+                break
+            seen.add(j)
+            j = recs[j]['next'][table[j]]
+            steps += 1
+    return result
+
+
 def main():
     body = open('scratch/extract/PAC-MAN.1000.bin', 'rb').read()
     recs = parse_records(body)
@@ -85,6 +104,11 @@ def main():
     for j in range(COUNT):
         shared.setdefault(tuple(index_table[j * 4:j * 4 + 4]), []).append(j)
     print('(junction -> routines) patterns: %d distinct' % len(shared))
+    table = list(body[0xA360 - ORIGIN:0xA360 - ORIGIN + COUNT])
+    walk = follow_table(recs, table)
+    good = {j: n for j, n in walk.items() if n is not None}
+    print('eyes table $A360: %d of %d junctions lead to a house-door junction (23/24) by following the table; longest walk %d junctions; broken: %s' % (
+        len(good), len(walk), max(good.values()), [j for j, n in walk.items() if n is None]))
 
 
 if __name__ == '__main__':

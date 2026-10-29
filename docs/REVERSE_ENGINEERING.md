@@ -143,3 +143,6 @@ Junction graph at $760A (64 x 8 bytes), routine index at $8CBE, routine addresse
 
 ## 26. Ghost modes (TASK-030c, V/I, 2026-10-29)
 $E9 corner phase with countdown $EA/$EB (160, then 600/140), $E4 frightened with timer $E1/$E2 (table at $6DEF; level 1 = 352 ticks), per-ghost $78 frightened / $79 eyes / $80 step countdown, speed tables $8723/$8743/$8753. docs/GHOST_MODES.md.
+
+## 27. Movement and house (TASK-030d, V/I, 2026-10-29)
+Step = 2 units; junction compare $73/$74; door junctions 23/24; tunnel junctions 26/29; house countdown $82 from tables $54A4/$54B4/$54C4 (ghosts 2-4); eyes follow table $A360 (all 64 junctions reach the door); Pac-Man shares the graph ($60/$61, $64/$65, $63). docs/MOVEMENT.md.
