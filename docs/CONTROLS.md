@@ -18,11 +18,11 @@ Sources: code at $6F5E-$7040 read statically (V: instruction semantics), and che
 | Left arrow (Ctrl-H) | $88 | direction code 3 | V |
 | Right arrow (Ctrl-U) | $95 | direction code 2 | V |
 | Ctrl-S | $93 | toggles sound: flips the low operand byte of the two speaker instructions at $7BB6/$7D07 between $30 (`BIT $C030`, speaker) and $20 (`BIT $C020`, no sound) | V (clicks 1,237 -> 0 -> 120 over equal intervals) |
-| Esc | $9B | pause: waits for any key | code only (not run) |
+| Esc | $9B | pause: waits for any key | V (driven in TASK-020: parks at $6F9A, any key resumes) |
 | Space | $A0 | in demo ($E8 <> 0): jump to $4144 (players prompt) | V |
 
 Mapping of codes to directions: **code 1 = UP, 0 = DOWN, 3 = LEFT, 2 = RIGHT (V)**: the customised-keyboard prompts ask for "MOVE LEFT", "MOVE RIGHT", "MOVE UP", "MOVE DOWN" and store the answers in the compare constants for codes 3, 2, 1, 0 respectively (TASK-020). So A = up and Z = down by default. The direction codes are produced through three `BIT abs` skips ($6FC3/$6FC6/$6FC9) that each load a different constant (0, 3, 2, 1): the idiom from CODE_COVERAGE.md.
-The compared key constants ($C1, $95, $88, $DA) are patched by the "customised keyboard" option ($498B writes $6FBA): that path ($4955-$4A00, 171 bytes) has not been run.
+The compared key constants ($C1, $95, $88, $DA) are patched by the "customised keyboard" option ($498B writes $6FBA): that path ($4955-$4A00) was run in TASK-020 (see below).
 Default direction at the start of play: 3 (left) (V: $63 = 3 before any key).
 Poll rate: the key poll runs roughly once per game frame, which takes well over 100k instructions in our machine; a key pressed shorter than that may seem ignored when testing (seen once, resolved by waiting longer).
 

@@ -30,6 +30,7 @@ class Helpers(unittest.TestCase):
 
     def test_text_page2_reads_only_page_2(self):
         mc = mach([])
+        mc.m[0x800:0xC00] = b'\xA0' * 0x400                   # the game clears page 2 with spaces before printing
         mc.m[0x800:0x803] = bytes([0xC8, 0xC9, 0xA1])        # 'H','I','!' with high bit set
         mc.m[0x400:0x402] = bytes([0xD8, 0xD9])               # page 1 text must be ignored
         self.assertEqual(text_page2(mc), ['HI!'])
