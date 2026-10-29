@@ -2,7 +2,7 @@
 
 How to use: open Claude Code in `F:\Ports\Pac-Man - Apple II`, then paste everything inside the box below as your first message.
 **Keep this file current:** whenever a task finishes, update the "Current state" and "Next task" sections (ask Claude to do it).
-Last updated: 2026-10-29 (after TASK-005a; added checkpoint-stop rule and objective limits).
+Last updated: 2026-10-29 (after TASK-005b; added checkpoint-stop rule and objective limits).
 
 ````text
 You are resuming a long-running project: a documented decompilation of the Apple II Pac-Man disk image in this folder
@@ -64,14 +64,17 @@ and wait for my "go" before starting it (rule 11). Do not re-derive facts alread
 ## Current state (2026-10-29)
 - Image: DOS 3.3 140K, files HELLO (Applesoft: BRUN PAC-MAN) and PAC-MAN (binary, load $1000, len $6A00).
 - Release identity: I believe it's the 1983 US Atari release (unverified; from online docs, no hash source yet).
-- Startup stub relocates the program up by $3000, so it runs at $4000-$A9FF, entry $4027 (arithmetic + sanity check;
-  NOT yet confirmed with an emulator memory dump).
+- Startup stub relocates the program up by $3000, so it runs at $4000-$A9FF, entry $4027 (confirmed by AppleWin memory dump, TASK-005b).
 - Emulator boots the image to an input-selection screen (1 = keyboard, 2 = Apple joystick). Nothing beyond that observed yet.
 - Tools done: tools/inspect_dsk.py, dsk.py, extract_binary.py, dis6502.py, region_map.py (+ unit tests). Done tasks:
-  TASK-001..004 and 005a (see ledger); recdis.py reaches 30% of the program from the entry point. Region map is heuristic only.
+  TASK-001..004, 005a, 005b (see ledger); runtime origin $4000 CONFIRMED by emulator dump; recdis.py reaches 30% of the program from the entry point. Region map is heuristic only.
 
 ## Next task
-TASK-005b: confirm the $4000 origin with an AppleWin memory dump taken after startup (compare with scratch/extract body);
-investigate the `JSR $0666` / table at $0666. Then TASK-005c (the 70% of bytes not reached by recursive descent; see
-docs/CODE_COVERAGE.md), TASK-006 (inspect boot tracks for protection), TASK-007 (web research, no downloads),
-TASK-008/009 (release identity and authoritative expected hash). Then emulator scripting for baseline observations.
+TASK-005c: find the other 70% of the program (see docs/CODE_COVERAGE.md): examine unreached areas, address tables,
+RTS-dispatch, and the 896-byte region $623A-$65B9 that changes at runtime. Then TASK-012 (memory dump during gameplay),
+TASK-006 (inspect boot tracks for protection), TASK-007 (web research, no downloads), TASK-008/009 (release identity and
+authoritative expected hash). Then emulator scripting for baseline observations.
+
+Emulator control (verified): launch `AppleWin-x64.exe -d1 <scratch\work.dsk>`; drive it with
+`powershell -File tools/awin_ctl.ps1 -Key F7` (debugger), `-Text 'BSAVE "main.bin",0,C000'` (dump main RAM to scratch/),
+`-Shot <png>` (window-only capture). It posts messages straight to the window; the window may be minimized (script restores it).

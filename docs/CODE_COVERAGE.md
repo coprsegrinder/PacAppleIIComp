@@ -18,7 +18,9 @@ Listings stay in git-ignored `scratch/` (they contain original code); only these
 2. **ROM calls (V):** the code calls Apple II monitor routines at $FC22, $FD0C, $FD6F and $FDF0 (names: to be confirmed against the monitor listing; probably VTAB, RDKEY, GETLN, COUT1 - **I**).
    It uses the ROM for text/keyboard input only so far.
 3. **Open: `JSR $0666` at $8CA6 (U):** $0666 is in low RAM. Several instructions index a table at $0666 (`LDA $0666,X/Y`, `ORA $0666,X`).
-   Hypothesis (**I**): $0666 holds data/code created at runtime (e.g. a lookup table or generated routine). Must be checked in the emulator.
+   Resolved in part (TASK-005b): $0400-$07FF is text page 1, and the game most likely reuses it as RAM during hi-res play (**I**). See REVERSE_ENGINEERING.md section 7; confirm with a dump taken during gameplay.
 4. **Coverage gap (V):** 70% of bytes are not reached from the single entry. Reasons not yet known: data tables (expected), code reached via
    RTS-dispatch or other address tables (not followed), RAM-resident code, or code only reachable from additional entry points (e.g. interrupt/other loaders).
    Unreached does **not** mean data.
+
+5. **Emulator cross-check (V, TASK-005b):** all 8,212 reached code bytes match runtime memory at $4000 exactly; one 896-byte run at $623A-$65B9 differs at runtime (data).

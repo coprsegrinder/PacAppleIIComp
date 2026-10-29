@@ -61,3 +61,15 @@ Not yet observed: title screen, attract mode, gameplay, sound.
   (variable initialisation ending in a loop), as expected if the origin is $4000. Still to confirm in the emulator (memory dump after startup).
 * Heuristic code/data map: see `docs/REGION_MAP.md`. Code and data are interleaved at fine granularity.
 * Side effect to remember: the move overwrites $3F00-$AFFF, which includes DOS 3.3 in RAM; the game then cannot use DOS services (U: whether it loads anything further from disk - check disk-access behavior in the emulator).
+
+## 7. Emulator memory dump confirms the layout (TASK-005b, V, 2026-10-29)
+Method: AppleWin 1.32.1.0 booted a copy of the image to the input-selection screen; the debugger was opened (F7) and
+`BSAVE "main.bin",0,C000` dumped main memory $0000-$BFFF (to git-ignored `scratch/main.bin`).
+* **The program runs at $4000-$A9FF (file address + $3000): confirmed.** 26,240 of 27,136 bytes are identical to the extracted file.
+  All 8,212 statically reached code bytes (docs/CODE_COVERAGE.md) are identical (0 differences), so no self-modification was seen in the reached code.
+* The only differing bytes are one run, **$623A-$65B9 (896 bytes)**, changed by the time the mode screen appears: runtime-written data (variables/tables), not reached code. (To investigate in 005c.)
+* The original load area still holds an unmodified copy at $1000 (the relocation copies, it doesn't clear the source).
+* **$0666 resolved (I):** $0400-$07FF is Apple II text page 1; at the mode screen it holds spaces ($A0). Hi-res graphics don't use that RAM, so the game
+  most likely builds its $0666 table/routine there after leaving text mode. Needs a dump taken during gameplay to confirm.
+* Technique notes: the `DebuggerAutoRun.txt` breakpoint (BPX 4027) did not stop execution, so it was not used. AppleWin refuses keyboard focus from background processes;
+  `tools/awin_ctl.ps1` instead posts key messages directly to the window (works; F7, Esc and typed commands all verified) and captures only that window.
