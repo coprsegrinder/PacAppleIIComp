@@ -7,7 +7,9 @@ Statuses: Planned / In progress / Implemented / Tested / Verified / Blocked / De
 | TASK-002 | Add read-only `tools/inspect_dsk.py`, git repo, `.gitignore` excluding disk images | Verified | 001 | Script output matches manual parse |
 | TASK-003 | Write a small 6502 disassembler in Python (local, no download) | Verified (4 unit tests pass; boot bytes match image) | 002 | Round-trips known opcodes; disassembles first 48 bytes as in notes |
 | TASK-004 | Extract PAC-MAN body to scratch/ (git-ignored); map zero/data/code regions | Verified (extraction); heuristic map only | 003 | Region map doc; extraction byte-matches image |
-| TASK-005 | Disassemble boot relocation loop; determine real memory layout | Planned | 004 | Layout table in REVERSE_ENGINEERING.md |
+| TASK-005a | Recursive-descent disassembly from entry $4027 (`tools/recdis.py`) | Verified (3 unit tests; 30.3% coverage) | 004 | docs/CODE_COVERAGE.md |
+| TASK-005b | Confirm $4000 origin with an AppleWin memory dump after startup; investigate $0666 | Planned | 005a | Dump matches extracted body at +$3000 |
+| TASK-005c | Find the other 70%: look at unreached areas, address tables, RTS-dispatch, RAM code | Planned | 005b | Coverage and data-table map updated |
 | TASK-006 | Inspect DOS/boot tracks 0-2 for modifications or protection | Planned | 002 | Compare with standard DOS 3.3 boot sectors from memory/docs |
 | TASK-007 | Web research (no downloads): Apple II refs, existing Pac-Man Apple II disassemblies | Planned | - | Entries in EXTERNAL_RESOURCES.md |
 | TASK-008 | Reconcile release identity (1982 vs 1983 Atari) | Planned | 007 | Documented evidence |

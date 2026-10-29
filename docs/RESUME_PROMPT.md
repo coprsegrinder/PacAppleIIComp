@@ -2,7 +2,7 @@
 
 How to use: open Claude Code in `F:\Ports\Pac-Man - Apple II`, then paste everything inside the box below as your first message.
 **Keep this file current:** whenever a task finishes, update the "Current state" and "Next task" sections (ask Claude to do it).
-Last updated: 2026-10-29 (after TASK-004; added checkpoint-stop rule and objective limits).
+Last updated: 2026-10-29 (after TASK-005a; added checkpoint-stop rule and objective limits).
 
 ````text
 You are resuming a long-running project: a documented decompilation of the Apple II Pac-Man disk image in this folder
@@ -68,11 +68,10 @@ and wait for my "go" before starting it (rule 11). Do not re-derive facts alread
   NOT yet confirmed with an emulator memory dump).
 - Emulator boots the image to an input-selection screen (1 = keyboard, 2 = Apple joystick). Nothing beyond that observed yet.
 - Tools done: tools/inspect_dsk.py, dsk.py, extract_binary.py, dis6502.py, region_map.py (+ unit tests). Done tasks:
-  TASK-001..004 (see ledger). Region map is heuristic only.
+  TASK-001..004 and 005a (see ledger); recdis.py reaches 30% of the program from the entry point. Region map is heuristic only.
 
 ## Next task
-TASK-005: recursive-descent disassembly from entry $4027 (follow JSR/JMP/branches) to separate code from data, begin
-naming routines (label inferred names as inferred), and confirm the $4000 origin with an AppleWin memory dump after
-startup. Then TASK-006 (inspect boot tracks for protection), TASK-007 (web research, no downloads), TASK-008/009
-(release identity and authoritative expected hash). Then emulator scripting for baseline observations.
-````
+TASK-005b: confirm the $4000 origin with an AppleWin memory dump taken after startup (compare with scratch/extract body);
+investigate the `JSR $0666` / table at $0666. Then TASK-005c (the 70% of bytes not reached by recursive descent; see
+docs/CODE_COVERAGE.md), TASK-006 (inspect boot tracks for protection), TASK-007 (web research, no downloads),
+TASK-008/009 (release identity and authoritative expected hash). Then emulator scripting for baseline observations.
