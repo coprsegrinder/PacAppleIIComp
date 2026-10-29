@@ -33,3 +33,13 @@ Statuses: Planned / In progress / Implemented / Tested / Verified / Blocked / De
 | TASK-021 | Close the last 1,309 unexecuted static-code bytes (125 runs) by targeted situations (ghost-specific dispatch routines, bonus events) or by static reading, and mark any that are dead code | Planned | 020 | Coverage of static code >95% or a list of proven-dead code |
 | TASK-019 | AppleWin comparison with memory dump at a checkpoint; save speaker click timings | Verified for one checkpoint (players prompt): game area identical except 8 table-pointer operands; click timings saved from our machine only (not compared with AppleWin); 7 unit tests | 017 | docs/EMULATOR_COMPARISON.md; tools/compare_dump.py, tools/save_clicks.py |
 | TASK-022 | Cross-check gameplay checkpoints with AppleWin (needs synchronised input, e.g. AppleWin debugger breakpoints or recorded input) and compare audio (capture WAV from AppleWin, or log $C030 accesses with a debugger trace) | Planned | 019 | Click times and game variables agree within tolerance |
+| TASK-024 | Port plan: architecture, options, milestones, tests, risks | Done as a proposal; **awaiting the user's decisions D1 (data source) and D2 (code strategy)**; D3-D5 default unless objected | 019 | docs/PORT_PLAN.md, docs/ARCHITECTURE.md |
+| TASK-025 | M0: port skeleton (CMake + build.bat, test runner), project docs (README, BUILDING, USER_GUIDE, CHANGELOG, KNOWN_ISSUES, LEGAL_AND_ATTRIBUTION), C++ verifier | Planned (after D1/D2) | 024 | Clean build; verifier results equal tools/verify_image.py |
+| TASK-026 | M1: data pack builder + loader | Planned | 025, D1 | Pack matches oracle memory; wrong-hash pack rejected |
+| TASK-027 | M2: hires layer (row math, two blitters, font) | Planned | 026 | Byte-exact hi-res pages vs oracle |
+| TASK-028 | M3: video + app window, menus, attract screens | Planned | 027 | Frames equal oracle pages; visual match with AppleWin |
+| TASK-029 | M4: game core without ghosts (+ scoring/level-table analysis first) | Planned | 028 | Scenario traces match oracle |
+| TASK-030 | Ghost AI analysis (48 jump-table routines, speeds), then M5 reconstruction | Planned | 029 | Ghost positions match oracle step by step |
+| TASK-031 | M6: levels, fruit, intermissions (needs TASK-021) | Planned | 030, 021 | Sequences and cartoons match oracle |
+| TASK-032 | Sound-data analysis, then M7 sound | Planned | 029 | Click lists equal oracle cycle-exactly |
+| TASK-033 | M8: faithful pacing, modern options (separate switches), packaging, clean-machine test | Planned | 031, 032 | Per-option tests; clean-machine run |

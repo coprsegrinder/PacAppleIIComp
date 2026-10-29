@@ -71,10 +71,10 @@ and wait for my "go" before starting it (rule 11). Do not re-derive facts alread
   TASK-001..004, 005a-c, 013a (see ledger); tools/cpu6502.py core verified incl. real startup stub; runtime origin $4000 CONFIRMED by emulator dump; recdis.py reaches 30% of the program from the entry point. Region map is heuristic only.
 
 ## Next task
-User asked (2026-10-29): 'Go 4, then 3'. Item 4 (housekeeping: TASK-006, 007, 008, 009, 012) is now COMPLETE. Next is item 3: the PORT PLAN (module split + build plan + data strategy, no code), for the user's approval. One task per 'go' (rule 11).
-Verifier rule CONFIRMED by the user (docs/VERIFIER_SPEC.md). TASK-023 (Taxman source) is LOGGED ONLY, no download permission.
-Playfield map: $623A-$65B9 = 32x28 bytes (0 empty, 1 dot, 2 energizer: Inferred), reloaded by $5345 each game, cleared by $7B10 per dot eaten.
-DONE: ... 006, 007, 008, 009, 012.
+The user's 'Go 4, then 3' is COMPLETE (housekeeping 006-012 done; port plan TASK-024 written: docs/PORT_PLAN.md, docs/ARCHITECTURE.md).
+AWAITING USER DECISIONS: D1 data source (recommend A: local data pack from the verified disk) and D2 code strategy (recommend A: oracle-driven hand reconstruction). Then TASK-025 (M0 skeleton, docs, C++ verifier).
+Analysis that can proceed without those decisions: TASK-021 (last 1,309 unexecuted code bytes), ghost-AI analysis (TASK-030 part 1), sound-data analysis, scoring/level tables, TASK-022 (synchronised AppleWin comparison).
+Verifier rule CONFIRMED (docs/VERIFIER_SPEC.md). TASK-023 (Taxman source) is LOGGED ONLY, no download permission. Toolchain: cl, nmake, MSBuild, bundled CMake 4.3.1, Windows SDK 10.0.26100 (D3D11, XAudio2, XInput).
 
 Emulator control (verified): launch `AppleWin-x64.exe -d1 <scratch\work.dsk>`; drive it with
 `powershell -File tools/awin_ctl.ps1 -Key F7` (debugger), `-Text 'BSAVE "main.bin",0,C000'` (dump main RAM to scratch/),

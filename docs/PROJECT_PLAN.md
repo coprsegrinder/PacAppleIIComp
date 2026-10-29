@@ -30,3 +30,6 @@ Python's stdlib + MSVC are enough to start; CMake/MSBuild availability inside th
 * **Reference emulator**: AppleWin (Windows, GPL, has a debugger) is my recommendation; alternative MAME. Local alternative: write my own 6502 core, but it can't confirm real hardware behavior (video, speaker, language-card quirks) by itself.
 * **CMake** (and optionally Ninja) if the Build Tools lack it - alternative: plain MSBuild/`cl` scripts.
 No other downloads are planned.
+
+## Update 2026-10-29 (TASK-024)
+The CMake item above is obsolete: Visual Studio Build Tools 2026 bundles CMake 4.3.1 (not on PATH) and the Windows SDK 10.0.26100 has Direct3D 11, XAudio2, WASAPI, XInput and DXGI 1.6. No download is needed to build. Port plan: PORT_PLAN.md; architecture: ARCHITECTURE.md.

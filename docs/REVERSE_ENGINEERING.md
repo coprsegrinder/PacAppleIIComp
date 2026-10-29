@@ -134,3 +134,6 @@ No public hash found. Provisional rule: exact image SHA-256 or PAC-MAN body SHA-
 
 ## 23. Playfield table (TASK-012, V/I, 2026-10-29)
 $623A-$65B9 is rebuilt by $5345 at each game start and a byte is changed by $7B10 per dot eaten (stride $20): a 32x28 playfield map, values 0/1/2 (I). $0660-$066F holds $A0 during play in AppleWin and in our machine: no table at $0666.
+
+## 24. Pacing and scale facts for the port (TASK-024, V, 2026-10-29)
+129 routines called by JSR plus 48 jump-table routines; main-loop pass ($530F) costs 2,987 cycles in 59% of passes and up to 27,950 otherwise (mean 4,823): game speed depends on cycles, there is no vblank pacing. See docs/ARCHITECTURE.md.
