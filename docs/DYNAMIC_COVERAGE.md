@@ -32,3 +32,18 @@ Combined with the static result, executed + static-reached code is well over the
 
 ## Not done yet (TASK-013c part 2)
 Cross-check this scenario against AppleWin (same keys, a memory dump at a comparable point); render a frame to see what screen the game is on; feed more input (a key / button press) to reach gameplay, then re-run coverage.
+
+# Gameplay run (TASK-017, headless only)
+
+Tool: `tools/play.py` (scripted session: keys, run N instructions, screenshot, text page, info; `--cov` writes scratch/cov_play.json). Command used:
+`python -I tools/play.py --cov key:1 key:cr 70_000_000 key:sp 5_000_000 key:1 5_000_000 key:cr 3_000_000 info shot:g1.png 10_000_000 info shot:g2.png 30_000_000 info shot:g3.png`
+## Input flow (V: seen on the headless text page / screens)
+`1`,Enter at the mode menus -> attract loop (maze draw, GAME OVER, Character/Nickname screen, "Press Space bar") -> **space** -> text screen "HOW MANY PLAYERS? (1 - 5)" (waits in RDKEY) -> `1` ->
+"PRESS <RETURN> TO PLAY / OR <SPACE> TO GO BACK TO DEMO." (RDKEY) -> **Enter** -> the game starts.
+## Result (V for measurements; descriptions of screens I)
+* Sound: first speaker clicks appear now (**2,212 clicks** within ~8M cycles of starting play, 2,696 and 3,192 at later checkpoints), so the intro jingle/gameplay sounds run; attract is silent.
+* Screens: the maze with "PLAYER #1" score 70 (score rose with no key presses, so the game ran its own movement: U whether Pac-Man keeps moving by itself), a spare-life icon and the cherry; later the full-screen "PACMAN" logo (title/after game over, U).
+* Coverage: **7,451** game bytes executed in total, **727 new** versus the 243M-cycle attract run (6,724). **All 7,451 lie inside the static code map from TASK-013d: 0 contradictions** (strong evidence the static classification is right). 3,005 of the 10,456 static code bytes have still not run (death, levels, fruit, joystick, keyboard customisation, bonus screens: U).
+* No unknown soft-switch access and no unmodelled ROM call in ~337M cycles.
+## Not done
+No keyboard-direction input was tried (controls not yet identified), the joystick path ('2'), nor an AppleWin gameplay comparison (only the attract screens were compared in TASK-016). Speaker click timings are logged in memory only (not saved).

@@ -105,3 +105,7 @@ Frames are row-major byte blocks drawn by $55A6 (OR) or $6A3F (OR then AND $7F);
 Attract sequence after the menus: maze draw -> "PLAYER #1 / HISCORE / GAME OVER" -> "Character / Nickname" screen (ghost names Shadow/Blinky, Speedy/Pinky, Bashful/Inky, Pokey/Clyde; "10 Points", "50 Points", "Pacman")
 -> "(c)1983 Atari Inc." and "Press Space bar". Seen in AppleWin 1.32.1.0 (window captures) and reproduced by the headless machine. Supports the 1983 Atari identity for TASK-008 (does not identify the revision).
 Call sites of the draw routines: docs/SPRITES.md.
+
+## 15. Start-of-play flow and sound (TASK-017, V headless, 2026-10-29)
+space at "Press Space bar" -> "HOW MANY PLAYERS? (1 - 5)" -> `1` -> "PRESS <RETURN> TO PLAY OR <SPACE> TO GO BACK TO DEMO." -> Enter -> play (maze, score, lives icon, cherry). Speaker is silent in attract and clicks (thousands per second of play) after play starts.
+The 7,451 bytes executed so far all fall inside the statically derived code (docs/CODE_COVERAGE.md); details in docs/DYNAMIC_COVERAGE.md.

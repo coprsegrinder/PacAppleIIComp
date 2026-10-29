@@ -71,9 +71,9 @@ and wait for my "go" before starting it (rule 11). Do not re-derive facts alread
   TASK-001..004, 005a-c, 013a (see ledger); tools/cpu6502.py core verified incl. real startup stub; runtime origin $4000 CONFIRMED by emulator dump; recdis.py reaches 30% of the program from the entry point. Region map is heuristic only.
 
 ## Next task
-TASK-017: press the space bar at the attract screen ('Press Space bar') in the headless machine (and AppleWin), record coverage/screens/sound clicks for actual gameplay; then joystick path ('2') and paddles.
-DONE: 013b, 013c-1, 013d, 013e, 014, 015, 016 (docs/SPRITES.md). KEY FACT: the headless run is not stuck - it sits in the attract loop (maze draw, 'GAME OVER', character/nickname screen, '(c)1983 Atari Inc.', 'Press Space bar').
-Tools for screens: tools/render_screen.py <instructions> <png>. Also pending: TASK-012, TASK-006, TASK-007, TASK-008/009 (new evidence: game prints '1983 Atari Inc.').
+Pick one: TASK-018 (find keyboard controls and the joystick path; drive Pac-Man; death/levels/fruit) or TASK-019 (AppleWin gameplay comparison + saving speaker click timings). DONE: ... 016, 017 (tools/play.py scripted sessions;
+input flow: '1',Enter -> attract -> space -> players '1' -> Enter -> game; sound present; all 7,451 executed bytes inside the static code map). Unexecuted static code: 3,005 bytes.
+Also pending: TASK-012, TASK-006, TASK-007, TASK-008/009.
 
 Emulator control (verified): launch `AppleWin-x64.exe -d1 <scratch\work.dsk>`; drive it with
 `powershell -File tools/awin_ctl.ps1 -Key F7` (debugger), `-Text 'BSAVE "main.bin",0,C000'` (dump main RAM to scratch/),
