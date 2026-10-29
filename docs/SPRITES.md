@@ -26,3 +26,29 @@ The "49-byte shapes" are 7 x 7-byte labels, the "28-byte shapes" are 4 x 7 dot i
 ## Leads (not conclusions)
 * The font cells include glyphs that read like "Â©1983" in the contact sheet. If the game really prints a 1983 copyright line, that is evidence for TASK-008 (release identity), but a drawn glyph set is not proof of the printed string: check the actual screen (TASK-013c-2).
 * Still unknown: which caller draws which frame (call sites of `$6A20`/`$55A6`), the exact pixel/colour layout versus real hardware output, and the frames not used in this scenario (death animation, fruit, other ghosts' eyes).
+
+# Call sites and screens (TASK-016)
+
+Tools: `tools/trace_callsites.py` (groups every draw call by the calling `JSR`), `tools/render_screen.py` (renders the whole hi-res page from the headless machine). Same scenario as DYNAMIC_COVERAGE.md.
+Entry points: `$6A20` (dispatcher; A/Y = table base; called from `$467C $46E9 $477C $53E6 $5850 $799E $7B4E $7DEF $7EC7 $7EEF $88D9 $8BA1`) and `$55A6` (OR blitter; its loop-back at `$55C4` is not counted as a new call).
+| Caller (JSR address) | Draws | Screen position (row / hi-res byte column) | Meaning (I) |
+|---|---|---|---|
+| $4344 | font glyphs $4553-$4673, 1x9 | rows 11-177, cols 13-32 | text printer for the attract screens |
+| $4483, $44B2 | $450A 4x7 | rows 117 and 128, col 20 | the bullet "dots" in "10 / 50 Points" |
+| $44D3 | $4526 5x9 | row 154, col 12 | the "Pacman" title line pieces (U) |
+| $467C, $46E9, $477C | 96FA-set 3x10 frames (and via $6A20) | row 100, cols 10-27 | the parade of Pac-Man and ghosts on the character screen |
+| $559B | $55F7, $5628 7x7 | rows 6-84, col 0 | left-margin labels ("PLAYER #1", "HISCORE") |
+| $58BD, $5309 | $8139 4x7 | row 105, col 21 | centre item (flashing) |
+| $80F2 | $811D 4x7 | row 105, col 15 | its partner state |
+| $799E, $7B4E, $7DEF | 96FA-set, 7DBC-set 3x10 | rows 7-175, cols 8-30 | the moving characters over the maze (main loop) |
+| $88D9 | $A28E-$A616 sets, 3x10 (and 1x?, via $6A20) | rows 7-179, cols 8-33 | second character set (ghost colours/eyes, U) |
+| $53E6, $5850, $7EC7, $7EEF, $8BA1 | single frames | fixed positions | one-off sprites (U) |
+The caller sets the width ($1A) and row count ($18) itself, so the dispatcher log shows rows 0 at its entry.
+
+## Screens identified (V: seen in AppleWin and in the headless run)
+After the menus ('1' then Enter, or '1','N'), both AppleWin 1.32.1.0 and our headless machine go through the same sequence: the maze is drawn (AppleWin draws it progressively), a **maze screen with PLAYER #1, HISCORE and "GAME OVER"**,
+and the **attract/title screen**: "Character / Nickname" with the ghost names (Shadow/Blinky, Speedy/Pinky, Bashful/Inky, Pokey/Clyde), a Pac-Man and ghost parade, "10 Points", "50 Points", "Pacman", **"©1983 Atari Inc."** and **"Press Space bar"**.
+The headless frame at 60M instructions has the same text and layout as the AppleWin screenshot (colours differ: my renderer is an approximation; AppleWin blends NTSC colours).
+So the game was **not frozen** in our earlier run: it was in its attract loop waiting for the space bar, which explains no key waits through RDKEY (the game polls $C000 directly) and no speaker clicks (no sound during attract, U).
+The "©1983" glyphs seen in TASK-015 spell this line. Evidence for TASK-008: the game itself prints "1983 Atari Inc." (V). It does not by itself prove which revision/dump this is.
+Screenshots and renders stay in scratch/ (git-ignored): aw_mode.png, aw_game.png, aw_game2.png (AppleWin window only), ours_*.png (headless).

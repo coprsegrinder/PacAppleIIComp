@@ -13,6 +13,7 @@ Run everything: `for t in tests/test_*.py; do python -I $t; done` (stdlib `unitt
 | tests/test_classify_gaps.py | gap extraction, absolute and #lo/#hi pointer detection (synthetic) | pass (2) |
 | tests/test_trace_tables.py | patched-operand read tracker: base after patch, offsets read (synthetic) | pass (1) |
 | tests/test_render_frames.py | hi-res byte decoding (bit order, palette, parity, adjacency), PNG writer, contact sheet layout, blit-row merging (synthetic) | pass (7) |
+| tests/test_callsites.py | call-site logging (caller = JSR address, params, loop-back excluded), hi-res row base addresses, screen render size (synthetic) | pass (4) |
 | tests/test_cpu6502.py | 6502 core: flags, stack, JSR/RTS, BRK/RTI, JMP-indirect bug, cycle counts, ADC/SBC (binary + decimal) | pass (18) |
 
 ## CPU core (tools/cpu6502.py) - what the tests prove and do not prove
@@ -52,3 +53,6 @@ Real-data runs of tools/trace_tables.py are one-off (not unit tests); results in
 
 ## Frame rendering (TASK-015)
 Decoder tested on synthetic bytes. The real contact sheet was checked by eye by me only (not yet compared with an AppleWin screenshot); colours are an approximation. Images stay in scratch/ (git-ignored).
+
+## Screen comparison (TASK-016)
+Three AppleWin window-only captures (mode screen, maze being drawn, attract screen) were compared by eye with the headless render: same text, layout and maze geometry. No pixel comparison (AppleWin timing/NTSC colours differ). AppleWin was killed afterwards; original disk and scratch/work.dsk hashes unchanged.

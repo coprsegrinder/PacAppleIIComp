@@ -71,9 +71,9 @@ and wait for my "go" before starting it (rule 11). Do not re-derive facts alread
   TASK-001..004, 005a-c, 013a (see ledger); tools/cpu6502.py core verified incl. real startup stub; runtime origin $4000 CONFIRMED by emulator dump; recdis.py reaches 30% of the program from the entry point. Region map is heuristic only.
 
 ## Next task
-Pick one: TASK-016 (call-site table for $6A20/$55A6 to name each sprite; compare a rendered frame with an AppleWin window screenshot) or TASK-013c-2 (AppleWin cross-check, identify the screen after menus '1','N',
-reach gameplay). DONE: 013b, 013c-1, 013d, 013e, 014, 015 (docs/SPRITES.md: font glyphs 1x9, characters 3x10, dots 4x7, labels 7x7; blitters $55A6 (OR) and $6A3F (OR+AND $7F); hi-res row tables $5B67/$5C27).
-Images live in scratch/frames.png (git-ignored; never commit). Also pending: TASK-012, TASK-006, TASK-007, TASK-008/009.
+TASK-017: press the space bar at the attract screen ('Press Space bar') in the headless machine (and AppleWin), record coverage/screens/sound clicks for actual gameplay; then joystick path ('2') and paddles.
+DONE: 013b, 013c-1, 013d, 013e, 014, 015, 016 (docs/SPRITES.md). KEY FACT: the headless run is not stuck - it sits in the attract loop (maze draw, 'GAME OVER', character/nickname screen, '(c)1983 Atari Inc.', 'Press Space bar').
+Tools for screens: tools/render_screen.py <instructions> <png>. Also pending: TASK-012, TASK-006, TASK-007, TASK-008/009 (new evidence: game prints '1983 Atari Inc.').
 
 Emulator control (verified): launch `AppleWin-x64.exe -d1 <scratch\work.dsk>`; drive it with
 `powershell -File tools/awin_ctl.ps1 -Key F7` (debugger), `-Text 'BSAVE "main.bin",0,C000'` (dump main RAM to scratch/),

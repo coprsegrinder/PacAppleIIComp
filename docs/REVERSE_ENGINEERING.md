@@ -100,3 +100,8 @@ Word table at $8A3A (indexed by $E0 x 2) feeds the reader at $6EB7 (4 entries, p
 
 ## 13. Drawing model (TASK-015, 2026-10-29)
 Frames are row-major byte blocks drawn by $55A6 (OR) or $6A3F (OR then AND $7F); row addresses come from $5B67/$5C27 (V). Frame types: 1x9 font glyphs, 3x10 characters (7-frame sets of 210 bytes), 4x7 dots, 7x7 labels (docs/SPRITES.md; names I).
+
+## 14. Screens and release evidence (TASK-016, V, 2026-10-29)
+Attract sequence after the menus: maze draw -> "PLAYER #1 / HISCORE / GAME OVER" -> "Character / Nickname" screen (ghost names Shadow/Blinky, Speedy/Pinky, Bashful/Inky, Pokey/Clyde; "10 Points", "50 Points", "Pacman")
+-> "(c)1983 Atari Inc." and "Press Space bar". Seen in AppleWin 1.32.1.0 (window captures) and reproduced by the headless machine. Supports the 1983 Atari identity for TASK-008 (does not identify the revision).
+Call sites of the draw routines: docs/SPRITES.md.
