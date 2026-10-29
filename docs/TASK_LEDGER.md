@@ -18,5 +18,5 @@ Statuses: Planned / In progress / Implemented / Tested / Verified / Blocked / De
 | TASK-011 | Maintain `docs/RESUME_PROMPT.md` after every completed task | Ongoing | - | File's Current state/Next task match the ledger |
 | TASK-012 | Dump memory during gameplay (confirm $0666 table, find what writes $623A-$65B9) | Planned | 005b | Dump + explanation in notes |
 | TASK-013a | Minimal 6502 core in Python (all documented opcodes, flags, BCD) with unit tests | Verified (18 tests + real-stub run); no external reference suite yet | 003 | See docs/TESTING.md |
-| TASK-013b | Apple II soft-switch stubs (keyboard, speaker, video switches, paddles, ROM entry points), run game from the startup memory image | Planned | 013a | Game reaches the mode screen and accepts '1' headless |
+| TASK-013b | Apple II soft-switch stubs (keyboard, speaker, video switches, paddles, ROM entry points), run game from the startup memory image | Verified (18 unit tests + real run: mode screen text and game memory match AppleWin; accepts '1', reaches 2nd menu) | 013a | tools/apple2.py, tests/test_apple2.py, tools/run_headless.py; see docs/TESTING.md |
 | TASK-013c | Execution/read/write coverage logging; cross-check against AppleWin (same inputs, same memory) | Planned | 013b | Coverage map replaces heuristic region map; traces agree with AppleWin on checkpoints |

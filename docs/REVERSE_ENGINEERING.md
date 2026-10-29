@@ -73,3 +73,10 @@ Method: AppleWin 1.32.1.0 booted a copy of the image to the input-selection scre
   most likely builds its $0666 table/routine there after leaving text mode. Needs a dump taken during gameplay to confirm.
 * Technique notes: the `DebuggerAutoRun.txt` breakpoint (BPX 4027) did not stop execution, so it was not used. AppleWin refuses keyboard focus from background processes;
   `tools/awin_ctl.ps1` instead posts key messages directly to the window (works; F7, Esc and typed commands all verified) and captures only that window.
+
+## 8. First headless run (TASK-013b, V, 2026-10-29)
+* The game's startup uses only these ROM entries before its first key wait: $FE89, $FE93, $FC22 (VTAB: takes the row from CV $25, not A), $FDF0 (via the game's own char-output routine $4A6A, which handles CR itself with `INC $25` + VTAB then sets the text page to page 2 by ORing $08 into BASH).
+  So the menus are drawn on **text page 2 ($0800)**, not page 1.
+* The $623A-$65B9 run that differed from the file in the AppleWin dump is written by game code during startup: our headless run reproduces it exactly (U: which routine; find it with write-coverage in 013c).
+* Menu flow: mode screen (RDKEY at $48C2: '1' keyboard / '2' joystick, stores $F5 = 0/1) -> "NORMAL OR CUSTOMIZED KEYBOARD (N/C)?" (RDKEY at $494B; 'C' leads to key-customizing; anything else jumps to $4A00).
+* $4A6A is the game's own character output (CR handling, else JMP $FDF0).

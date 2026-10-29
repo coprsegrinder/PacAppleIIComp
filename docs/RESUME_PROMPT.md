@@ -62,6 +62,7 @@ and wait for my "go" before starting it (rule 11). Do not re-derive facts alread
 - The original brief is long; its rules are condensed above. If you need the full text, ask me to paste it again.
 
 ## Current state (2026-10-29)
+- (Updated after TASK-013b) Headless Apple II machine exists: tools/apple2.py; game runs to the mode screen and accepts '1'.
 - Image: DOS 3.3 140K, files HELLO (Applesoft: BRUN PAC-MAN) and PAC-MAN (binary, load $1000, len $6A00).
 - Release identity: I believe it's the 1983 US Atari release (unverified; from online docs, no hash source yet).
 - Startup stub relocates the program up by $3000, so it runs at $4000-$A9FF, entry $4027 (confirmed by AppleWin memory dump, TASK-005b).
@@ -70,11 +71,11 @@ and wait for my "go" before starting it (rule 11). Do not re-derive facts alread
   TASK-001..004, 005a-c, 013a (see ledger); tools/cpu6502.py core verified incl. real startup stub; runtime origin $4000 CONFIRMED by emulator dump; recdis.py reaches 30% of the program from the entry point. Region map is heuristic only.
 
 ## Next task
-TASK-013b: Apple II soft-switch stubs for the Python 6502 core (tools/cpu6502.py is done and tested: docs/TESTING.md): keyboard ($C000/$C010),
-speaker ($C030), video switches ($C050-$C057), paddles/buttons ($C061-$C064, $C070), plus the few ROM entry points the game calls
-($FC22, $FD0C, $FD6F, $FDF0, $FE89, $FE93: confirm each from the monitor ROM behavior, don't assume names). Goal: run the game headless from the
-startup state and get it past the mode screen with a '1' keypress. Then TASK-013c (execution/read/write coverage; cross-check vs AppleWin).
-Memory-model note: ROM calls need either stubs or real ROM contents; AppleWin has its ROM built in - do not extract/copy ROM; stub behavior instead (ask me if a ROM image is needed).
+TASK-013c: coverage logging on the headless machine (tools/apple2.py + tools/cpu6502.py). Record executed / read / written addresses, feed the keys '1' then 'N' (the game now
+reaches a second menu "NORMAL OR CUSTOMIZED KEYBOARD (N/C)?" at RDKEY $494B) and continue until the next wait/loop, in bounded steps; replace the heuristic region map with an executed-code map;
+cross-check against an AppleWin memory dump at the same point. TASK-013b is DONE: tools/apple2.py (soft switches + trapped ROM routines $FC22 $FD0C $FD6F $FDF0 $FE89 $FE93), tests/test_apple2.py (18),
+tools/run_headless.py; the headless run matches AppleWin on $4000-$A9FF and on text page 2 at the mode screen (docs/TESTING.md). Menus use text page 2 ($0800).
+Memory-model note: no ROM is used or copied; stubs only. Not modelled yet: cursor, bell, language card, interrupts.
 Also pending: TASK-012, TASK-006, TASK-007, TASK-008/009.
 
 Emulator control (verified): launch `AppleWin-x64.exe -d1 <scratch\work.dsk>`; drive it with
