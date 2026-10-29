@@ -20,6 +20,7 @@ Run everything: `for t in tests/test_*.py; do python -I $t; done` (stdlib `unitt
 | tests/test_save_clicks.py | grouping clicks into constant-pitch runs (synthetic) | pass (4) |
 | tests/test_compare_dump.py | run merging, regions tile $0000-$BFFF | pass (2) |
 | tests/test_boot_compare.py | boot-track diff, owned-sector walk (catalog, T/S lists), deleted entries, hidden-data scan on synthetic disks | pass (5) |
+| tests/test_verify_image.py | verifier rule on synthetic disks: exact, program-only match, tampered program, wrong name/type/load, wrong size, damaged catalog | pass (6) |
 | tests/test_cpu6502.py | 6502 core: flags, stack, JSR/RTS, BRK/RTI, JMP-indirect bug, cycle counts, ADC/SBC (binary + decimal) | pass (18) |
 
 ## CPU core (tools/cpu6502.py) - what the tests prove and do not prove
@@ -74,3 +75,6 @@ Result and method: docs/EMULATOR_COMPARISON.md (game area identical except 8 tab
 
 ## Boot tracks (TASK-006)
 Real-data comparison: docs/BOOT_TRACKS.md. Limit: only one reference DOS build.
+
+## Verifier (TASK-009)
+Real-data checks (one-off): supplied image -> exact-image; System Master -> not-verified; boot-track byte / volume number changed in memory -> game-program; one program byte flipped -> not-verified. .po and other containers untested (unsupported).

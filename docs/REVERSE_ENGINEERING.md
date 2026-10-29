@@ -128,3 +128,6 @@ Public pages (second-hand, see docs/RESEARCH_007.md): Atari/Atarisoft DX5501, (c
 
 ## 21. Release identity (TASK-008, V, 2026-10-29)
 The program contains a 215-byte legal notice at $4064 beginning '(C) 1983 ATARI, INC.' (never read at runtime) and prints '(c)1983 Atari Inc.' on the attract screen; no 1982 text anywhere. An unused prompt 'BLACK & WHITE OR COLOR? (B / C)' sits at $4886. Details: docs/RELEASE_IDENTITY.md.
+
+## 22. Verifier reference values (TASK-009, 2026-10-29)
+No public hash found. Provisional rule: exact image SHA-256 or PAC-MAN body SHA-256 (docs/VERIFIER_SPEC.md, tools/verify_image.py).
