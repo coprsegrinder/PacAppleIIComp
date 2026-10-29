@@ -10,7 +10,7 @@ Statuses: Planned / In progress / Implemented / Tested / Verified / Blocked / De
 | TASK-005a | Recursive-descent disassembly from entry $4027 (`tools/recdis.py`) | Verified (3 unit tests; 30.3% coverage) | 004 | docs/CODE_COVERAGE.md |
 | TASK-005b | Confirm $4000 origin with an AppleWin memory dump after startup; investigate $0666 | Verified (origin); $0666 hypothesis only | 005a | 8212/8212 reached code bytes match; 96.7% of body matches |
 | TASK-005c | Find the other 70%: look at unreached areas, address tables, RTS-dispatch, RAM code | Verified (analysis); 70% still unclassified | 005b | Findings in docs/CODE_COVERAGE.md: self-modifying operands, pointer-based data; dynamic tracing needed |
-| TASK-006 | Inspect DOS/boot tracks 0-2 for modifications or protection | Planned | 002 | Compare with standard DOS 3.3 boot sectors from memory/docs |
+| TASK-006 | Inspect DOS/boot tracks 0-2 for modifications or protection | Verified (5 unit tests; read-only comparison): boot tracks are a modified DOS (37 of 48 sectors differ from the System Master; NOPed delay loops); no hidden data; protection Unknown (a .dsk cannot show nibble-level protection) | 002 | docs/BOOT_TRACKS.md; tools/boot_compare.py |
 | TASK-007 | Web research (no downloads): Apple II refs, existing Pac-Man Apple II disassemblies | Planned | - | Entries in EXTERNAL_RESOURCES.md |
 | TASK-008 | Reconcile release identity (1982 vs 1983 Atari) | Planned | 007 | Documented evidence |
 | TASK-009 | Decide authoritative expected hash for verifier | Planned | 007,008 | Hash cross-checked against a public source |

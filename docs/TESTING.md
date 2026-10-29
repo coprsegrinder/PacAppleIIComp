@@ -19,6 +19,7 @@ Run everything: `for t in tests/test_*.py; do python -I $t; done` (stdlib `unitt
 | tests/test_explore.py | explorer helpers: key constants, send, until_key, text page 2 reader (synthetic) | pass (4) |
 | tests/test_save_clicks.py | grouping clicks into constant-pitch runs (synthetic) | pass (4) |
 | tests/test_compare_dump.py | run merging, regions tile $0000-$BFFF | pass (2) |
+| tests/test_boot_compare.py | boot-track diff, owned-sector walk (catalog, T/S lists), deleted entries, hidden-data scan on synthetic disks | pass (5) |
 | tests/test_cpu6502.py | 6502 core: flags, stack, JSR/RTS, BRK/RTI, JMP-indirect bug, cycle counts, ADC/SBC (binary + decimal) | pass (18) |
 
 ## CPU core (tools/cpu6502.py) - what the tests prove and do not prove
@@ -70,3 +71,6 @@ Scenarios of tools/explore.py are real-data one-off runs (results in docs/CONTRO
 
 ## AppleWin memory comparison (TASK-019)
 Result and method: docs/EMULATOR_COMPARISON.md (game area identical except 8 table-pointer operands at the players prompt). This is the first memory-level check of our machine against the emulator since TASK-013b.
+
+## Boot tracks (TASK-006)
+Real-data comparison: docs/BOOT_TRACKS.md. Limit: only one reference DOS build.

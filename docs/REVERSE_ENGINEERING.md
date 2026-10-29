@@ -32,7 +32,7 @@ Reproduce: `python -I tools/inspect_dsk.py "Pacman (1983)(Atari).dsk"` (output s
   Disassembly confirmed by `tools/dis6502.py` (TASK-003): copy loops are `BNE $1010` (inner) / `BPL $1010` (outer). The destination of the copy is not yet confirmed.
 * About 13% of the program body is zero bytes; nothing else is known about layout yet.
 
-## 3. Copy protection / special format (U)
+## 3. Copy protection / special format (U) - see also docs/BOOT_TRACKS.md (TASK-006)
 Tracks 3-16 and 25-34 are completely empty and the disk is a plain DOS 3.3 layout, with no nibble-level data
 available in a `.dsk`. No custom RWTS has been looked for yet. If protection is found, we stop and ask (brief section 8).
 
@@ -119,3 +119,6 @@ Players prompt: Ctrl-V, Ctrl-C -> 'RANK OR CARTOON?' (start level 1-21 into $54E
 
 ## 18. Emulator cross-check at the players prompt (TASK-019, V, 2026-10-29)
 AppleWin dump vs our machine: game area identical except the 8 bytes of table-pointer operands; see docs/EMULATOR_COMPARISON.md. Intro jingle click spacings (cycles): 2,026 / 2,274 / 2,708 / 1,716 (our machine).
+
+## 19. Boot tracks (TASK-006, V/I/U, 2026-10-29)
+The image's DOS is a modified build (37 of 48 boot-track sectors differ from the System Master; delay loops NOPed; counter moved to $4E/$4F). No hidden data. Protection: Unknown. See docs/BOOT_TRACKS.md.

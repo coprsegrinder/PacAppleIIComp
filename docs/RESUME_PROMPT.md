@@ -71,9 +71,9 @@ and wait for my "go" before starting it (rule 11). Do not re-derive facts alread
   TASK-001..004, 005a-c, 013a (see ledger); tools/cpu6502.py core verified incl. real startup stub; runtime origin $4000 CONFIRMED by emulator dump; recdis.py reaches 30% of the program from the entry point. Region map is heuristic only.
 
 ## Next task
-Pick one: TASK-021 (close the last 1,309 unexecuted static-code bytes) or TASK-022 (synchronised gameplay + audio cross-check with AppleWin) or move on to reconstruction planning (decide module split for the C++ port: draw routines, table readers, input, sound, game logic) or the pending housekeeping tasks TASK-006/007/008/009/012.
-DONE: ... 019 (docs/EMULATOR_COMPARISON.md: at the players prompt our game area matches AppleWin except 8 table-pointer operands; tools/compare_dump.py; speaker clicks saved from our machine).
-AppleWin dump tip: call tools/awin_ctl.ps1 in-process (& .\\tools\\awin_ctl.ps1 -Text 'BSAVE "x.bin",0,C000'), launch with -WorkingDirectory scratch.
+User asked (2026-10-29): 'Go 4, then 3' = housekeeping tasks first (TASK-006 DONE, then TASK-007 web research, TASK-008 release identity, TASK-009 expected hash, TASK-012 gameplay dump), THEN the port plan (module split + build plan, no code). One task per 'go' (rule 11).
+Next: TASK-007 (web research, no downloads; at most 5 searches/pages per question; record in EXTERNAL_RESOURCES.md).
+DONE: ... 019, 006 (docs/BOOT_TRACKS.md: modified DOS, no hidden data, protection Unknown).
 
 Emulator control (verified): launch `AppleWin-x64.exe -d1 <scratch\work.dsk>`; drive it with
 `powershell -File tools/awin_ctl.ps1 -Key F7` (debugger), `-Text 'BSAVE "main.bin",0,C000'` (dump main RAM to scratch/),
