@@ -3,8 +3,10 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <string>
+#include <vector>
 
 namespace pacman::verify {
 
@@ -34,6 +36,10 @@ const Expected& referenceExpected();
 
 Result verify(std::span<const std::uint8_t> image, const Expected& expected);
 inline Result verify(std::span<const std::uint8_t> image) { return verify(image, referenceExpected()); }
+
+// The program bytes (after the 4-byte DOS header) of the game file, if the image has a well-formed PAC-MAN file with the
+// expected type, load address and length. Does NOT check the program hash: call verify() for that.
+std::optional<std::vector<std::uint8_t>> programBody(std::span<const std::uint8_t> image, const Expected& expected);
 
 // "exact-image", "game-program", "not-verified", "unreadable" (same words as the Python tool).
 const char* statusName(Status status);

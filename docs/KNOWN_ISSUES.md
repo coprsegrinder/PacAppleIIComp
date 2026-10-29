@@ -15,3 +15,7 @@
 ## Verification limits
 * The 6502 reference model is checked against AppleWin only at two checkpoints (players prompt and an Esc-paused moment of play); no frame-synchronised or audio comparison yet (TASK-022).
 * The colour model used in our renders is an approximation of Apple II NTSC output.
+
+## Data pack
+* The pack contains every byte not proven to be code (16,680 bytes); it may include a few code bytes of routines that never ran in our tests, and changes to the code map will change the manifest and invalidate old packs.
+* Pack integrity uses unkeyed hashes: it detects accidents, not deliberate edits.

@@ -16,5 +16,12 @@ The program only reads the file. It prints one line and sets an exit code:
 
 "Verified" here means *matches the reference image the project was built from*. It does not mean "official release": no public checksum for this game was found (`docs/VERIFIER_SPEC.md`).
 
+## Building and checking the data pack (developer preview)
+```
+out\bat\pacman_pack.exe build "C:\path\to\game.dsk" out\pack\pacman.pmpk
+out\bat\pacman_pack.exe info out\pack\pacman.pmpk
+```
+`build` refuses disks that are not verified and writes nothing in that case. `info` reports `data pack ok` or why the pack is refused. The pack is private to you: never share or commit it.
+
 ## What will come later
 A launcher that asks for the disk image once, verifies it, builds a local data pack in your user folder and then runs the game from that pack (decision D1-A in `docs/PORT_PLAN.md`). Game controls of the original are documented in `docs/CONTROLS.md` (A/Z/arrow keys, Ctrl-S sound toggle, Esc pause, customised keys).

@@ -23,6 +23,10 @@ $cm = "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\Common7\IDE\
 ```
 The two `-D` options are optional: they add the `real_image` test, which checks the verifier against the real images (which stay outside the repository). Without them only the `unit` test is registered.
 
+## Command-line tools (built by both routes)
+* `pacman_verify.exe <image.dsk>`: verification rule (docs/USER_GUIDE.md).
+* `pacman_pack.exe build <image.dsk> <pack.pmpk>` / `pacman_pack.exe info <pack.pmpk>`: build or check the local data pack (docs/DATAPACK_SPEC.md). Pack files are git-ignored (`*.pmpk`).
+
 ## Running the tests by hand
 `pacman_tests.exe [--image <game.dsk>] [--reference <other DOS 3.3 disk>]`. Tests that need a real image print `SKIPPED` when the path is not given. Exit code 0 = all passed.
 

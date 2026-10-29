@@ -39,6 +39,56 @@ std::string format(const char* fmt, unsigned a, unsigned b, unsigned c, unsigned
 
 }  // namespace
 
+namespace {
+
+// Finds and checks the game file. On failure `failure` explains why and the result is empty.
+std::optional<std::vector<std::uint8_t>> locateProgram(std::span<const std::uint8_t> image, const Expected& expected,
+                                                       Result& failure) {
+    const auto catalog = dos33::readCatalog(image);
+    if (!catalog) {
+        failure = {Status::NotVerified, "catalog or file allocation is damaged"};
+        return std::nullopt;
+    }
+    const dos33::CatalogEntry* entry = nullptr;
+    for (const auto& e : *catalog) {
+        if (e.name == expected.fileName) {
+            entry = &e;
+            break;
+        }
+    }
+    if (entry == nullptr) {
+        failure = {Status::NotVerified, "no file named " + expected.fileName + " in the catalog"};
+        return std::nullopt;
+    }
+    if (entry->type != expected.fileType) {
+        failure = {Status::NotVerified, "file " + expected.fileName + " is not a binary file"};
+        return std::nullopt;
+    }
+    const auto file = dos33::readFile(image, *entry);
+    if (!file || file->size() < 4) {
+        failure = {Status::NotVerified, "catalog or file allocation is damaged"};
+        return std::nullopt;
+    }
+    const unsigned address = (*file)[0] | ((*file)[1] << 8);
+    const unsigned length = (*file)[2] | ((*file)[3] << 8);
+    const std::size_t available = file->size() - 4;
+    const std::size_t bodySize = length < available ? length : available;  // Python slices the same way
+    if (address != expected.loadAddress || length != expected.length || bodySize != length) {
+        failure = {Status::NotVerified, format("header says load $%04X length $%04X, expected $%04X / $%04X", address,
+                                               length, expected.loadAddress, expected.length)};
+        return std::nullopt;
+    }
+    return std::vector<std::uint8_t>(file->begin() + 4, file->begin() + 4 + static_cast<std::ptrdiff_t>(bodySize));
+}
+
+}  // namespace
+
+std::optional<std::vector<std::uint8_t>> programBody(std::span<const std::uint8_t> image, const Expected& expected) {
+    if (image.size() != dos33::kImageSize || !dos33::looksLikeDos33(image)) return std::nullopt;
+    Result ignored{Status::NotVerified, ""};
+    return locateProgram(image, expected, ignored);
+}
+
 Result verify(std::span<const std::uint8_t> image, const Expected& expected) {
     if (image.size() != dos33::kImageSize) {
         return {Status::Unreadable, "size is " + std::to_string(image.size()) + " bytes, expected " +
@@ -51,31 +101,10 @@ Result verify(std::span<const std::uint8_t> image, const Expected& expected) {
     if (!dos33::looksLikeDos33(image)) {
         return {Status::NotVerified, "not a DOS 3.3 140K image in DOS sector order"};
     }
-    const auto catalog = dos33::readCatalog(image);
-    if (!catalog) return {Status::NotVerified, "catalog or file allocation is damaged"};
-    const dos33::CatalogEntry* entry = nullptr;
-    for (const auto& e : *catalog) {
-        if (e.name == expected.fileName) {
-            entry = &e;
-            break;
-        }
-    }
-    if (entry == nullptr) return {Status::NotVerified, "no file named " + expected.fileName + " in the catalog"};
-    if (entry->type != expected.fileType) {
-        return {Status::NotVerified, "file " + expected.fileName + " is not a binary file"};
-    }
-    const auto file = dos33::readFile(image, *entry);
-    if (!file || file->size() < 4) return {Status::NotVerified, "catalog or file allocation is damaged"};
-    const unsigned address = (*file)[0] | ((*file)[1] << 8);
-    const unsigned length = (*file)[2] | ((*file)[3] << 8);
-    const std::size_t available = file->size() - 4;
-    const std::size_t bodySize = length < available ? length : available;  // Python slices the same way
-    if (address != expected.loadAddress || length != expected.length || bodySize != length) {
-        return {Status::NotVerified, format("header says load $%04X length $%04X, expected $%04X / $%04X", address,
-                                            length, expected.loadAddress, expected.length)};
-    }
-    const std::span<const std::uint8_t> body(file->data() + 4, bodySize);
-    if (toHexUpper(sha256(body)) != expected.bodySha256) {
+    Result failure{Status::NotVerified, ""};
+    const auto body = locateProgram(image, expected, failure);
+    if (!body) return failure;
+    if (toHexUpper(sha256(*body)) != expected.bodySha256) {
         return {Status::NotVerified, "game program bytes differ from the expected program"};
     }
     return {Status::GameProgram,

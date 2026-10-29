@@ -38,7 +38,7 @@ My recommendation: **A**. B would only be used privately as a measuring aid if w
 | M | Content | Acceptance test |
 |---|---|---|
 | M0 | Repository skeleton: CMake/`build.bat`, test runner, README, BUILDING, ARCHITECTURE, USER_GUIDE, CHANGELOG, KNOWN_ISSUES, **LEGAL_AND_ATTRIBUTION** (credits Atari 1983 as named in the program, notes the reported Taxman lineage as unverified); C++ port of the verifier | Builds from a clean checkout on this machine; verifier tests give the same results as tools/verify_image.py on the 4 real-image checks and the synthetic cases |
-| M1 | Data pack builder + loader (shapes, font, strings, playfield master, tables); pack never committed | Pack built from the verified image; loader rejects a pack built from another hash; byte counts and hashes of each table match the oracle's memory |
+| M1 (DONE, TASK-026) | Data pack builder + loader (all non-code program bytes, 60 ranges); pack never committed | Pack built from the verified image; loader rejects a pack built from another hash; byte counts and hashes of each table match the oracle's memory |
 | M2 | `hires` layer: row-address math, the two blitters, font drawing, pixel decoding | After scripted draw sequences, the hi-res page equals the oracle's page byte for byte (several recorded scenarios) |
 | M3 | `video` + `app`: window, scaled display, color model, menu and attract screens | Rendered frames compared with oracle hi-res pages (exact) and with AppleWin screenshots (visual) |
 | M4 | Game core without ghosts: playfield map, Pac-Man movement, dots/energizers/score/lives, keyboard + gamepad input, pause, hidden menu, customised keys | Scenario traces match the oracle (score, map, Pac-Man position) for scripted key sequences |

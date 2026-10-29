@@ -4,7 +4,7 @@ A non-commercial hobby project with two goals:
 1. **Document and reconstruct** the 1983 Atari/Atarisoft Apple II version of Pac-Man (the program on a DOS 3.3 disk image the owner already has), tracking what is *recovered*, *reconstructed* and *rewritten*.
 2. **Build a native Windows 11 program** that plays the same game without running an emulator and without reading the disk image while playing. The disk image is used only to verify it is the expected game and to build a local data pack on the player's own machine.
 
-**Status (2026-10-29): the game is not playable yet.** What exists: the analysis tools and findings, a verified 6502 reference model (development only), the port plan, and the first C++ piece: a disk-image verifier with tests.
+**Status (2026-10-29): the game is not playable yet.** What exists: the analysis tools and findings, a verified 6502 reference model (development only), the port plan, and the first C++ pieces: a disk-image verifier and a local data-pack builder/loader, with tests.
 
 ## What this repository does NOT contain
 No disk image, no extracted program bytes, no original graphics or sound data, no ROM, no emulator. They are listed in `.gitignore` on purpose (`scratch/`, `third_party/`, `*.dsk`, `*.bin`). You must supply your own legitimate disk image. See `docs/LEGAL_AND_ATTRIBUTION.md`.

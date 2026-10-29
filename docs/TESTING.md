@@ -21,6 +21,7 @@ Run everything: `for t in tests/test_*.py; do python -I $t; done` (stdlib `unitt
 | tests/test_compare_dump.py | run merging, regions tile $0000-$BFFF, scenario parsing | pass (3) |
 | tests/test_boot_compare.py | boot-track diff, owned-sector walk (catalog, T/S lists), deleted entries, hidden-data scan on synthetic disks | pass (5) |
 | tests/test_verify_image.py | verifier rule on synthetic disks: exact, program-only match, tampered program, wrong name/type/load, wrong size, damaged catalog | pass (6) |
+| tests/test_make_manifest.py | manifest generator: gaps between code, rendering without data, content hash order | pass (4) |
 | tests/test_cpu6502.py | 6502 core: flags, stack, JSR/RTS, BRK/RTI, JMP-indirect bug, cycle counts, ADC/SBC (binary + decimal) | pass (18) |
 
 ## CPU core (tools/cpu6502.py) - what the tests prove and do not prove
@@ -85,3 +86,6 @@ Real-data comparison at an Esc-paused moment of play: docs/EMULATOR_COMPARISON.m
 ## C++ port tests (TASK-025)
 `port/tests`: SHA-256 (FIPS vectors, padding boundaries, 1M bytes, values from Python hashlib), DOS 3.3 reader bounds, the verification rule on synthetic disks (mirrors tests/test_verify_image.py), and two real-image tests (run with --image/--reference or through CTest when configured with -DPACMAN_DSK; otherwise skipped and reported as skipped). Negative check: pointing --image at the System Master makes the real-image test fail as it should. Cross-check: tools/verify_image.py and pacman_verify.exe compared on 8 inputs (real image, System Master, 3 tampered copies in scratch/, a 5-byte file, a zero-filled image, a missing file): same text and exit code except the missing-file OS wording.
 Not covered: no fuzzing of the DOS reader beyond the damaged-catalog and out-of-range cases; no 32-bit build; only MSVC 14.51.
+
+## Data pack (TASK-026)
+C++ (port/tests/test_datapack.cpp, 10 tests; plus a real-image test): round trip, exact bytes, code/DOS not stored (size arithmetic), identical pack for other DOS tracks, refusal of unverified images and invalid manifests, **every single-byte change and every truncation refused**, wrong-program pack refused, inconsistent tables with valid hashes refused. Real image: content hash equals tools/make_manifest.py's independent value; `python -I tools/make_manifest.py --check` confirms the committed manifest matches a fresh analysis. Limit: integrity only; the manifest is only as good as the code map (docs/DATAPACK_SPEC.md).

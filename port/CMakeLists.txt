@@ -13,18 +13,25 @@ endif()
 add_library(pacman_core_verify STATIC
   src/verify/sha256.cpp
   src/verify/dos33.cpp
-  src/verify/verify.cpp)
+  src/verify/verify.cpp
+  src/datapack/datapack.cpp
+  src/datapack/manifest.cpp)
 target_include_directories(pacman_core_verify PUBLIC src)
 
 add_executable(pacman_verify_cli src/app/verify_main.cpp)
 target_link_libraries(pacman_verify_cli PRIVATE pacman_core_verify)
 set_target_properties(pacman_verify_cli PROPERTIES OUTPUT_NAME pacman_verify)
 
+add_executable(pacman_pack_cli src/app/pack_main.cpp)
+target_link_libraries(pacman_pack_cli PRIVATE pacman_core_verify)
+set_target_properties(pacman_pack_cli PROPERTIES OUTPUT_NAME pacman_pack)
+
 # --- tests ---
 add_executable(pacman_tests
   tests/test_main.cpp
   tests/test_sha256.cpp
   tests/test_verify.cpp
+  tests/test_datapack.cpp
   tests/test_real_image.cpp)
 target_link_libraries(pacman_tests PRIVATE pacman_core_verify)
 
