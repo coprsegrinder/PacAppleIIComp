@@ -81,3 +81,7 @@ Real-data checks (one-off): supplied image -> exact-image; System Master -> not-
 
 ## Gameplay dump (TASK-012)
 Real-data comparison at an Esc-paused moment of play: docs/EMULATOR_COMPARISON.md. Four play lengths tried because AppleWin timing cannot be matched exactly; best case 7 of 27,136 game bytes differ.
+
+## C++ port tests (TASK-025)
+`port/tests`: SHA-256 (FIPS vectors, padding boundaries, 1M bytes, values from Python hashlib), DOS 3.3 reader bounds, the verification rule on synthetic disks (mirrors tests/test_verify_image.py), and two real-image tests (run with --image/--reference or through CTest when configured with -DPACMAN_DSK; otherwise skipped and reported as skipped). Negative check: pointing --image at the System Master makes the real-image test fail as it should. Cross-check: tools/verify_image.py and pacman_verify.exe compared on 8 inputs (real image, System Master, 3 tampered copies in scratch/, a 5-byte file, a zero-filled image, a missing file): same text and exit code except the missing-file OS wording.
+Not covered: no fuzzing of the DOS reader beyond the damaged-catalog and out-of-range cases; no 32-bit build; only MSVC 14.51.
