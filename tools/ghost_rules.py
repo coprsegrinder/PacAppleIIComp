@@ -85,14 +85,15 @@ def evaluate(mc, addr, a, x, y, gx, gy, p62, p69, p72):
     return None if res is None else res[0]
 
 
-def build_tables(nsamples=300, seed=30, only=None):
+def build_tables(nsamples=300, seed=30, only=None, mc=None):
     """Returns (info, summary). info[r] describes routine r; info[r]['table_rows']['gx,gy'] has the class tables."""
     body = open('scratch/extract/PAC-MAN.1000.bin', 'rb').read()
     words = routine_words(body)
     index = body[INDEX - ORIGIN:INDEX - ORIGIN + 256]
     recs = parse_records(body)
-    mc = Machine()
-    mc.load(ORIGIN, body)
+    if mc is None:
+        mc = Machine()
+        mc.load(ORIGIN, body)
     rng = random.Random(seed)
     info = {}
     summary = {'checked_points': 0, 'mismatches': 0, 'table_cells': 0, 'no_return': 0}

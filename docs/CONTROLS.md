@@ -17,6 +17,7 @@ Sources: code at $6F5E-$7040 read statically (V: instruction semantics), and che
 | Z | $DA | direction code 0 | V (driven: $63 = 0) |
 | Left arrow (Ctrl-H) | $88 | direction code 3 | V |
 | Right arrow (Ctrl-U) | $95 | direction code 2 | V |
+| (digital joystick, mode 1) | game-port `$C061` read 4 times | the keyboard mode also accepts four switches on the game port (masks 1, 2, 4, 8 = one direction each; everything else = no input), see UNEXECUTED_CODE.md | V (all 16 masks run) |
 | Ctrl-S | $93 | toggles sound: flips the low operand byte of the two speaker instructions at $7BB6/$7D07 between $30 (`BIT $C030`, speaker) and $20 (`BIT $C020`, no sound) | V (clicks 1,237 -> 0 -> 120 over equal intervals) |
 | Esc | $9B | pause: waits for any key | V (driven in TASK-020: parks at $6F9A, any key resumes) |
 | Space | $A0 | in demo ($E8 <> 0): jump to $4144 (players prompt) | V |

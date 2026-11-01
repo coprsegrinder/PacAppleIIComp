@@ -2,6 +2,7 @@
 
 ## 2026-10-29
 * **Data pack (TASK-026, milestone M1):** `pacman_pack build/info`, a 60-range generated manifest (16,680 data bytes), loader that refuses any damaged or wrong-game pack (27 C++ tests).
+* Unexecuted code (TASK-021): static-code coverage raised from 87.5% to 99.3%; the keyboard mode also reads a 4-switch digital joystick (`docs/UNEXECUTED_CODE.md`).
 * Level tables and fruit (TASK-031 analysis): 15 level-indexed tables, fruit schedule, lifetimes, scores and sound (`docs/LEVEL_TABLES.md`, `tools/level_tables.py`, `tools/trace_fruit.py`).
 * Sound analysis (TASK-032a): two tone engines, 12 note lists and a cycle-exact click-time model (`docs/SOUND.md`, `tools/sound_model.py`, `tools/trace_sound.py`).
 * Ghost decision rules (TASK-030b): complete per-routine tables checked against the original code; the personalities depend on Pac-Man's direction (`docs/GHOST_RULES.md`, `tools/ghost_rules.py`).

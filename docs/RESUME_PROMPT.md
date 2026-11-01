@@ -76,8 +76,9 @@ TASK-031a done (docs/PACMAN_RULES.md: scoring, lives, bonus life, speed rule ver
 TASK-030b done (docs/GHOST_RULES.md: complete tables; 16 routines depend on Pac-Man's direction $62).
 TASK-032a sound analysis done (docs/SOUND.md: engines A/B/C, 12 lists, click-time model exact).
 Level/fruit tables done (docs/LEVEL_TABLES.md; $7C61 = fruit sound; level 23 table entry = odd HAL-like sprite, U).
-Remaining analysis: intermission/cartoon scripts (levels 2, 5, 9...), TASK-021 (unexecuted code).
-Suggested next: TASK-021 (close the unexecuted code, which also covers cartoons), then the analysis is ready for C++ (M2 hires layer). After that the analysis is ready for M2+ C++ (hires layer first).
+TASK-021 done: 99.3% of static code executed (docs/UNEXECUTED_CODE.md); 70 bytes left -> TASK-021b (low priority).
+Remaining analysis: intermission/cartoon scripts (levels 2, 5, 9...; the scheduler at $8155 ran for levels 10-30 but the cartoons are not decoded).
+Suggested next: M2 hires layer in C++ (TASK-027), unless the user wants the cartoon scripts analysed first. Rule from the user (2026-11-01): any run over 20 minutes is stopped, progress logged, remainder split into a new step. After that the analysis is ready for M2+ C++ (hires layer first).
 
 Emulator control (verified): launch `AppleWin-x64.exe -d1 <scratch\work.dsk>`; drive it with
 `powershell -File tools/awin_ctl.ps1 -Key F7` (debugger), `-Text 'BSAVE "main.bin",0,C000'` (dump main RAM to scratch/),
