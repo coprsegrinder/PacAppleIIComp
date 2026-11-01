@@ -75,8 +75,9 @@ Analysis done so far: 030a structure, 030c modes, 030d movement/house/eyes (docs
 TASK-031a done (docs/PACMAN_RULES.md: scoring, lives, bonus life, speed rule verified; collision distances, turning, dot penalty, fruit counter only inferred). Tip: stop traces when $E8=1 (attract demo pollutes them).
 TASK-030b done (docs/GHOST_RULES.md: complete tables; 16 routines depend on Pac-Man's direction $62).
 TASK-032a sound analysis done (docs/SOUND.md: engines A/B/C, 12 lists, click-time model exact).
-Remaining analysis: level/fruit tables ($6AFE, $7851, ...), TASK-021 (unexecuted code).
-Suggested next: level/fruit tables (part of TASK-031 analysis), then TASK-021. After that the analysis is ready for M2+ C++ (hires layer first).
+Level/fruit tables done (docs/LEVEL_TABLES.md; $7C61 = fruit sound; level 23 table entry = odd HAL-like sprite, U).
+Remaining analysis: intermission/cartoon scripts (levels 2, 5, 9...), TASK-021 (unexecuted code).
+Suggested next: TASK-021 (close the unexecuted code, which also covers cartoons), then the analysis is ready for C++ (M2 hires layer). After that the analysis is ready for M2+ C++ (hires layer first).
 
 Emulator control (verified): launch `AppleWin-x64.exe -d1 <scratch\work.dsk>`; drive it with
 `powershell -File tools/awin_ctl.ps1 -Key F7` (debugger), `-Text 'BSAVE "main.bin",0,C000'` (dump main RAM to scratch/),
