@@ -32,6 +32,19 @@ class DeadCode(unittest.TestCase):
             self.assertEqual((byte(inc - 8), byte(inc - 7)), (0xA5, 0x16), hex(inc))
             self.assertEqual((byte(inc - 6), byte(inc - 5)), (0x69, 0x14), hex(inc))
 
+    def test_pointer_at_the_four_other_carry_sites_never_gets_near_a_carry(self):
+        # tools/trace_carry.py (play, 165 s): the pointer is $625D at the first and third site and $657D at the second and fourth, every time
+        p = 'scratch/trace_carry.json'
+        if not os.path.exists(p):
+            self.skipTest('trace_carry.json not present')
+        import json
+        seen = json.load(open(p))
+        self.assertEqual(len(seen), 4)
+        for addr, vals in seen.items():
+            self.assertTrue(vals, addr)
+            for lo, hi in vals:
+                self.assertLess(lo + 0x14, 0x100, addr)              # no carry from the +$14
+
     def test_always_taken_branches_hide_data(self):
         # LDA #0 then BEQ (6DEE and 8A3A), LDA #$62 / CLC / ADC #3 / STA then BNE (53B2): the byte after the branch is never reached
         self.assertEqual((byte(0x6DE8), byte(0x6DE9), byte(0x6DEC)), (0xA9, 0x00, 0xF0))

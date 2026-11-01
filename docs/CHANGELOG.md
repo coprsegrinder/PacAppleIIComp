@@ -2,6 +2,7 @@
 
 ## 2026-10-29
 * **Data pack (TASK-026, milestone M1):** `pacman_pack build/info`, a 60-range generated manifest (16,680 data bytes), loader that refuses any damaged or wrong-game pack (27 C++ tests).
+* TASK-021c: Space in the attract delay loop and the one-digit rank prompt executed; the four carry fix-ups shown dead in practice; 38 unexecuted bytes left, none reachable.
 * TASK-021b: five unexecuted runs proven dead, two more executed; corrected the sound labels (the long sound is the ghost-eaten sound).
 * Unexecuted code (TASK-021): static-code coverage raised from 87.5% to 99.3%; the keyboard mode also reads a 4-switch digital joystick (`docs/UNEXECUTED_CODE.md`).
 * Level tables and fruit (TASK-031 analysis): 15 level-indexed tables, fruit schedule, lifetimes, scores and sound (`docs/LEVEL_TABLES.md`, `tools/level_tables.py`, `tools/trace_fruit.py`).
