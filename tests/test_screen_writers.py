@@ -25,5 +25,15 @@ class ScreenWriters(unittest.TestCase):
         self.assertEqual(used, [0xC050, 0xC051, 0xC052, 0xC054, 0xC055, 0xC056, 0xC057])   # never $C053 (mixed mode)
 
 
+class OtherScenarios(unittest.TestCase):
+    def test_cartoons_add_exactly_one_writer_and_rank_adds_none(self):
+        for name, extra in (('cartoons', [0x82A0]), ('rank', [])):
+            p = 'scratch/screen_writers_%s.json' % name
+            if not os.path.exists(p):
+                self.skipTest(p + ' not present')
+            d = json.load(open(p))
+            self.assertEqual(sorted(w[1] for w in d['writers'] if w[0] == 'hires1'), sorted(HIRES1 + extra), name)
+
+
 if __name__ == '__main__':
     unittest.main()
