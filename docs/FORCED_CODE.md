@@ -17,3 +17,6 @@ Nothing in the game writes `$1D = 0` (writes seen: start-up `1` at `$403A`, and 
 ## How the port is tested against these
 1. A differential test on the oracle: force `$1D = 0` and capture the drawn screen (hi-res page after `$5D53`), then compare the C++ draw with the same flag, pixel by pixel. Same for the six carry sites by calling the pointer walk with a start pointer near a page boundary and comparing the visited addresses. (Planned in M2/M4; not done yet.)
 2. The data-pack manifest check: both wall tables are present and hash-verified (checked when the manifest is extended; TASK-021e follow-up).
+
+## Update (TASK-027d)
+The `$1D = 0` mode is the **white-wall mode**: table `$5DBF`, adjacent pixels (step 1) instead of every second pixel (step 2). `tools/wall_model.py` + tests/test_wall_model.py reproduce the oracle's page for both modes byte for byte, so the 20 bytes at `$5D31-$5D3C`/`$5D66-$5D6D` are specified and have a differential test; the C++ port must pass the same comparison. The carry fix-ups and the lives guard are still to be covered when the corresponding C++ code exists.

@@ -42,6 +42,28 @@ Test: tests/test_hires_addressing.py (4 tests, V against the tables in the origi
 ## 5. Golden screens (TASK-027c, V)
 `tools/dump_hires.py golden` replays a fixed scenario (boot, `1` + Return, 14 attract checkpoints every 5M instructions up to 70M, then a game with keys from `random.Random(7)`, checkpoints after game blocks 50, 100, ... 400) and stores the **SHA-256 of the 8,192-byte page** at the 22 checkpoints in `tests/golden/hires_hashes.json` (hashes only, no pictures or original data). `tests/test_golden_hires.py` replays it and compares (about 3 minutes, passes: the scenario is deterministic, and all 22 pictures differ). The C++ hires layer will be tested by producing the same pages from the same drawing commands and comparing the same hashes.
 
-## 6. Next sub-steps
-* **TASK-027d:** decode the maze wall routine (`$5D53`, `$5CF0`, tables `$5F69` / `$5DBF` with the `$1D = 0` mode from docs/FORCED_CODE.md) and the text printer (`$4344`), check the colour model against AppleWin screenshots (window only), list which data tables each drawing routine needs for the data pack.
-* Two-player and game-over writer traces (low priority).
+## 6. Maze walls (TASK-027d, V)
+Model: `tools/wall_model.py`. Test: tests/test_wall_model.py (3 tests, about 30 s). The routine `$5D53` (called once per maze draw from `$5662`, right after the page clear and the video-switch set-up) reads a **426-byte table of 142 triples**:
+* 72 **horizontal** triples `x0, x1, y`: pixels from `x0` to `x1` inclusive on row `y` (`$5CF0`), and every touched byte gets bit 7 set (`$1E = $80`);
+* 70 **vertical** triples `x, y0, y1`: one pixel per row from `y0` to `y1` (`$5D3D`); the palette bit is left as it is.
+* **Flag `$1D` is the wall colour mode.** `$1D <> 0` (always, in the real game): table `$5F69`, and a horizontal wall plots **every second pixel** (step 2), which on a colour display gives a solid single-colour line. `$1D = 0` (the forced bytes of docs/FORCED_CODE.md): table `$5DBF` and step 1 (adjacent pixels, which show white). The two tables differ by one in a few coordinates (the same maze for the other colour mode).
+* **Verified:** the model reproduces the oracle's 8,192-byte page right after `$5D53`, for the normal mode (1,327 non-black bytes) and for `$1D` forced to 0 (the previously unused path), byte for byte; the two modes' pages differ. So the 20 forced bytes at `$5D31-$5D3C` and `$5D66-$5D6D` are now specified and tested.
+
+## 7. Text printer (TASK-027d, V)
+Model: `tools/text_model.py`. Test: tests/test_text_model.py (about 35 s; at least 10 distinct strings from the attract screens, each compared page-before + model = page-after). Entry `$42D0`: string record = pointer `$14/$15` + Y; record = x column, y row, then codes until a code with bit 7 set. Code `$20` = blank (advance only); `$21` = glyph 32 (the image at `$4673`); codes 1 and 2 = glyph drawn 2 rows lower; any other code c = glyph c. A glyph is 1 byte x 9 rows at `$4553 + 9c`, ORed on the page with the OR blitter at shift 0. Column +1 per code. After each glyph the game polls the keyboard (`$6F5E`) and waits (`$6CE8`, X = $50): the typing delay; the picture does not depend on it.
+
+## 8. Data tables the drawing code reads (all outside the code map, so inside the data pack; test: tests/test_graphics_tables.py)
+| Table | Address | Size |
+|---|---|---|
+| font glyphs (33 x 9) | `$4553` | 297 |
+| wall tables (`$1D = 0` / `$1D <> 0`) | `$5DBF` / `$5F69` | 426 each |
+| dot image shifts / energizer tile shifts | `$61A8` / `$61CA` | 14 / 112 |
+| maze dot map (28 columns x 32, I: columns of cells) | `$623A` | 896 |
+| masks for the masked clear | `$69CD`, `$6A04` | 28 each |
+| fruit-by-level pointers / fruit images (8 x 36) | `$6AFE` / `$6B6E` | 108 / 288 |
+| cartoon big sprite frames (3 x 80) and pointers | `$82E0`, `$82D8` | 240 / 8 |
+| hi-res row tables, pixel column/shift tables | `$5B67`, `$5C27`, `$5A58`, `$5958` | **not needed by the port: replaced by formulas (section 4)** |
+Character/ghost frames, dot and label images and the `$7191/$7201/$73C1` tile bases are listed in SPRITES.md.
+
+## 9. Next sub-steps
+* **TASK-027e:** colour check against AppleWin window screenshots (at most 3 GUI attempts), then the C++ hires layer (TASK-027 proper) can start. Two-player and game-over writer traces remain low priority.
