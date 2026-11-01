@@ -2,6 +2,7 @@
 
 ## 2026-10-29
 * **Data pack (TASK-026, milestone M1):** `pacman_pack build/info`, a 60-range generated manifest (16,680 data bytes), loader that refuses any damaged or wrong-game pack (27 C++ tests).
+* TASK-027a: inventory of screen writers and video switches (docs/GRAPHICS.md).
 * TASK-021d: 100% of the static code map executed; the last 38 bytes under forced state.
 * TASK-021c: Space in the attract delay loop and the one-digit rank prompt executed; the four carry fix-ups shown dead in practice; 38 unexecuted bytes left, none reachable.
 * TASK-021b: five unexecuted runs proven dead, two more executed; corrected the sound labels (the long sound is the ghost-eaten sound).
