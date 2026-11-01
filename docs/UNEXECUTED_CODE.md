@@ -47,3 +47,16 @@ Tools: `tools/trace_carry.py`, `tools/cov_close5.py C|D|E` (coverage files scrat
 * **`$41D2-$41D8` (V, 1 hit) and `$41D9-$41DB` (V, 1 hit):** hidden rank prompt answered with one digit: `7` is stored as rank 7; `0` is rejected and the prompt repeats (`$41D9` jumps back to `$4144`).
 * **The four carry sites `$5770, $57AA, $57EB, $5825` (V by trace, 165 s of play):** the pointer `$16/$17` is a constant: `$625D` at the first and third site, `$657D` at the second and fourth, every time (bases are immediate loads `$3A+$23` and `$3A+$43`). Adding `$14` can never carry, so these four are dead in practice (V for the observed values, I that no other path changes the pointer).
 * **Where it stands (union of stored files + log hits):** the stored files leave 13 runs / 57 bytes, but `$806F-$807C` (14) and `$89AC-$89B0` (5) were executed in the cov_close4 run whose file was never written (section 5). **38 bytes remain, none reachable as far as known:** 9 proven dead statically (`$5754, $57CF, $6DEE, $8A3A, $53B2`), 8 dead by the constant pointer (above), 20 behind flag `$1D` (inferred always 1), 1 `RTS` at `$56E9`. That is **10,418 of 10,456 static-code bytes executed or logged (99.6%)**; 10,399 (99.45%) from stored files alone.
+
+## 7. TASK-021d: 100% of the static code map executed (with 38 bytes executed only under forced state)
+Tools: `tools/cov_close6.py` (forced state), `tools/cov_close4.py A|B` (now writes its own coverage files), `tools/cov_close5.py C|D|E`. Test: tests/test_unexecuted.py now requires an **empty** list: the union of 16 stored coverage files covers all 10,456 static-code bytes and no executed byte lies outside the map (V).
+**Read this number correctly.** 10,418 bytes (99.6%) ran in the game's real states. The last **38 bytes ran only because the tool forced the condition that guards them**; in the real game they appear unreachable, so executing them shows they are valid code and what they do, not that the game ever uses them:
+| Bytes | Forced condition | Result |
+|---|---|---|
+| `$5754, $5770, $57AA, $57CF, $57EB, $5825` (12) | carry flag set at the `BCC +2` before each `INC $17` | each ran 3 times (the real pointers never carry) |
+| `$5D31-$5D3C` (12), `$5D66-$5D6D` (8) | `$1D = 0`; `$0C = $FF` before `INC $0C` | alternative loops of the draw routine ran (3,265 and 2 hits) |
+| `$56E9` (1) | `$19 = 0` lives to draw | the `RTS` ran |
+| `$6DEE`, `$8A3A` (2) | zero flag cleared at the always-taken `BEQ` | the `RTS` ran |
+| `$53B2-$53B4` (3) | zero flag set at the always-taken `BNE` | it executed, then ran off into data and stopped (CPUError, as expected for data) |
+The runs of `$806F` and `$89AC` (natural state, section 5) now have their own coverage files, so the earlier "log only" caveat is gone. Forced runs may crash the throw-away machine afterwards (one did); that does not matter for coverage.
+Meaning for the port: 100% here is **of the static code map** (38.5% of the program; the rest is data, DATA_REGIONS.md). Dead-in-practice code needs no port; the port can ignore those 38 bytes.

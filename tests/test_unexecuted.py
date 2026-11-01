@@ -1,4 +1,4 @@
-"""Test for TASK-021: the union of the stored coverage files leaves exactly the 13 runs documented in docs/UNEXECUTED_CODE.md.
+"""Test for TASK-021: the union of the stored coverage files leaves nothing (100%) documented in docs/UNEXECUTED_CODE.md.
 Needs scratch/extract and the scratch/cov*.json files made by tools/cov_close*.py and the earlier tools (skipped if they are missing).
 Run: python -I tests/test_unexecuted.py"""
 import os, sys, unittest
@@ -7,9 +7,8 @@ import cov_union as cu
 from recdis import analyse
 from static_plus import table_targets, bytes_of
 
-FILES = ['cov', 'cov_auto1', 'cov_auto2', 'cov_cartoons', 'cov_custom', 'cov_play', 'cov_rank', 'cov_close', 'cov_close2', 'cov_close3', 'cov_close5_C', 'cov_close5_D', 'cov_close5_E']
-DOCUMENTED = ['53B2-53B4', '56E9-56E9', '5754-5755', '5770-5771', '57AA-57AB', '57CF-57D0', '57EB-57EC',
-              '5825-5826', '5D31-5D3C', '5D66-5D6D', '6DEE-6DEE', '806F-807C', '89AC-89B0', '8A3A-8A3A']
+FILES = ['cov', 'cov_auto1', 'cov_auto2', 'cov_cartoons', 'cov_custom', 'cov_play', 'cov_rank', 'cov_close', 'cov_close2', 'cov_close3', 'cov_close5_C', 'cov_close5_D', 'cov_close5_E', 'cov_close4_A', 'cov_close4_B', 'cov_close5_6']
+DOCUMENTED = []
 
 
 class Unexecuted(unittest.TestCase):
@@ -27,7 +26,7 @@ class Unexecuted(unittest.TestCase):
         self.assertEqual(r['executed_not_static'], [])                      # the static map has no contradiction
         left = ['%04X-%04X' % (a, b) for a, b in cu.to_runs(r['static_not_executed'])]
         self.assertEqual(left, DOCUMENTED)
-        self.assertEqual(len(r['static_not_executed']), 57)
+        self.assertEqual(len(r['static_not_executed']), 0)
         self.assertEqual(r['static'], 10456)
 
     def test_to_runs(self):
