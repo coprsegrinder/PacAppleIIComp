@@ -39,6 +39,7 @@ and wait for my "go" before starting it (rule 11). Do not re-derive facts alread
     run its tests, update the ledger, notes and this resume file, commit, write a short plain-English report
     (what changed, tests run and results, known-good state or not, next recommended task), then STOP and wait for me to
     say "go". Never chain into the next task on your own, even if it looks easy.
+    TIME RULE (corrected 2026-11-01 after a 1 h 4 min turn): the 20-minute limit is for the WHOLE turn, measured with `python -I tools/turn_clock.py start` at the beginning and `check` before every long command; plan the turn first with `turn_clock.py plan <minutes...>` (sum must be <= 15), and split anything longer into a new ledger row.
     Break heavy work (large disassemblies, big reconstructions) into several checkpointed pieces; prefer many small
     verified steps over one big one. Objective limits (replace judgment with these):
     - Commands: every command gets an explicit timeout (default 60 s, max 5 min). Every emulator launch gets a kill step;
