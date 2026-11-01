@@ -25,20 +25,20 @@ V = verified on the oracle (our own 6502/Apple II model; **not** compared with A
 |---|---|---|---|---|---|---|
 | Dot eaten | `$7BDC` | A | 2 | 8 | 2,414 cycles (2.4 ms) | dot eating (V in play: 91 of 91 match the model) |
 | Energizer | `$7C45` | A | 4 | 16 | 8,328 (8 ms) | energizer eating (V in play: 9 of 9) |
-| Pac-Man death | `$7BE6` | A | 87 | 348 | 178,263 (0.174 s) | death sequence, called from `$7DFC` (V in play: 3 of 3) |
-| Death animation steps | table at `$7C8F` indexed by `$0A` = 1..6, played by `$7C82` (called from `$7EF2`) | A | 11, 12, 12, 12, 12, 18 | 44-72 | 4,763 to 30,112 | `$0A` counted 6,5,4,3,2,1 once per death (V in play: 3 deaths x 6 calls; the clicks of these were checked standalone only) |
+| **Ghost eaten** | `$7BE6` | A | 87 | 348 | 178,263 (0.174 s) | the ghost-eaten freeze (`$7DB8-$7E1F`), called from `$7DFC` (V in play: 4 ghosts eaten = 4 sounds, 3 catches = none; **corrected in TASK-021b: I had labelled it the death sound**) |
+| **Pac-Man death** animation steps | table at `$7C8F` indexed by `$0A` = 1..6, played by `$7C82` (called from `$7EF2`) | A | 11, 12, 12, 12, 12, 18 | 44-72 | 4,763 to 30,112 | `$0A` counted 6,5,4,3,2,1 once per death (V in play: 3 deaths x 6 calls; the clicks of these were checked standalone only) |
 | Sound at `$7C61` | `$7C61` | A | 25 | 100 | 88,713 (0.087 s) | fruit eaten (V: the last call of the fruit-eaten routine `$6CB2`, see LEVEL_TABLES.md) |
 | Bonus life | `$7C51` | C | 80 | 320 | 97,435 (0.095 s) | 10,000-point bonus (I; the call site `$7132` is the bonus-life code, V in PACMAN_RULES.md) |
 | Intermission/cartoon sound | `$7CF0` (list at `$7C9D`, the same list as death step 6) | A | 18 | 72 | 16,966 (0.017 s) | four call sites in the cartoon code (`$866F`, `$8690`, `$86B1`, `$86D2`) (I; not triggered in my runs) |
 | Intro jingle | `$7D38` (called from `$568A`) | B | 29 | 2,212 | 5,120,766 (5.0 s) | start of a game / attract screen (V standalone) |
 
-* **No other sound sites exist:** no siren, and **no sound at the moment a ghost is eaten or when fruit appears** unless `$7C61` is the fruit sound (I). The ghost-eating code (`$8B9D-$8BDC`) contains no sound call (V by reading it).
-* The model equals the oracle's clicks **exactly (every click, all 12 lists)**, standalone; in play the dot, energizer and death sounds match in every instance seen (103 of 103).
+* **No other sound sites exist:** no siren and no sound when the fruit appears. Eating a ghost does make a sound (the 0.174 s list above); the call is inside the freeze routine that `$8B9D` calls, not in `$8B9D` itself (my first reading stopped too early).
+* The model equals the oracle's clicks **exactly (every click, all 12 lists)**, standalone; in play the dot, energizer and ghost-eaten sounds match in every instance seen (103 of 103).
 
 ## 4. For the port (M7)
 * Data pack: add the 11 note lists (they are in `$7BE3-$7CF0` and `$7D3F-$7D7A`) and the 6-word pointer table at `$7C8F`; the manifest tool must be extended.
 * Audio output: generate the click list with the formulas above (engine constants 9/11/44/+1, 31/11/30,624, 37) at cycle resolution and render clicks as speaker toggles at the audio rate; the fidelity test is "click lists equal the oracle's", already automatable with these tools.
-* A faithful game must **delay execution while a sound plays** (the engines busy-wait: the game is frozen during a sound, e.g. 0.17 s at death, 5 s for the jingle), so sound length is also game timing.
+* A faithful game must **delay execution while a sound plays** (the engines busy-wait: the game is frozen during a sound, e.g. 0.17 s each time a ghost is eaten, 5 s for the jingle), so sound length is also game timing.
 
 ## 5. Still unknown
 Where exactly the jingle is triggered besides the attract/start path; the key-press-during-jingle behaviour; whether the cartoon sound fires in the intermissions; real-hardware audio shaping (the speaker is a plain click toggle, so a faithful square-wave rendering is the reference; AppleWin audio comparison is TASK-022).

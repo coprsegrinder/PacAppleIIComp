@@ -10,7 +10,7 @@ from play import make_machine, do_step
 from autoplay import start_game, KEYSET
 import sound_model as sm
 
-ENTRIES = {0x7BDC: ('dot eaten', 'A', 0x7BE3), 0x7BE6: ('death', 'A', 0x7BED), 0x7C45: ('energizer', 'A', 0x7C4C),
+ENTRIES = {0x7BDC: ('dot eaten', 'A', 0x7BE3), 0x7BE6: ('ghost eaten', 'A', 0x7BED), 0x7C45: ('energizer', 'A', 0x7C4C),
            0x7C61: ('sound 7C61', 'A', 0x7C68), 0x7CF0: ('ghost/cartoon 7CF0', 'A', 0x7C9D)}
 
 

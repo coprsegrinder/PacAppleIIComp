@@ -16,7 +16,7 @@ ORIGIN = 0x4000
 # (name, how it is reached, engine, data address). Callers are the addresses that JSR the wrapper (read from the code, V by byte scan).
 SOUNDS = [
     ('dot eaten', 'JSR $7BDC from $7B09', 'A', 0x7BE3),
-    ('sound at $7DFC', 'JSR $7BE6 from $7DFC', 'A', 0x7BED),
+    ('ghost eaten', 'JSR $7BE6 from $7DFC', 'A', 0x7BED),
     ('energizer eaten', 'JSR $7C45 from $7AC7', 'A', 0x7C4C),
     ('sound $7C61', 'JSR $7C61 from $6CD0', 'A', 0x7C68),
     ('table sound 6', 'ptr table $7C8F[2*$0A]', 'A', 0x7C9D),

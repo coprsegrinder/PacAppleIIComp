@@ -31,3 +31,12 @@ None of these changes any rule found so far; they are rare corners or artefacts.
 
 ## 4. How to repeat
 `python -I tools/cov_close.py`, `cov_close2.py`, `cov_close3.py` (each 5-10 minutes), then `python -I tools/cov_union.py scratch/cov.json scratch/cov_auto1.json scratch/cov_auto2.json scratch/cov_cartoons.json scratch/cov_custom.json scratch/cov_play.json scratch/cov_rank.json scratch/cov_close.json scratch/cov_close2.json scratch/cov_close3.json`. (cov_close2's scenario 1, which tried Space at the prompt, never started its game because of a wrong key order; cov_close3 does it correctly. Both stay in the repository as run.)
+
+## 5. TASK-021b (second look at the last 70 bytes; stopped at the 20-minute limit)
+Tool: `tools/cov_close4.py` (its coverage file was not written because the run was stopped; the hit counts below come from its log). Test: tests/test_dead_code.py.
+* **`$806F-$807C` runs (V, 6 hits):** it is not part of Pac-Man's death. Routine `$805D` is the "other ghosts keep moving" part of the **ghost-eaten freeze** (`$7DB8-$7E1F`): an eyes ghost gets two extra steps while the eaten ghost's score is shown. Forcing "the other ghosts are eyes" (the state after eating two ghosts in a row) ran it 6 times.
+* **`$89AC-$89B0` (V, 2 hits):** reached when ghost 2 or 4 leaves the house while moving up (countdown forced to end in that state; the state itself is natural, because those ghosts bounce up and down in the house). It queues one extra "down" move first.
+* **Proven dead by the code itself (V, static, tests/test_dead_code.py):** `$5754` and `$57CF` (`LDA #$3A; ADC #$23` can never carry), `$6DEE` and `$8A3A` (a `BEQ` right after `LDA #$00` is always taken), `$53B2-$53B4` (a `BNE` right after `LDA #$62 + 3` is always taken; the bytes behind it are data).
+* **Not dead, not yet reached:** `$5770, $57AA, $57EB, $5825` (carry when `$16 >= $EC` after `JSR $7819`; depends on the address computed there); `$52F9` (my Space-in-the-wait-loop attempt never reached the loop at `$52E9`); `$41D2` (the hidden rank prompt answered with one digit: scenario started but stopped by the time limit).
+* **Inferred, not proven:** `$5D31-$5D3C` and `$5D66-$5D6D` need the flag `$1D = 0`, but the only writes to `$1D` are the start-up `1` (`$403A`) and a save/restore of that value around one routine (`$5264-$52A8`): it looks always 1, so these loops look dead (I). `$56E9` (`RTS` when `$19 = 0` lives to show): the code zeroes the lives byte and ends the game before that can be drawn (I).
+* Remaining open: moved to TASK-021c.
