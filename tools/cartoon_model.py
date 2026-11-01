@@ -139,4 +139,61 @@ def oracle_calls(events):
             out.append((k, e[8], e[9], e[12]))
         elif k in ('vline', 'hline'):
             out.append((k, e[2], e[3], e[15]))
+        elif k == 'w7DA9' and e[13] == 0x7E1F:           # entry of the software-shifted image routine: A/Y still hold the image pointer
+            out.append(('shifted_image', e[2] | e[3] << 8))
     return out
+
+
+def cartoon3(body, flag1d=1):
+    """Cartoon 3 ($8486): Pac-Man (x from $C1, 2 pixels per 38 loops) walks left with the ghost behind him (x from $E5, 2 pixels per 33 loops); the ghost drags
+    a trail: a vertical line at x + 3, rows $7D-$7F, after every step. When Pac-Man's x falls below $20 the ghost is erased, there is a pause, and both
+    come back to the right: Pac-Man from x = $10 (direction 2, 2 pixels per 34 loops) until x >= $B0, the ghost from x = $37 (2 pixels per 39 loops) now drawn as a
+    30-byte image taken from one of two pointers ($856C or $854E, chosen by bit 1 of the animation counter $66), shifted by software to the pixel position
+    (routine $7E1F: image at x - 5 and y - 4, shift = (x - 5) mod 7, drawn at (x - 1, y) from the buffer $7E70 - 30 x shift) after a masked clear with the mask table $6A04."""
+    ev = [('page_clear',), ('hires_on',)]
+    px, py, gx, gy = 0xC1, 0x7A, 0xE5, 0x7A
+    c66, d62, e0, c59, c80 = 0, 3, 1, 1, 1
+    while True:                                             # phase 1
+        c59 -= 1
+        if c59 == 0:
+            c59 = 0x26
+            ev.append(('masked_clear', px - 4, py - 4))
+            px -= 2
+            if px < 0x20:
+                break
+            c66 += 1
+            c66 &= 0xFF
+            base = pac_base(body, c66 & 0x0F, d62)
+            c66 &= 0x0F
+            ev.append(('dispatch', base, px, py))
+        c80 -= 1
+        if c80 == 0:
+            c80 = 0x21
+            ev.append(('masked_clear', gx - 4, gy - 4))
+            gx -= 2
+            ev.append(('dispatch', ghost_base(body, e0, flag1d), gx, gy))
+            ev.append(('vline', gx + 3, 0x7D, 0x7F))
+    ev.append(('masked_clear', gx - 4, gy - 4))
+    gx, px, d62 = 0x37, 0x10, 2
+    ptrs = [word(body, 0x854A), word(body, 0x854C)]
+    while True:                                             # phase 2
+        c59 -= 1
+        if c59 == 0:
+            c59 = 0x22
+            ev.append(('masked_clear', px - 4, py - 4))
+            if px >= 0xB0:
+                return ev
+            px += 2
+            c66 += 1
+            c66 &= 0xFF
+            base = pac_base(body, c66 & 0x0F, d62)
+            c66 &= 0x0F
+            ev.append(('dispatch', base, px, py))
+        c80 -= 1
+        if c80 == 0:
+            c80 = 0x27
+            ev.append(('masked_clear', gx - 5, gy - 4))
+            gx += 2
+            shift = (gx - 5) % 7
+            ev.append(('shifted_image', ptrs[(c66 & 2) >> 1]))
+            ev.append(('dispatch', 0x7E70 - 30 * shift, gx - 1, gy))

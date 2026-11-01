@@ -1,4 +1,4 @@
-# Intermission cartoons (TASK-031c/d, in progress: scheduler, cartoons 1 and 2 done)
+# Intermission cartoons (TASK-031c/d/e: scheduler and all three cartoons decoded and modelled)
 
 Tools: `tools/trace_cartoon.py` (records every drawing call on the oracle), `tools/cartoon_model.py` (reference model of cartoon 1). Tests: tests/test_cartoon_schedule.py (6 s), tests/test_cartoons.py (about 5 minutes). Golden data: tests/golden/cartoon_hashes.json (hashes and counts only). V = verified on the oracle, I = inferred.
 
@@ -23,7 +23,12 @@ Same start state as cartoon 1 (Pac-Man x = `$C1`, ghost x = `$E5`, both y = `$7A
 * Every time `$80` reaches 0 (reload `$21`): if the ghost is already at x = `$71` nothing happens. Otherwise erase the ghost, `x -= 2`, draw it. While `x >= $7B` that is all. Below that (x = `$79, $77, $75, $73`) each step also draws one vertical line from the table `$847E` (pairs x/first row: `$79,$7B`, `$7B,$7C`, `$7D,$7D`, `$7F,$7E`; last row `$7F`) and sets `$80` to `$A0` (a long pause before the next step): the **cloth being torn**, a growing shape. At x = `$71` the ghost is erased and redrawn, a second erase 10 pixels to the right is made, and two more lines (x = `$74`, rows `$7D`-`$7F`; x = `$76`, rows `$7E`-`$7F`) are drawn; from then on the ghost stays at x = `$71` (stuck) while Pac-Man walks off to the left.
 * The routine returns when Pac-Man's x falls below `$10`. Totals: 149 masked clears, 147 frame draws, 184 vertical lines; 4,347,216 cycles (about 4.3 s).
 
-## 5. Golden data (V, replay deterministic)
+## 5. Cartoon 3 (`$8486`-`$8549`, V: the model equals the oracle call for call, 814 calls)
+Same start state. **Phase 1:** Pac-Man walks left (`x -= 2` every 38 loops, reload `$26`) until `x < $20`; the ghost follows (`x -= 2` every 33 loops, reload `$21`) and after every step draws a short vertical line at `x + 3`, rows `$7D`-`$7F`: **the trail it drags**. At the end the ghost is erased and there is the usual pause (8 x 100 delays).
+**Phase 2:** `$70 = $37`, `$60 = $10`, direction `$62 = 2`. Pac-Man walks right (reload `$22`, 2 pixels per step) until `x >= $B0`, when the routine ends; the ghost walks right (reload `$27`, 2 pixels per step) drawn differently: after a masked clear with the **second mask table `$6A04`** (via `$69E9`, which patches the mask pointer at `$69B8/9` and restores it) it is drawn by `$7E1F`, a **software-shifted 30-byte image**: image pointer `$856C` or `$854E` (the word at `$854A + ($66 and 2)`), copied to the buffer `$7E70`, shifted left `(x - 5) mod 7` times by `$7E4F`, then drawn at (x - 1, y) with the frame base `$7E70 - 30 x shift` through the normal blitter. The two images are 3 x 10 bytes each (`$854E`, `$856C`); the data pack needs them (they lie in the data map at `$854A-$858B`).
+Totals: 744 plain draw calls plus 70 shifted-image calls (814 in the model), 8,211,963 cycles (about 8 s).
+
+## 6. Golden data (V, replay deterministic)
 | Cartoon | Cycles | Calls logged | Draw-call chain (first 12 hex) |
 |---|---|---|---|
 | 1 | 5,597,305 | 4,076 | b49f0791921f |
@@ -31,7 +36,7 @@ Same start state as cartoon 1 (Pac-Man x = `$C1`, ghost x = `$E5`, both y = `$7A
 | 3 | 8,211,963 | 5,598 | 3f7f1dbd25bf |
 The chains changed from the first version (TASK-031c) because the line routines `$8180/$8173` and the X register were added to the logged calls (cartoon 3 has 93 line calls). Final-page hashes and per-routine counts are in tests/golden/cartoon_hashes.json. Cartoon 2 draws with the frame tables `$9A42`, `$A472`, `$9D8A`, `$96FA` and has no big sprite; cartoon 3 adds nine more frame tables (`$7E16`, `$9970`, `$7DDA`, `$9CB8`, `$7E70`, `$7E34`, `$7DF8`, `$7DBC`, `$7E52`) and uses the other wrapper `$7DA9`.
 
-## 6. Still to do
-* **TASK-031e:** cartoon 3 (`$8486`-end) decode and model (it uses the line routines, the frame tables listed above and the other wrapper `$7DA9`).
+## 7. Still to do
 * The meaning of each frame table (Pac-Man, ghost, torn-cloth ghost, ...) is U; the port only needs the pointers and the images from the data pack.
-* Whether the cartoon is shown for each player in two-player games is U.
+* The **pixels** of the cartoons are covered only by the golden final-page hashes and the call chains; the software shift `$7E4F` and the big-sprite shift `$82B1` are not modelled separately (the C++ code will be tested against the oracle's pages).
+* Whether the cartoon is shown for each player in two-player games, and whether a key press during a cartoon is seen afterwards, are U.
