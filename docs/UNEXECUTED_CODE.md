@@ -56,7 +56,8 @@ Tools: `tools/cov_close6.py` (forced state), `tools/cov_close4.py A|B` (now writ
 | `$5754, $5770, $57AA, $57CF, $57EB, $5825` (12) | carry flag set at the `BCC +2` before each `INC $17` | each ran 3 times (the real pointers never carry) |
 | `$5D31-$5D3C` (12), `$5D66-$5D6D` (8) | `$1D = 0`; `$0C = $FF` before `INC $0C` | alternative loops of the draw routine ran (3,265 and 2 hits) |
 | `$56E9` (1) | `$19 = 0` lives to draw | the `RTS` ran |
-| `$6DEE`, `$8A3A` (2) | zero flag cleared at the always-taken `BEQ` | the `RTS` ran |
+| `$6DEE`, `$8A3A` (2) | zero flag cleared at the always-taken `BEQ` | `$6DEE` is an `RTS` (ran); **`$8A3A` is a `$00` data byte, not an RTS (corrected in docs/FORCED_CODE.md)** |
 | `$53B2-$53B4` (3) | zero flag set at the always-taken `BNE` | it executed, then ran off into data and stopped (CPUError, as expected for data) |
 The runs of `$806F` and `$89AC` (natural state, section 5) now have their own coverage files, so the earlier "log only" caveat is gone. Forced runs may crash the throw-away machine afterwards (one did); that does not matter for coverage.
 Meaning for the port: 100% here is **of the static code map** (38.5% of the program; the rest is data, DATA_REGIONS.md). Dead-in-practice code needs no port; the port can ignore those 38 bytes.
+What the port must do with each of the 38 bytes: docs/FORCED_CODE.md (34 are real code, 4 are data).
