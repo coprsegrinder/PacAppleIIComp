@@ -2,7 +2,7 @@
 
 ## 2026-10-29
 * **Data pack (TASK-026, milestone M1):** `pacman_pack build/info`, a 60-range generated manifest (16,680 data bytes), loader that refuses any damaged or wrong-game pack (27 C++ tests).
-* TASK-027e: hi-res colour model checked against an AppleWin screenshot (97.3% of isolated pixels agree).
+* TASK-027e: hi-res colour model checked against an AppleWin screenshot (100% of 2,172 isolated pixels agree after fixing my sampling offset; the first 97.3% and its filter explanation were wrong).
 * TASK-027d: wall routine and text printer modelled and verified against the oracle (including the forced $1D = 0 mode); drawing tables listed.
 * TASK-027c: hi-res addressing and pixel model verified, colour model written, 22 golden screen hashes (docs/GRAPHICS.md).
 * TASK-027b: all hi-res writers decoded, cartoon big-sprite routine found (docs/GRAPHICS.md).

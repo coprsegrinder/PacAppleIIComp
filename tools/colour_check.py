@@ -2,8 +2,8 @@
 (scratch/aw_play.png + scratch/gp.bin, 2026-10-29; development tool, original data from scratch/, never committed).
 Colour model (standard Apple II): a lit pixel with a lit horizontal neighbour is white; an isolated lit pixel is violet (even x) / green (odd x)
 when the byte's palette bit 7 = 0, blue (even x) / orange (odd x) when it is 1; unlit pixels are black.
-Method: build the predicted class of every one of the 280x192 pixels from the dumped page, find the screenshot offset/scale that makes the lit
-mask fit best, then classify the observed colour (hue) of each isolated lit pixel and report the agreement and the confusion matrix.
+Method: build the predicted class of every one of the 280x192 pixels from the dumped page, calibrate the screenshot offset/scale for each parity
+convention separately (best agreement), then classify the observed colour (hue) of each isolated lit pixel and report the agreement and the confusion matrix.
 Usage: python -I tools/colour_check.py [png] [dump]"""
 import colorsys, sys
 import numpy as np
@@ -46,22 +46,39 @@ def predicted(lit, pal, flip=False):
     return cls
 
 
-def best_fit(img, lit):
-    """Find (ox, oy, sx, sy) so that the mean brightness of lit pixels' cells is highest relative to unlit cells."""
-    g = img.mean(axis=2)
+def observed(img, x, y, ox, oy, s):
+    cx, cy = int(ox + (x + .5) * s), int(oy + (y + .5) * s)
+    patch = img[max(cy - 1, 0): cy + 2, max(cx - 1, 0): cx + 2].reshape(-1, 3)
+    return hue_class(patch[patch.sum(1).argmax()])          # the brightest sample of the cell: robust against the blur
+
+
+def evaluate(img, cls, ox, oy, s, step=1):
+    conf, total, agree = {}, 0, 0
+    for y in range(0, 192):
+        for x in range(0, 280, step):
+            if cls[y, x] < 0 or cls[y, x] == 4:
+                continue
+            obs = observed(img, x, y, ox, oy, s)
+            if obs is None:
+                continue
+            total += 1
+            exp = NAMES[cls[y, x]]
+            conf[(exp, obs)] = conf.get((exp, obs), 0) + 1
+            agree += exp == obs
+    return total, agree, conf
+
+
+def calibrate(img, cls):
+    """Pick the screenshot offset and scale that give the best agreement for THIS parity convention (fair for both conventions).
+    The brightness-based fit used in the first version chose an offset 4 pixels off and produced 58 false misses."""
     best = None
-    ys, xs = np.nonzero(lit)
-    sel = np.random.default_rng(1).choice(len(ys), min(4000, len(ys)), replace=False)
-    for s in np.arange(4.00, 4.10, 0.01):
-        for oy in range(0, 12):
-            for ox in range(0, 12):
-                px = (ox + (xs[sel] + .5) * s).astype(int)
-                py = (oy + (ys[sel] + .5) * s).astype(int)
-                ok = (px < g.shape[1]) & (py < g.shape[0])
-                v = g[py[ok], px[ok]].mean()
-                if best is None or v > best[0]:
-                    best = (v, ox, oy, s)
-    return best
+    for s in (3.99, 4.00, 4.01):
+        for oy in (2, 3, 4):
+            for ox in range(4, 14):
+                total, agree, _ = evaluate(img, cls, ox, oy, s, step=5)
+                if best is None or agree / max(total, 1) > best[0]:
+                    best = (agree / max(total, 1), ox, oy, s)
+    return best[1:]
 
 
 def hue_class(rgb):
@@ -79,29 +96,19 @@ def main(png='scratch/aw_play.png', dump='scratch/gp.bin'):
     page = open(dump, 'rb').read()[0x2000:0x4000]
     img = np.asarray(Image.open(png).convert('RGB')).astype(float)
     lit, pal = pixels(page)
-    v, ox, oy, s = best_fit(img, lit)
-    print('fit: offset (%d,%d) scale %.2f, mean brightness of lit pixels %.0f' % (ox, oy, s, v))
     result = {}
     for flip in (False, True):
         cls = predicted(lit, pal, flip)
-        conf = {}
-        total = agree = 0
-        for y in range(192):
-            for x in range(280):
-                if cls[y, x] < 0 or cls[y, x] == 4:
-                    continue
-                cx, cy = int(ox + (x + .5) * s), int(oy + (y + .5) * s)
-                patch = img[max(cy - 1, 0): cy + 2, max(cx - 1, 0): cx + 2].reshape(-1, 3)
-                obs = hue_class(patch[patch.sum(1).argmax()])    # the brightest sample of the cell: robust against the blur
-                if obs is None:
-                    continue
-                total += 1
-                exp = NAMES[cls[y, x]]
-                conf[(exp, obs)] = conf.get((exp, obs), 0) + 1
-                agree += exp == obs
-        print('parity %s: isolated lit pixels classified %d, agree %d (%.1f%%)' % ('FLIPPED' if flip else 'standard', total, agree, 100 * agree / max(total, 1)))
+        ox, oy, s = calibrate(img, cls)
+        total, agree, conf = evaluate(img, cls, ox, oy, s)
+        print('parity %s (fit offset (%d,%d) scale %.2f): isolated lit pixels classified %d, agree %d (%.1f%%)' % (
+            'FLIPPED' if flip else 'standard', ox, oy, s, total, agree, 100 * agree / max(total, 1)))
         for k in sorted(conf):
             print('   expected %-7s observed %-7s %6d' % (k[0], k[1], conf[k]))
+        if not flip:                                  # the white class (lit pixels with a lit neighbour), reported separately
+            w = [observed(img, x, y, ox, oy, s) for y in range(192) for x in range(280) if cls[y, x] == 4]
+            w = [o for o in w if o]
+            print('   lit pixels with a lit neighbour (expected white): classified %d, white %d (%.1f%%)' % (len(w), w.count('white'), 100 * w.count('white') / max(len(w), 1)))
         result[flip] = (total, agree)
     return result
 
