@@ -2,6 +2,7 @@
 
 ## 2026-10-29
 * **Data pack (TASK-026, milestone M1):** `pacman_pack build/info`, a 60-range generated manifest (16,680 data bytes), loader that refuses any damaged or wrong-game pack (27 C++ tests).
+* TASK-027c: hi-res addressing and pixel model verified, colour model written, 22 golden screen hashes (docs/GRAPHICS.md).
 * TASK-027b: all hi-res writers decoded, cartoon big-sprite routine found (docs/GRAPHICS.md).
 * TASK-027a: inventory of screen writers and video switches (docs/GRAPHICS.md).
 * TASK-021d: 100% of the static code map executed; the last 38 bytes under forced state.

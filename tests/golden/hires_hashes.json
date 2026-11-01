@@ -1,0 +1,238 @@
+[
+ {
+  "label": "attract 5 M",
+  "sha256": "bb43f8436ee7cb9af86b5054cd663c563f0a1cbde070f62e2ee543c974ebda89",
+  "switches": {
+   "text": false,
+   "mixed": false,
+   "page2": false,
+   "hires": true
+  }
+ },
+ {
+  "label": "attract 10 M",
+  "sha256": "e2374e97cecf3a7ad59a3c75d4f488c17b4738d5b38662f0cd4ab4a6aefcecee",
+  "switches": {
+   "text": false,
+   "mixed": false,
+   "page2": false,
+   "hires": true
+  }
+ },
+ {
+  "label": "attract 15 M",
+  "sha256": "6673e3b94d37c295973288afdfe6d77a9bbd0fdc4a5e1e520c1547b379595a79",
+  "switches": {
+   "text": false,
+   "mixed": false,
+   "page2": false,
+   "hires": true
+  }
+ },
+ {
+  "label": "attract 20 M",
+  "sha256": "fe68c0175f211b3f84267a69ab808f3fc4e90f3dd725f9d950b48272b84867d1",
+  "switches": {
+   "text": false,
+   "mixed": false,
+   "page2": false,
+   "hires": true
+  }
+ },
+ {
+  "label": "attract 25 M",
+  "sha256": "0489ee082936c9e23b4653eacee58a0fa4702d723e8bfab3c1b98af3b9beb8c3",
+  "switches": {
+   "text": false,
+   "mixed": false,
+   "page2": false,
+   "hires": true
+  }
+ },
+ {
+  "label": "attract 30 M",
+  "sha256": "dd838eca9d3a534e468cb11dad2fabe1e66440967ea6eab1cbbc81597d2cebbe",
+  "switches": {
+   "text": false,
+   "mixed": false,
+   "page2": false,
+   "hires": true
+  }
+ },
+ {
+  "label": "attract 35 M",
+  "sha256": "c734dfdb06bf609f93ebf88c50ac1c4d194ddae7072e9dbef704940397ea2fbf",
+  "switches": {
+   "text": false,
+   "mixed": false,
+   "page2": false,
+   "hires": true
+  }
+ },
+ {
+  "label": "attract 40 M",
+  "sha256": "28f3efabfe237c484e3edc0294950277ea39943fa1b5a825a233198aeb04e9cb",
+  "switches": {
+   "text": false,
+   "mixed": false,
+   "page2": false,
+   "hires": true
+  }
+ },
+ {
+  "label": "attract 45 M",
+  "sha256": "9ec5fba597dc281bb800bbeeef3b3f16e38496d4eb2795c53fcc10ec6776aef1",
+  "switches": {
+   "text": false,
+   "mixed": false,
+   "page2": false,
+   "hires": true
+  }
+ },
+ {
+  "label": "attract 50 M",
+  "sha256": "eff1c71e3a6a79b166b2b436a8a57c6a4f519536f76db0d364c35e194cd7a5cb",
+  "switches": {
+   "text": false,
+   "mixed": false,
+   "page2": false,
+   "hires": true
+  }
+ },
+ {
+  "label": "attract 55 M",
+  "sha256": "b2cd763494b64cdf50df79d9dfdace0c1086bcd94f25042eb4138e76b0fcda9c",
+  "switches": {
+   "text": false,
+   "mixed": false,
+   "page2": false,
+   "hires": true
+  }
+ },
+ {
+  "label": "attract 60 M",
+  "sha256": "41636b7a3450711a1335f7a152a1e9900a544f911caa7fad0798038d1a9b7a33",
+  "switches": {
+   "text": false,
+   "mixed": false,
+   "page2": false,
+   "hires": true
+  }
+ },
+ {
+  "label": "attract 65 M",
+  "sha256": "bb203372b9d2a546cf0adbf5acdf40e33fa4a6ea1eec6389d260c59e2bc88d0f",
+  "switches": {
+   "text": false,
+   "mixed": false,
+   "page2": false,
+   "hires": true
+  }
+ },
+ {
+  "label": "attract 70 M",
+  "sha256": "4373f0a183bfaa11bd59550485ee3d9fed1745b31b1ca9ef361caf177da5d3dc",
+  "switches": {
+   "text": false,
+   "mixed": false,
+   "page2": false,
+   "hires": true
+  }
+ },
+ {
+  "label": "game block 50",
+  "sha256": "a48f3351e61aeff02b587f2d2ec66bd35c1296bd86fdac964dba2b6179167706",
+  "switches": {
+   "text": false,
+   "mixed": false,
+   "page2": false,
+   "hires": true
+  },
+  "level": 1,
+  "score_bytes": "000000"
+ },
+ {
+  "label": "game block 100",
+  "sha256": "2f29f834260c64c04d5e9183337066a625a27cfacf4197df3fd139ed5c2dbbce",
+  "switches": {
+   "text": false,
+   "mixed": false,
+   "page2": false,
+   "hires": true
+  },
+  "level": 1,
+  "score_bytes": "000000"
+ },
+ {
+  "label": "game block 150",
+  "sha256": "dcd0164b8a933ed78bb64643731e3f2391ae77fafdf12eb26088efb5e73fc881",
+  "switches": {
+   "text": false,
+   "mixed": false,
+   "page2": false,
+   "hires": true
+  },
+  "level": 1,
+  "score_bytes": "000000"
+ },
+ {
+  "label": "game block 200",
+  "sha256": "ec5c365e5e07d3732b593254c725671cddb474e629fe68574c15a92c980c9dfa",
+  "switches": {
+   "text": false,
+   "mixed": false,
+   "page2": false,
+   "hires": true
+  },
+  "level": 1,
+  "score_bytes": "000000"
+ },
+ {
+  "label": "game block 250",
+  "sha256": "3a1520a340a2b53b4ca11cb2bc5899cf1ea6b69a04abe7bc055940f0edb93bc0",
+  "switches": {
+   "text": false,
+   "mixed": false,
+   "page2": false,
+   "hires": true
+  },
+  "level": 1,
+  "score_bytes": "000000"
+ },
+ {
+  "label": "game block 300",
+  "sha256": "60939f2a86225ae9f7132667950d21b7d9c71c969149c7b8f09c03073cbc73c4",
+  "switches": {
+   "text": false,
+   "mixed": false,
+   "page2": false,
+   "hires": true
+  },
+  "level": 1,
+  "score_bytes": "000000"
+ },
+ {
+  "label": "game block 350",
+  "sha256": "aa947dea5fce9c8b6c589b65cc08c69e6a8aa9a24c0717cc282bfc338dbabb3a",
+  "switches": {
+   "text": false,
+   "mixed": false,
+   "page2": false,
+   "hires": true
+  },
+  "level": 1,
+  "score_bytes": "000000"
+ },
+ {
+  "label": "game block 400",
+  "sha256": "16f05e0bc6c3b69703c1b6b5c40f5265a4da962ee9f3cf4110abff230a90f468",
+  "switches": {
+   "text": false,
+   "mixed": false,
+   "page2": false,
+   "hires": true
+  },
+  "level": 1,
+  "score_bytes": "000000"
+ }
+]
