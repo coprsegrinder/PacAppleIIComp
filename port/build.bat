@@ -24,14 +24,14 @@ if not exist "%OUT%\obj_cli" mkdir "%OUT%\obj_cli"
 if not exist "%OUT%\obj_pack" mkdir "%OUT%\obj_pack"
 if not exist "%OUT%\obj_tests" mkdir "%OUT%\obj_tests"
 set "FLAGS=/nologo /std:c++20 /W4 /WX /permissive- /utf-8 /EHsc /O2"
-set "CORE=src\verify\sha256.cpp src\verify\dos33.cpp src\verify\verify.cpp src\datapack\datapack.cpp src\datapack\manifest.cpp"
+set "CORE=src\verify\sha256.cpp src\verify\dos33.cpp src\verify\verify.cpp src\datapack\datapack.cpp src\datapack\manifest.cpp src\hires\hires.cpp"
 
 pushd "%ROOT%"
 cl %FLAGS% /Fo"%OUT%\obj_cli\\" /Fe"%OUT%\pacman_verify.exe" src\app\verify_main.cpp %CORE%
 if errorlevel 1 (popd & exit /b 1)
 cl %FLAGS% /Fo"%OUT%\obj_pack\\" /Fe"%OUT%\pacman_pack.exe" src\app\pack_main.cpp %CORE%
 if errorlevel 1 (popd & exit /b 1)
-cl %FLAGS% /Fo"%OUT%\obj_tests\\" /Fe"%OUT%\pacman_tests.exe" tests\test_main.cpp tests\test_sha256.cpp tests\test_verify.cpp tests\test_datapack.cpp tests\test_real_image.cpp %CORE%
+cl %FLAGS% /Fo"%OUT%\obj_tests\\" /Fe"%OUT%\pacman_tests.exe" tests\test_main.cpp tests\test_sha256.cpp tests\test_verify.cpp tests\test_datapack.cpp tests\test_hires.cpp tests\test_real_image.cpp %CORE%
 if errorlevel 1 (popd & exit /b 1)
 popd
 

@@ -15,7 +15,8 @@ add_library(pacman_core_verify STATIC
   src/verify/dos33.cpp
   src/verify/verify.cpp
   src/datapack/datapack.cpp
-  src/datapack/manifest.cpp)
+  src/datapack/manifest.cpp
+  src/hires/hires.cpp)
 target_include_directories(pacman_core_verify PUBLIC src)
 
 add_executable(pacman_verify_cli src/app/verify_main.cpp)
@@ -32,6 +33,7 @@ add_executable(pacman_tests
   tests/test_sha256.cpp
   tests/test_verify.cpp
   tests/test_datapack.cpp
+  tests/test_hires.cpp
   tests/test_real_image.cpp)
 target_link_libraries(pacman_tests PRIVATE pacman_core_verify)
 
