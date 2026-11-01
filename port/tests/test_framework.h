@@ -26,6 +26,7 @@ inline int& failures() {
 struct Config {
     std::string image;
     std::string reference;
+    std::string vectors;  // --vectors <hires_vectors.bin>: drawing calls captured from the original (local only)
 };
 inline Config& config() {
     static Config c;

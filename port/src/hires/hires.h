@@ -84,6 +84,20 @@ void smallDot(Page& page, int x, int y, std::span<const std::uint8_t> dotTable) 
 inline constexpr std::size_t kTileTableBytes = 112;     // 7 shifts x (8 rows x 2 bytes) (table $61CA)
 void tile(Page& page, int x, int y, std::span<const std::uint8_t> tileTable) noexcept;     // 8 x 2 bytes ORed ($693A)
 
+// ---- character images through the dispatcher $6A20 and the two cartoon sprites ----
+// A 3 x 10 byte image with 7 pre-shifted copies (210 bytes) drawn for a sprite at pixel (x, y): the image goes to (x - 4, y - 4) and the copy for
+// (x - 4) mod 7 is used. orMode = flags $1D and $1E both nonzero: plain OR ($55A6); otherwise OR then clear the palette bit ($6A3F).
+inline constexpr std::size_t kSevenCopies3x10 = 7 * 30;
+void drawImage(Page& page, int x, int y, std::span<const std::uint8_t> sevenCopies, bool orMode) noexcept;
+// The cartoon-1 big Pac-Man ($8259): a 4 x 20 byte frame (80 bytes), shifted left (x mod 7) pixels by the original's rotate sequence ($82B1) and then
+// STORED (not ORed) at (x / 7, y).
+inline constexpr std::size_t kBigSpriteBytes = 80;
+void bigSprite(Page& page, int x, int y, std::span<const std::uint8_t> frame) noexcept;
+// The cartoon-3 ghost ($7E1F): a 3 x 10 byte image shifted by the rotate sequence at $7E4F ((x - 5) mod 7 times) and then drawn through the
+// dispatcher at (x - 1, y), i.e. as a 3 x 10 block at ((x - 5) / 7, y - 4).
+inline constexpr std::size_t kImage3x10 = 30;
+void shiftedImage(Page& page, int x, int y, std::span<const std::uint8_t> image, bool orMode) noexcept;
+
 // ---- text (routine $42D0) ----
 inline constexpr std::size_t kGlyphTableBytes = 33 * 9;  // 33 glyphs of 1 byte x 9 rows at $4553 (index 32 = the special glyph of code $21)
 // Draws one string record (column, row, codes..., code with bit 7 set) with the glyph table. Returns the number of record bytes consumed

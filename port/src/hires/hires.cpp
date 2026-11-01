@@ -119,6 +119,96 @@ void tile(Page& page, int x, int y, std::span<const std::uint8_t> tileTable) noe
     }
 }
 
+namespace {
+
+// The 6502 shift and rotate instructions on a byte with an explicit carry flag.
+struct Cpu {
+    bool carry = false;
+    void asl(std::uint8_t& b) noexcept {
+        carry = (b & 0x80) != 0;
+        b = static_cast<std::uint8_t>(b << 1);
+    }
+    void rol(std::uint8_t& b) noexcept {
+        const bool c = carry;
+        carry = (b & 0x80) != 0;
+        b = static_cast<std::uint8_t>((b << 1) | (c ? 1 : 0));
+    }
+    void ror(std::uint8_t& b) noexcept {
+        const bool c = carry;
+        carry = (b & 0x01) != 0;
+        b = static_cast<std::uint8_t>((b >> 1) | (c ? 0x80 : 0));
+    }
+};
+
+}  // namespace
+
+void drawImage(Page& page, int x, int y, std::span<const std::uint8_t> sevenCopies, bool orMode) noexcept {
+    const int px = x - 4;
+    if (px < 0) return;
+    const auto copy = shiftedCopy(sevenCopies, px, 3, 10);
+    if (copy.empty()) return;
+    const int column = pixelCell(px).column;
+    if (orMode) {
+        blitOr(page, column, y - 4, 3, 10, copy);
+    } else {
+        blitOrClearPalette(page, column, y - 4, 3, 10, copy);
+    }
+}
+
+void bigSprite(Page& page, int x, int y, std::span<const std::uint8_t> frame) noexcept {
+    if (x < 0 || frame.size() < kBigSpriteBytes) return;
+    std::array<std::uint8_t, kBigSpriteBytes> buf{};
+    for (std::size_t i = 0; i < kBigSpriteBytes; ++i) buf[i] = frame[i];
+    const Cell c = pixelCell(x);
+    for (int n = 0; n < c.shift; ++n) {  // routine $82B1: every row of 4 bytes, last row first
+        for (int row = 19; row >= 0; --row) {
+            std::uint8_t* r = &buf[static_cast<std::size_t>(row) * 4];
+            Cpu cpu;
+            cpu.asl(r[0]);
+            cpu.asl(r[0]);
+            cpu.rol(r[1]);
+            cpu.asl(r[1]);
+            cpu.rol(r[2]);
+            cpu.asl(r[2]);
+            cpu.rol(r[3]);
+            cpu.ror(r[2]);
+            cpu.ror(r[1]);
+            cpu.ror(r[0]);
+        }
+    }
+    for (int r = 0; r < 20; ++r) {
+        if (!rowOk(y + r)) continue;
+        const std::size_t base = rowOffset(y + r) + static_cast<std::size_t>(c.column);
+        for (int b = 0; b < 4; ++b) page.set(base + static_cast<std::size_t>(b), buf[static_cast<std::size_t>(r * 4 + b)]);
+    }
+}
+
+void shiftedImage(Page& page, int x, int y, std::span<const std::uint8_t> image, bool orMode) noexcept {
+    const int px = x - 5;
+    if (px < 0 || image.size() < kImage3x10) return;
+    std::array<std::uint8_t, kImage3x10> buf{};
+    for (std::size_t i = 0; i < kImage3x10; ++i) buf[i] = image[i];
+    const Cell c = pixelCell(px);
+    for (int n = 0; n < c.shift; ++n) {  // routine $7E4F: every row of 3 bytes, last row first
+        for (int row = 9; row >= 0; --row) {
+            std::uint8_t* r = &buf[static_cast<std::size_t>(row) * 3];
+            Cpu cpu;
+            cpu.asl(r[0]);
+            cpu.asl(r[0]);
+            cpu.rol(r[1]);
+            cpu.asl(r[1]);
+            cpu.rol(r[2]);
+            cpu.ror(r[1]);
+            cpu.ror(r[0]);
+        }
+    }
+    if (orMode) {
+        blitOr(page, c.column, y - 4, 3, 10, buf);
+    } else {
+        blitOrClearPalette(page, c.column, y - 4, 3, 10, buf);
+    }
+}
+
 std::size_t drawString(Page& page, std::span<const std::uint8_t> glyphs, std::span<const std::uint8_t> record) noexcept {
     if (glyphs.size() < kGlyphTableBytes || record.size() < 3) return 0;
     int column = record[0];

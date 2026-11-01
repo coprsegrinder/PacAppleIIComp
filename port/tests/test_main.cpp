@@ -1,4 +1,4 @@
-// Usage: pacman_tests [--image <game.dsk>] [--reference <other DOS 3.3 disk>]
+// Usage: pacman_tests [--image <game.dsk>] [--vectors <hires_vectors.bin>] [--reference <other DOS 3.3 disk>]
 // Tests that need the real disk images are skipped (and reported as skipped) when the paths are not given.
 #include <cstdio>
 #include <cstring>
@@ -9,6 +9,8 @@ int main(int argc, char** argv) {
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--image") == 0 && i + 1 < argc) {
             testfw::config().image = argv[++i];
+        } else if (std::strcmp(argv[i], "--vectors") == 0 && i + 1 < argc) {
+            testfw::config().vectors = argv[++i];
         } else if (std::strcmp(argv[i], "--reference") == 0 && i + 1 < argc) {
             testfw::config().reference = argv[++i];
         } else {

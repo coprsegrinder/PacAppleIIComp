@@ -2,6 +2,7 @@
 
 ## 2026-10-29
 * **Data pack (TASK-026, milestone M1):** `pacman_pack build/info`, a 60-range generated manifest (16,680 data bytes), loader that refuses any damaged or wrong-game pack (27 C++ tests).
+* TASK-027 part 2 (partly): image dispatcher, big sprite and shifted image in C++; 1,741 real-call vectors byte-exact; 3 suspect shifted-image vectors open.
 * TASK-027 part 1: C++ hires layer (page, lines, walls in both modes, blitters, clears, dots, tiles, text printer) with tests; walls and text match the verified models.
 * TASK-031f: cartoon open questions answered (key during a cartoon is discarded, each player gets cartoons, frame tables identified).
 * TASK-031e: cartoon 3 decoded and modelled exactly (814 calls); all three intermissions now have reference models.
