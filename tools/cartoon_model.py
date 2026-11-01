@@ -75,3 +75,68 @@ def cartoon1(body, flag1d=1):
             gx += 2
             ev.append(('dispatch', ghost_base(body, e0, flag1d), gx, gy))
     return ev
+
+
+def cartoon2(body, flag1d=1):
+    """Cartoon 2 ($83D0): Pac-Man (x from $C1, 2 pixels per 40 loops) walks left past a post (two vertical lines at x = $80, $81, rows $7C-$81, redrawn every 40 loops)
+    while the ghost (x from $E5, 2 pixels per 33 loops) follows. When the ghost reaches the post region (x < $7B) it tears: each step draws one more vertical line
+    from the table $847E (x, first row, last row $7F); when it stops at x = $71 it is redrawn 10 pixels further (the torn piece) with two more lines, and stays there
+    while Pac-Man walks on to x < $10. Lines are logged as ('vline', x, row0, row1)."""
+    ev = [('page_clear',), ('hires_on',)]
+    px, py, gx, gy = 0xC1, 0x7A, 0xE5, 0x7A
+    c66, d62, e0, c59, c80 = 0, 3, 1, 1, 1
+    tab = [body[0x847E - 0x4000 + i] for i in range(8)]
+    while True:
+        c59 -= 1
+        if c59 == 0:
+            c59 = 0x28
+            ev.append(('vline', 0x80, 0x7C, 0x81))
+            ev.append(('vline', 0x81, 0x7C, 0x81))
+            ev.append(('masked_clear', px - 4, py - 4))
+            px -= 2
+            if px < 0x10:
+                return ev
+            c66 += 1
+            c66 &= 0xFF
+            base = pac_base(body, c66 & 0x0F, d62)
+            c66 &= 0x0F
+            ev.append(('dispatch', base, px, py))
+        c80 -= 1
+        if c80 != 0:
+            continue
+        c80 = 0x21
+        if gx == 0x71:
+            continue
+        ev.append(('masked_clear', gx - 4, gy - 4))
+        gx -= 2
+        ev.append(('dispatch', ghost_base(body, e0, flag1d), gx, gy))
+        if gx >= 0x7B:
+            continue
+        if gx == 0x71:
+            ev.append(('masked_clear', gx - 4, gy - 4))
+            ev.append(('masked_clear', gx + 10 - 4, gy - 4))
+            ev.append(('dispatch', ghost_base(body, e0, flag1d), gx, gy))
+            ev.append(('vline', 0x74, 0x7D, 0x7F))
+            ev.append(('vline', 0x76, 0x7E, 0x7F))
+        else:
+            x = gx - 0x73
+            c80 = 0xA0
+            ev.append(('vline', tab[x], tab[x + 1], 0x7F))
+
+
+def oracle_calls(events):
+    """Reduce the oracle's call log (tools/trace_cartoon.py) to the same tuples the models produce."""
+    out = []
+    for e in events:
+        k = e[1]
+        if k in ('page_clear', 'hires_on'):
+            out.append((k,))
+        elif k == 'masked_clear':
+            out.append((k, e[14], e[5]))
+        elif k == 'dispatch':
+            out.append((k, e[2] | e[3] << 8, e[14], e[5]))
+        elif k == 'big_sprite':
+            out.append((k, e[8], e[9], e[12]))
+        elif k in ('vline', 'hline'):
+            out.append((k, e[2], e[3], e[15]))
+    return out
