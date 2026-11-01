@@ -2,6 +2,7 @@
 
 ## 2026-10-29
 * **Data pack (TASK-026, milestone M1):** `pacman_pack build/info`, a 60-range generated manifest (16,680 data bytes), loader that refuses any damaged or wrong-game pack (27 C++ tests).
+* TASK-031f: cartoon open questions answered (key during a cartoon is discarded, each player gets cartoons, frame tables identified).
 * TASK-031e: cartoon 3 decoded and modelled exactly (814 calls); all three intermissions now have reference models.
 * TASK-031d: cartoon 2 decoded and modelled exactly (482 drawing calls); golden cartoon chains now include line calls.
 * TASK-031c: cartoon schedule verified, cartoon 1 modelled exactly, golden cartoon data (docs/CARTOONS.md); corrected the box-clear table (6 entries).

@@ -36,7 +36,21 @@ Totals: 744 plain draw calls plus 70 shifted-image calls (814 in the model), 8,2
 | 3 | 8,211,963 | 5,598 | 3f7f1dbd25bf |
 The chains changed from the first version (TASK-031c) because the line routines `$8180/$8173` and the X register were added to the logged calls (cartoon 3 has 93 line calls). Final-page hashes and per-routine counts are in tests/golden/cartoon_hashes.json. Cartoon 2 draws with the frame tables `$9A42`, `$A472`, `$9D8A`, `$96FA` and has no big sprite; cartoon 3 adds nine more frame tables (`$7E16`, `$9970`, `$7DDA`, `$9CB8`, `$7E70`, `$7E34`, `$7DF8`, `$7DBC`, `$7E52`) and uses the other wrapper `$7DA9`.
 
-## 7. Still to do
-* The meaning of each frame table (Pac-Man, ghost, torn-cloth ghost, ...) is U; the port only needs the pointers and the images from the data pack.
-* The **pixels** of the cartoons are covered only by the golden final-page hashes and the call chains; the software shift `$7E4F` and the big-sprite shift `$82B1` are not modelled separately (the C++ code will be tested against the oracle's pages).
-* Whether the cartoon is shown for each player in two-player games, and whether a key press during a cartoon is seen afterwards, are U.
+## 7. The three open questions (TASK-031f)
+Tools: `tools/probe_cartoon_flow.py`, `tools/render_sheet.py` (the picture sheet is written to scratch/ and is never committed). Test: tests/test_cartoon_flow.py (about 6 minutes).
+**7.1 A key pressed during a cartoon is discarded (V on the oracle, I for the hardware latch).** The cartoons never read the keyboard, so the key stays in the keyboard latch. After the cartoon returns, the level-complete code goes on to the next level's set-up, and **its first keyboard access is `STA $C010` at `$565C` (the strobe clear), which throws the latched key away**. Run on a real game (level 2 completed by a poke): with a key latched at the cartoon's start, the first keyboard access afterwards is that strobe clear, and the game state 400 ticks later is identical to a control run without the key (same hash, same Pac-Man position and direction). *Caveat:* the oracle's keyboard queue latches a key only on a `$C000` read; I set the latch directly for this test, which is what the real keyboard does. For the port: ignore (clear) key presses made during a cartoon.
+**7.2 In a 2-player game each player gets their own cartoon (V).** `$50` is the current player (1 or 2), and the level `$55` is per player. In a 2-player game with the level ends forced by pokes, player 1 completed levels 1, 2, 3 (cartoon 1 started at level 2) and, after the switch of player (tick 2,693), player 2 completed levels 1, 2, 3 and **cartoon 1 started again for player 2 at their level 2**. So the schedule of section 1 applies to each player's own level count.
+**7.3 What the frame tables show (I: read from rendered pictures, standard colour model, shift-0 images; not from any text in the game).**
+| Table | Content |
+|---|---|
+| `$96E8` words 0-8 (`$96FA`, `$97CC`, `$989E`, `$9970`, `$9A42`, `$9B14`, `$9BE6`, `$9CB8`, `$9D8A`) | Pac-Man: 0 = closed (full disc); 1-4 = small mouth, 5-8 = wide mouth, one pair per direction (index = direction + 1 or + 5). Words 9-15 are not pointers. |
+| `$9E5C` words 0-5 (white-mode set, `$1D = 0`) | 0 = ghost body variant (frightened alternate), 1-4 = ghosts 1-4 (`$A0EA`, `$9F46`, `$A018`, `$9E74`: different silhouettes), 5 = **eyes only** (`$A28E`, an eaten ghost) |
+| `$9E5C` words 6-11 (colour set, `$1D <> 0`, the one the real game uses) | 6 = striped frightened frame (`$A3A0`), 7-10 = ghosts 1-4 (`$A472`, `$A544`, `$A616`, `$A472`; ghosts 1 and 4 share an image and differ only by colour), 9 is also the white frightened face (`$A616` with a zig-zag mouth), 11 = eyes only (`$A28E`) |
+| `$82E0`, `$8330`, `$8380` (4 x 20 bytes) | the **giant Pac-Man** of cartoon 1: closed, half open, wide open (animation order closed, half, wide, half) |
+| `$854E`, `$856C` (3 x 10) | **the torn cloth** the ghost drags in cartoon 3: two small ragged strips (consistent with the arcade's torn-cloth act; my reading) |
+| `$6B6E` + 36 x n, n = 0-8 (3 x 12) | the **fruit/bonus symbols**: n = 0 .. 7 look like cherries, strawberry, orange, apple/melon-like, a vertical-striped item, a spaceship-like shape, a bell and a key; **n = 8 (`$6C8E`) reads as the letters "HAL" over three small boxes** (the unexplained level-23 sprite; its meaning stays U) |
+The cartoon frame tables used in the three cartoons are therefore: cartoon 1 and 2 and 3 use Pac-Man frames 4 and 8 (direction 3) in phase 1 and frames of direction 2 in cartoon 3's return trip, ghost 1 in the colour set, the big Pac-Man (cartoon 1 only), the torn cloth images (cartoon 3 only), and plain lines (cartoons 2 and 3).
+
+## 8. Still to do
+* The frame names above are my reading of pictures; the port only needs the pointers and images, so nothing depends on them being right.
+* The pixels of the cartoons are covered only by the golden final-page hashes and the call chains; the software shifts `$7E4F` and `$82B1` are not modelled separately (the C++ code will be tested against the oracle's pages).
