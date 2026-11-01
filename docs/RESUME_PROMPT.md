@@ -72,9 +72,9 @@ and wait for my "go" before starting it (rule 11). Do not re-derive facts alread
 
 ## Next task
 Analysis done so far: 030a structure, 030c modes, 030d movement/house/eyes (docs/GHOST_ANALYSIS.md, GHOST_MODES.md, MOVEMENT.md). Eyes table $A360 verified complete; release tables $54A4/$54B4/$54C4; Pac-Man uses the same junction graph; attract demo = replayed move stream (I).
-031a part 1 done (docs/PACMAN_RULES.md: dots 10, energizer 50, lives $58 = $83, collision/ghost-eat chain/bonus life/fruit only inferred).
-Remaining analysis: TASK-031a part 2 (Pac-Man movement/turning, $59 speed rule, observed ghost-eat scores; avoid the attract demo polluting traces: stop when $E8=1), TASK-030b (exact rules of the 48 routines), sound data, level/fruit tables ($6AFE, $7851, ...), TASK-021 (unexecuted code).
-Suggested next: 031a part 2, then 030b, then sound. After that the analysis is ready for M2+ C++ (hires layer first).
+TASK-031a done (docs/PACMAN_RULES.md: scoring, lives, bonus life, speed rule verified; collision distances, turning, dot penalty, fruit counter only inferred). Tip: stop traces when $E8=1 (attract demo pollutes them).
+Remaining analysis: TASK-030b (exact rules of the 48 routines), sound data, level/fruit tables ($6AFE, $7851, ...), TASK-021 (unexecuted code).
+Suggested next: 030b, then sound. After that the analysis is ready for M2+ C++ (hires layer first).
 
 Emulator control (verified): launch `AppleWin-x64.exe -d1 <scratch\work.dsk>`; drive it with
 `powershell -File tools/awin_ctl.ps1 -Key F7` (debugger), `-Text 'BSAVE "main.bin",0,C000'` (dump main RAM to scratch/),

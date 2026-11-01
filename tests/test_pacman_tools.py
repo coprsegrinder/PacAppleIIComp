@@ -1,7 +1,7 @@
 """Tests for tools/trace_pacman.py (needs scratch/extract from the original disk; run: python -I tests/test_pacman_tools.py)."""
 import os, sys, unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'tools'))
-import trace_pacman
+import trace_pacman, trace_speed, trace_eatscore
 
 
 class PacmanTrace(unittest.TestCase):
@@ -24,6 +24,19 @@ class PacmanTrace(unittest.TestCase):
         self.assertGreaterEqual(len(caught), 2)
         self.assertGreaterEqual(len(lives), 2)
         self.assertEqual(lives[0]['old'], 0x83)
+
+
+class PacmanRules(unittest.TestCase):
+    def test_step_delay_rule_matches_code(self):
+        rows = trace_speed.run(3, 20_000_000)
+        self.assertGreater(len(rows), 100)
+        self.assertTrue(all(r[0] == r[1] for r in rows))
+        self.assertEqual({r[0] for r in rows} - {9, 11}, set())
+
+    def test_ghost_eaten_scores_200_and_bonus_life_at_10000(self):
+        log, bonus, lives, e8 = trace_eatscore.run(7, 100_000_000, want=1)
+        self.assertEqual((log[0]['score_after'] - log[0]['score_before'], log[0]['step'], log[0]['step_after']), (0x200, 2, 4))
+        self.assertTrue(any(l == 4 and sc >= 0x10000 for l, sc in lives))   # $58 = $04: 4 lives, bonus flag consumed
 
 
 if __name__ == '__main__':
