@@ -2,6 +2,7 @@
 
 ## 2026-10-29
 * **Data pack (TASK-026, milestone M1):** `pacman_pack build/info`, a 60-range generated manifest (16,680 data bytes), loader that refuses any damaged or wrong-game pack (27 C++ tests).
+* TASK-028a: C++ page-to-colour function with tests (class counts equal the verified Python model).
 * TASK-027b3: the 3 failing vectors were a capture fault; 149 verified shifted-image pairs; all 1,891 C++ hires vectors pass.
 * TASK-027 part 2 (partly): image dispatcher, big sprite and shifted image in C++; 1,741 real-call vectors byte-exact; 3 suspect shifted-image vectors open.
 * TASK-027 part 1: C++ hires layer (page, lines, walls in both modes, blitters, clears, dots, tiles, text printer) with tests; walls and text match the verified models.
