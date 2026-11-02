@@ -41,7 +41,17 @@ def patched():
     return mc
 G.factory = patched
 import hashlib
-if SC == 'F':
+CUSTOM = {
+    # own scenarios (not golden): A's keys plus these pokes [tick, address, value]
+    'G': [[50, 0x57, 3], [300, 0x60, 0x8B], [300, 0x61, 0x6B]],     # fruit after 3 items; at tick 300 Pac-Man is put on the fruit's place (x $8B, y $6B)
+    'H': [[5, 0x55, 6], [100, 0x56, 1]],
+    'J': [[200, 0x84, 0x8B], [200, 0x85, 0x47], [200, 0x95, 1]],      # ghost 1 is put on the door cell with its in-house flag set: it runs the house-exit script and redraws the door with $1E = its own flag 1                            # level 6; at tick 100 one item is left: the next item ends the level (-> level 7: icons)
+}
+if SC in CUSTOM:
+    stored = dict(json.load(open('tests/golden/gameplay_traces.json'))['scenarios']['A'])
+    stored['pokes'] = CUSTOM[SC]
+    G.SCENARIOS[SC] = dict(G.SCENARIOS['A'])
+elif SC == 'F':
     # scenario F (own, not golden): the keys of A; at tick 100 all four ghosts are made frightened and the frightened timer $E1/$E2 is set to $00B0, so the timer
     # runs below $80 and the flashing frames appear (no energizer is eaten in A's first 700 ticks). Also writes scratch/ticks_F.bin like tools/record_ticks.py.
     stored = dict(json.load(open('tests/golden/gameplay_traces.json'))['scenarios']['A'])
@@ -59,12 +69,12 @@ def rec(m):
 G.state_bytes = rec
 G.run(SC, stored['inputs'], stored['pokes'])
 G.state_bytes = orig_state
-if SC == 'F':
+if SC in ('F', 'G', 'H', 'J'):
     import struct as _st
     h = b''
     for x in states[:N + 1]:
         h = hashlib.sha256(h + x).digest()
-    with open('scratch/ticks_F.bin', 'wb') as f:
+    with open('scratch/ticks_%s.bin' % SC, 'wb') as f:
         f.write(b'TICK' + _st.pack('<II', N + 1, 1010) + h)
         for x in states[:N + 1]:
             f.write(x)

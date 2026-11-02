@@ -156,7 +156,7 @@ TEST(tickdraw_calls_and_pages_equal_the_oracle) {
         std::size_t ticks = 0, withCalls = 0, calls = 0, badTicks = 0, pagesCompared = 0, badPages = 0, shown = 0;
         std::uint32_t nextPage = 0;
         // the recorder replays N ticks with the scenario's keys and pokes and runs on a little without them: only the first N ticks are valid (A, B, C: 700; D: 1600)
-        const std::size_t scenarioLimit = sc.letter == "D" ? 1600 : sc.letter == "A" ? 2090 : 700;
+        const std::size_t scenarioLimit = sc.letter == "D" ? 1600 : sc.letter == "A" ? 2090 : sc.letter == "G" ? 1399 : sc.letter == "H" ? 499 : 700;
         const std::size_t limit = std::min<std::size_t>(scenarioLimit, std::min(logged.size(), tr.ticks()) - 1);
         for (std::size_t k = 0; k < limit; ++k) {
             // page comparison at the START of tick k (everything before it has been drawn)
@@ -193,7 +193,7 @@ TEST(tickdraw_calls_and_pages_equal_the_oracle) {
             ++ticks;
             calls += theirs.size();
             withCalls += !theirs.empty();
-            const bool caughtTick = ((b.lives() & 0x7F) < (a.lives() & 0x7F) && a.lives() != 0) || b.level() > a.level();   // the death animation's own calls are not rebuilt (its result is, below)
+            const bool caughtTick = ((b.lives() & 0x7F) < (a.lives() & 0x7F) && a.lives() != 0) || (b.level() > a.level() && a.dotsLeft() == 1);   // the death animation's own calls are not rebuilt (its result is, below)
             if (!caughtTick && !(compare == theirs)) {
                 if (badTicks++ < 4) {
                     std::printf("    %s tick %zu: mine", sc.letter.c_str(), k);
@@ -203,7 +203,7 @@ TEST(tickdraw_calls_and_pages_equal_the_oracle) {
                     std::printf("\n");
                 }
             }
-            const bool levelUp = b.level() > a.level();   // the level was completed: the original flashes the maze and builds the next level's first screen
+            const bool levelUp = (b.level() > a.level() && a.dotsLeft() == 1);   // the level was completed: the original flashes the maze and builds the next level's first screen
             if (((b.lives() & 0x7F) < (a.lives() & 0x7F) && a.lives() != 0) || levelUp) {
                 // Pac-Man was caught: the original plays the death animation and then builds the first screen again from the state (walls, door, dots of the CURRENT
                 // map, labels, the score and high score, lives icons, Pac-Man at his start); the ghosts appear with the steps of the next ticks. The animation itself is
@@ -223,4 +223,79 @@ TEST(tickdraw_calls_and_pages_equal_the_oracle) {
         CHECK(badTicks == 0);
         CHECK(pagesCompared >= 50 && badPages == 0);
     }
+}
+
+TEST(tickdraw_death_and_level_end_sequences_equal_the_oracle_log) {
+    if (testfw::config().image.empty() || testfw::config().ticks.empty()) {
+        std::printf("    SKIPPED (needs --image and --ticks)\n");
+        return;
+    }
+    datapack::Pack pack;
+    CHECK(loadPack(pack));
+    int checked = 0;
+    for (const auto& sc : scenarios()) {
+        std::string why;
+        const auto tr = TickTrace::load(sc.ticksPath, why);
+        if (!tr.ok()) continue;
+        const auto logged = parseLog(sc.callsPath);
+        const std::size_t limit = std::min(logged.size(), tr.ticks()) - 1;
+        for (std::size_t k = 0; k < limit; ++k) {
+            const GameState a = fromOracleLayout(tr.state(k));
+            const GameState b = fromOracleLayout(tr.state(k + 1));
+            const bool death = (b.lives() & 0x7F) < (a.lives() & 0x7F) && a.lives() != 0;
+            const bool levelEnd = (b.level() > a.level() && a.dotsLeft() == 1);
+            if (!death && !levelEnd) continue;
+            const auto& block = logged[k];
+            // the tail starts after the first "1UP label + mark" pair (death) or at the Pac-Man clear after it (level end)
+            std::size_t start = 0;
+            bool found = false;
+            for (std::size_t i = 0; i + 1 < block.size(); ++i)
+                if (block[i].type == 2 && block[i].p[0] == 0x55F7 && block[i + 1].type == 6 && block[i + 1].p[0] == 0x7201 && block[i + 1].p[1] == 47) {
+                    start = i + 2;
+                    found = true;
+                    if (death) break;      // the first pair is the blink; for a level end the LAST pair before the dot pass counts (below)
+                }
+            if (!found) continue;
+            RestartInputs in;
+            if (death) {
+                // positions and the last Pac-Man image are what the game core knows at that moment; here they are read from the first calls of the tail
+                std::vector<DrawCall> tail(block.begin() + static_cast<std::ptrdiff_t>(start), block.end());
+                for (int g = 0; g < 4; ++g) {                        // the tail begins with the clears of ghosts 4, 3, 2, 1
+                    in.ghostXY[static_cast<std::size_t>(3 - g) * 2] = tail[static_cast<std::size_t>(g)].p[1] + 4;
+                    in.ghostXY[static_cast<std::size_t>(3 - g) * 2 + 1] = tail[static_cast<std::size_t>(g)].p[2] + 4;
+                }
+                in.pacX = tail[4].p[1] + 4;
+                in.pacY = tail[4].p[2] + 4;
+                in.pacImage = tail[5].p[0];
+            } else {
+                // level end: the tail starts with the Pac-Man clear that follows the label pair; take the pair that precedes a type 3
+                std::size_t s2 = 0;
+                for (std::size_t i = 0; i + 2 < block.size(); ++i)
+                    if (block[i].type == 6 && block[i].p[0] == 0x7201 && block[i].p[1] == 47 && block[i + 1].type == 3 && block[i + 2].type == 1) s2 = i + 1;
+                if (s2 == 0) continue;
+                start = s2;
+                in.pacX = block[start].p[1] + 4;
+                in.pacY = block[start].p[2] + 4;
+                in.pacImage = block[start + 1].p[0];
+            }
+            DisplayState display;
+            display.high = {b.zp(0x52), b.zp(0x53), b.zp(0x54)};   // the high score equals the score in these runs
+            const auto mine = restartCalls(death ? RestartKind::Death : RestartKind::LevelEnd, in, b, pack, display);
+            std::vector<DrawCall> theirs;
+            for (std::size_t i = start; i < block.size(); ++i) theirs.push_back(block[i]);
+            const bool same = mine == theirs;
+            std::printf("    %s tick %zu (%s): %zu calls logged, %zu derived, %s\n", sc.letter.c_str(), k, death ? "death" : "level end", theirs.size(), mine.size(), same ? "EQUAL" : "DIFFERENT");
+            if (!same) {
+                for (std::size_t i = 0; i < std::min(mine.size(), theirs.size()); ++i)
+                    if (!(mine[i] == theirs[i])) {
+                        std::printf("      first difference at call %zu: mine [%d %d %d %d] oracle [%d %d %d %d]\n", i, mine[i].type, mine[i].p[0], mine[i].p[1], mine[i].p[2], theirs[i].type, theirs[i].p[0],
+                                    theirs[i].p[1], theirs[i].p[2]);
+                        break;
+                    }
+            }
+            CHECK(same);
+            ++checked;
+        }
+    }
+    CHECK(checked >= 1);
 }

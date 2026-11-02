@@ -1,5 +1,9 @@
 #include "tickdraw.h"
 
+#include <cstdlib>
+
+#include <algorithm>
+
 #include "screen.h"
 #include "../hires/hires.h"
 
@@ -40,6 +44,18 @@ GameState drawnState(const GameState& before, const GameState& after, std::size_
 }
 }  // namespace
 
+namespace {
+// A ghost whose place changed by more than one step is not stepping: it was put there (a poke in the experiments) - except the tunnel wrap (same row, almost the whole
+// width) and the return to the house (eyes 1 -> 0, handled separately).
+bool ghostStepped(const GhostRecord& a, const GhostRecord& b) {
+    const int dx = std::abs(static_cast<int>(a.x()) - static_cast<int>(b.x())), dy = std::abs(static_cast<int>(a.y()) - static_cast<int>(b.y()));
+    if (dx == 0 && dy == 0) return false;
+    if (a.b[9] == 1 && b.b[9] == 0) return true;
+    if (dy == 0 && dx >= 0x90) return true;
+    return dx <= 2 && dy <= 2;
+}
+}  // namespace
+
 std::vector<DrawCall> spriteCalls(const GameState& before, const GameState& after, const datapack::Pack& pack, bool pacmanActed, std::uint16_t timer) {
     std::vector<DrawCall> out;
     const auto pacFrames = pack.find(0x96E8, 18);
@@ -52,7 +68,7 @@ std::vector<DrawCall> spriteCalls(const GameState& before, const GameState& afte
     for (int g = 3; g >= 0; --g) {
         const GhostRecord& a = before.ghosts[static_cast<std::size_t>(g)];
         const GhostRecord& b = after.ghosts[static_cast<std::size_t>(g)];
-        if (a.x() == b.x() && a.y() == b.y()) continue;
+        if (!ghostStepped(a, b)) continue;
         int flag = 0;
         const std::uint16_t base = ghostImageBase(drawnState(before, after, static_cast<std::size_t>(g)), static_cast<std::size_t>(g), timer, pack, flag);
         out.push_back(DrawCall{3, {kMaskTable, a.x() - 4, a.y() - 4, 0, 0}});
@@ -137,13 +153,19 @@ std::vector<DrawCall> tickCalls(const GameState& before, const GameState& after,
     for (int g = 0; g < 4; ++g)
         if (before.ghosts[static_cast<std::size_t>(g)].b[9] == 0 && after.ghosts[static_cast<std::size_t>(g)].b[9] == 1 && before.ghosts[static_cast<std::size_t>(g)].b[8] != 0) ghostEatenAny = true;
     if (!ghostEatenAny && before.demo == 0) scoreAfterItem = scoreAfter;   // no ghost: the whole change is an item (also an item eaten from the master copy after a poke)
+    // $79CD-$79FA: Pac-Man on the fruit's place with the fruit active: the box (column 16, row 102) is cleared, then $6CB2 clears the score box and adds the fruit's points
+    // (the score display follows); $E7 becomes 2 (the points are shown for a while)
+    if (exBefore.e7 == 1 && exAfter.e7 == 2) {
+        out.push_back(DrawCall{12, {16, 102, 0, 0, 0}});
+        out.push_back(DrawCall{4, {1, 0, 0, 0, 0}});
+    }
     if (scoreAfterItem != scoreBefore) scoreDisplay(out, scoreAfterItem, display, pack);
     const auto dot = pack.find(0x61A8, hires::kDotTableBytes);
     std::size_t k = split;
     for (int g = 3; g >= 0; --g) {
         const GhostRecord& a = before.ghosts[static_cast<std::size_t>(g)];
         const GhostRecord& b = after.ghosts[static_cast<std::size_t>(g)];
-        if (a.x() == b.x() && a.y() == b.y()) continue;
+        if (!ghostStepped(a, b)) continue;
         int flag = 0;
         ghostImageBase(drawnState(before, after, static_cast<std::size_t>(g)), static_cast<std::size_t>(g), timer, pack, flag);
         const int flagBefore = display.lastFlag1E;   // what the previous image draw left in $1E: the door lines are drawn with it
@@ -197,16 +219,22 @@ std::vector<DrawCall> tickCalls(const GameState& before, const GameState& after,
             (after.map[static_cast<std::size_t>(col) * 32 + static_cast<std::size_t>(row)] & 1) != 0)
             out.push_back(DrawCall{5, {col * 6 + 0x3B, row * 6 + 5, 0, 0, 0}});   // type 5: p0 = x, p1 = y (as logged)
     }
-    // $6A7C at the end of the main loop: the bonus fruit. While it is active ($E7 = 1) and this is the tick in which $59 has counted down to 1 (the next tick is the
-    // acting one), its lifetime ($5A/$5B, counted down by the routine) either still runs: the fruit image ($5C/$5D, 12 x 3) is drawn at column 19, row 102;
-    // or has just run out: the box (column 16, row 102, 12 rows x 8 bytes) is cleared and the fruit is gone.
-    if (exAfter.e7 == 1 && after.zp(0x59) == 1 && before.demo == 0) {
-        const unsigned life = after.zp(0x5A) + after.zp(0x5B);
-        if (life != 0) out.push_back(DrawCall{7, {after.zp(0x5C) | (after.zp(0x5D) << 8), 19, 102, 0, 0}});
-        else out.push_back(DrawCall{12, {16, 102, 0, 0, 0}});
-    } else if (exBefore.e7 == 1 && exAfter.e7 == 0 && after.zp(0x59) != 1) {
-        // the lifetime ran out in the same call that the state shows with E7 already cleared
-        out.push_back(DrawCall{12, {16, 102, 0, 0, 0}});
+    // $6A7C at the end of the main loop: the bonus fruit. In the tick in which $59 has counted down to 1 (the next tick is the acting one) the lifetime ($5A/$5B,
+    // counted down by the routine) is checked: while it runs, the fruit image ($5C/$5D, 12 x 3) is drawn at column 19, row 102 ($E7 = 1) or the fruit's points are shown as
+    // digits from x 145, y 104 ($E7 = 2: the table $6CD4 gives the points in hundreds); when it has run out the box (column 16, row 102) is cleared and $E7 becomes 0.
+    {
+        const int e7 = exAfter.e7 != 0 ? exAfter.e7 : exBefore.e7;
+        if (e7 != 0 && after.zp(0x59) == 1 && before.demo == 0) {
+            const unsigned life = after.zp(0x5A) + after.zp(0x5B);
+            if (life == 0) {
+                out.push_back(DrawCall{12, {16, 102, 0, 0, 0}});
+            } else if (e7 == 1) {
+                out.push_back(DrawCall{7, {after.zp(0x5C) | (after.zp(0x5D) << 8), 19, 102, 0, 0}});
+            } else {
+                const auto points = pack.find(0x6CD4, 16);
+                if (!points.empty()) digitCalls(out, static_cast<std::uint32_t>(points[std::min<std::size_t>(after.level(), 15)]) << 8, 145, 104, pack);
+            }
+        }
     }
     // $570C at the end of the tick: the 1UP blink, then the energizer blink
     if (exBefore.e6 != exAfter.e6) {
@@ -304,6 +332,72 @@ bool executeCall(hires::Page& page, const DrawCall& c, const datapack::Pack& pac
         }
         default: return false;
     }
+}
+
+namespace {
+
+void dotPassCalls(std::vector<DrawCall>& out, const GameState& s) {   // $6113: columns 0..26, rows 1..30
+    for (int col = 0; col < 27; ++col)
+        for (int row = 1; row < 31; ++row) {
+            const std::uint8_t cell = s.map[static_cast<std::size_t>(col) * 32 + static_cast<std::size_t>(row)];
+            if (cell == 0) continue;
+            const int x = 59 + 6 * col, y = 11 + 6 * (row - 1);
+            if (cell & 1) out.push_back(DrawCall{5, {x, y, 0, 0, 0}});
+            else out.push_back(DrawCall{6, {0x61CA, x - 1, y - 1, 0, 0}});
+        }
+}
+
+}  // namespace
+
+std::vector<DrawCall> restartCalls(RestartKind kind, const RestartInputs& in, const GameState& after, const datapack::Pack& pack, DisplayState& display) {
+    std::vector<DrawCall> out;
+    const auto frames = pack.find(0x96E8, 18);
+    if (frames.empty()) return out;
+    const int clearX = in.pacX - 4, clearY = in.pacY - 4;
+    if (kind == RestartKind::Death) {
+        for (int g = 3; g >= 0; --g)                                                  // $8BEF-$8BFC: ghosts 4, 3, 2, 1
+            out.push_back(DrawCall{3, {kMaskTable, in.ghostXY[static_cast<std::size_t>(g) * 2] - 4, in.ghostXY[static_cast<std::size_t>(g) * 2 + 1] - 4, 0, 0}});
+        out.push_back(DrawCall{3, {kMaskTable, clearX, clearY, 0, 0}});              // $8BFE-$8C01: Pac-Man
+        out.push_back(DrawCall{1, {in.pacImage, in.pacX, in.pacY, 1, 0}});          // $7EC0: the death animation
+        out.push_back(DrawCall{3, {kMaskTable, clearX, clearY, 0, 0}});
+        for (int k = 0; k < 6; ++k) {
+            out.push_back(DrawCall{9, {0x7F13 + 30 * k, in.pacX, in.pacY, 1, 0}});
+            out.push_back(DrawCall{3, {0x6A04, in.pacX - 5, in.pacY - 4, 0, 0}});
+        }
+    } else {
+        out.push_back(DrawCall{3, {kMaskTable, clearX, clearY, 0, 0}});              // the last step's Pac-Man is erased and drawn again before the maze flash
+        out.push_back(DrawCall{1, {in.pacImage, in.pacX, in.pacY, 1, 0x80}});   // the image of his last step
+    }
+    dotPassCalls(out, after);
+    // the screen's labels, score, high score, level icon, lives icons ($550A, $56CF) in the order the original issues them
+    out.push_back(DrawCall{2, {0x55F7, 0, 6, 7, 7}});
+    out.push_back(DrawCall{6, {0x7201, 47, 6, 0, 0}});
+    out.push_back(DrawCall{4, {1, 0, 0, 0, 0}});
+    {
+        std::uint32_t score = after.zp(0x52) | (after.zp(0x53) << 8) | (after.zp(0x54) << 16);
+        digitCalls(out, score, 40, 16, pack);
+        out.push_back(DrawCall{2, {0x5628, 0, 84, 7, 7}});
+        out.push_back(DrawCall{4, {0, 0, 0, 0, 0}});
+        std::uint32_t hi = display.high[0] | (display.high[1] << 8) | (display.high[2] << 16);
+        digitCalls(out, hi, 40, 94, pack);
+    }
+    {
+        const auto fruitTable = pack.find(0x6AFE, 27 * 4);
+        if (!fruitTable.empty()) {
+            const std::size_t li = std::min<std::size_t>(after.level(), 26) * 4;
+            out.push_back(DrawCall{7, {fruitTable[li] | (fruitTable[li + 1] << 8), 33, 176, 0, 0}});
+        }
+        const int icons = (after.lives() & 0x7F) > 0 ? (after.lives() & 0x7F) - 1 : 0;
+        for (int i = 0; i < icons; ++i) out.push_back(DrawCall{1, {0x9CB8, 9 + 12 * i, 178, 1, 0x80}});
+    }
+    const int startImage = frames[0] | (frames[1] << 8);
+    out.push_back(DrawCall{1, {startImage, after.pacX(), after.pacY(), 1, 0}});     // Pac-Man at his start ($5839: $1E = 0)
+    if (kind == RestartKind::Death) {
+        out.push_back(DrawCall{2, {0x5890, 17, 104, 5, 7}});                         // READY
+        out.push_back(DrawCall{1, {startImage, after.pacX(), after.pacY(), 1, 0}});
+    }
+    display.lastFlag1E = 0;
+    return out;
 }
 
 }  // namespace pacman::core

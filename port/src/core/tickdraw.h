@@ -59,4 +59,21 @@ std::vector<DrawCall> tickCalls(const GameState& before, const GameState& after,
 // Executes one call on the page with the verified hires routines (all call types of this file; the data comes from the pack). False if the pack lacks data.
 bool executeCall(hires::Page& page, const DrawCall& call, const datapack::Pack& pack);
 
+// The drawing calls of the two long "blocking" sequences (TASK-029g9), as the original issues them INSIDE one tick. Both end with the rebuilt screen; the walls are
+// redrawn by line routines that the call collector does not log (and the maze flash of the level end likewise), so they are not part of the lists.
+//   death (after the ghosts' steps and the 1UP blink): erase the four ghosts (4, 3, 2, 1) and Pac-Man, Pac-Man's frame, six shifted death frames ($7F13 + 30 k), each
+//     followed by a clear with the second mask table; then the dot pass, the screen's labels/score/high score/level icon/lives icons, Pac-Man at his start,
+//     the READY text and Pac-Man again;
+//   level end (after the last item's step and score display): Pac-Man erased and drawn again, the dot pass of the NEW map, the same labels..., Pac-Man at his start.
+enum class RestartKind { Death, LevelEnd };
+
+struct RestartInputs {
+    int pacX = 0, pacY = 0;                     // Pac-Man's place when the sequence starts
+    int pacImage = 0;                           // the image address of his last frame (the step draw of that tick)
+    std::array<int, 8> ghostXY{};               // ghost 1..4 places (x, y pairs) when the sequence starts (death only)
+};
+
+// `after` is the state of the new life / new level (map, score, lives, level); display.high is used for the high score. Returns the calls in order.
+std::vector<DrawCall> restartCalls(RestartKind kind, const RestartInputs& in, const GameState& after, const datapack::Pack& pack, DisplayState& display);
+
 }  // namespace pacman::core

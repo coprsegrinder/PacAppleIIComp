@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2026-10-29
+* TASK-029g9: fruit eaten/erased, death and level-end draw sequences derived (equal to the oracle logs), level icon to level 7; scenarios A-D, F, G, H, J exact in calls and pages.
 * TASK-029g8: white flash frame verified, fruit drawn, rebuilt screens after a death and after a level end exact; scenarios A (2,090 ticks), B, C (700), D (1,600), F (700) equal the oracle in calls and pages.
 * TASK-029g7: ghost-eaten sequence, blue frame, respawn and energizer erase rebuilt; scenarios A, B, C, D, F: drawing calls and pages equal the oracle (B and C to the end of level 1).
 * TASK-029g6: door palette rule understood; 1UP and energizer blinks rebuilt; scenario A exact in calls and 70 pages with nothing excluded; scenario D exact up to tick 465.

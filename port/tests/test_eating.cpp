@@ -96,7 +96,9 @@ std::size_t run(const TickTrace& tr, const JunctionGraph& graph, const datapack:
         }
         // a ghost eaten in the same tick (200, 400, 800, 1600 points by the ghost logic, M5) adds to the score: exempt, counted
         const long scoreGap = static_cast<long>(fromOracleLayout(tr.state(k + 1)).score()) - static_cast<long>(s.score());
-        const bool ghostScore = !r.ate && (scoreGap == 200 || scoreGap == 400 || scoreGap == 800 || scoreGap == 1600);
+        // a bonus fruit eaten in the same tick (points 100, 300, 500, 700, 1000, 2000, 3000, 5000: another routine, $6CB2) is exempt too
+        const bool ghostScore = !r.ate && (scoreGap == 200 || scoreGap == 400 || scoreGap == 800 || scoreGap == 1600 || scoreGap == 100 || scoreGap == 300 || scoreGap == 500 ||
+                                           scoreGap == 700 || scoreGap == 1000 || scoreGap == 2000 || scoreGap == 3000 || scoreGap == 5000);
         if (ghostScore) {
             ++tot.ghostScore;
             continue;
