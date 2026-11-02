@@ -96,7 +96,7 @@ Statuses: Planned / In progress / Implemented / Tested / Verified / Blocked / De
 | TASK-029g10 | Last drawing gaps: door low-bit (flag 1), two-player screens (record a 2-player game), levels above 7, sequence timing | Planned | 029g9 | calls and pages exact | (partly done: two-player first screen, K/L/M, P to tick 1975; player switch open)
 | TASK-029h | Integration `GameCore::tick`, cycle clock + GameWindow program, cost-per-tick decision | Planned | 029a-g, 028k, 028l | A-D end to end; the game is playable on screen without ghosts' logic (fed) |
 | TASK-029h0 | apple2tc toolchain built (gcc), sample proven; plan for full-coverage decompilation | Done (2026-11-02) | - | Bolo sample decompiled to C; docs/M4_PLAN.md |
-| TASK-029h1 | Game memory image (.b33) from the verified disk | Planned | 029h0 | image loads and runs in a2run |
+| TASK-029h1 | Game memory image (.b33) from the verified disk | Done (2026-11-02) | 029h0 | image loads and runs in a2run |
 | TASK-029h2 | Run data (coverage) from all scenarios | Planned | 029h1 | JSON accepted by apple2tc |
 | TASK-029h3 | apple2tc listing + coverage report = what is still not understood | Planned | 029h2 | report in docs/ |
 | TASK-029h4 | Compare generated C with the rebuilt logic | Planned | 029h3 | - |
