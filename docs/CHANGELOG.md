@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2026-10-29
+* TASK-029f2: start of a life rebuilt from the pack tables; the new game no longer uses oracle literals (except $78/$79); the state after every catch equals the oracle.
 * TASK-029f1: ghost contact, ghost eaten, lives lost and the extra life at 10,000 points rebuilt; equal to the oracle in 9 catches, 4 eaten ghosts and 1 extra life.
 * TASK-029d2d: natural tunnel recording (no pokes, 4 wraps) after fixing the controller; poked tunnel recording re-recorded with two identical replays.
 * TASK-029d2c/029d4: demo stream in the C++ core (pointer equals the original on 4,000 ticks); natural tunnel recording; item test and eating rebuilt (6,294 acting ticks match).

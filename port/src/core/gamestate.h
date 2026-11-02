@@ -56,10 +56,10 @@ std::array<std::uint8_t, kStateBytes> toOracleLayout(const GameState& s);
 GameState fromOracleLayout(std::span<const std::uint8_t> bytes);   // bytes must be kStateBytes long, otherwise a zero state
 
 // The state at the first tick of a new one-player game (tick 0 of all four golden scenarios, which are identical).
-// Sources, honestly: the MAP is the pristine copy at $65BA of the data pack (Verified: equals the oracle); the NEW-GAME constants (score 0, demo off,
-// level 1, lives $83, items $F8, fruit counter $40) are read from the new-game routine $54D5 (code read, Verified by the equal state); the REST
-// (Pac-Man start position and direction, junction numbers, the four ghost records, timers) are the oracle's values taken as literals, because the
-// routines that set them (start of life $53BE.., ghost house reset $6D30, the get-ready pass) are reconstructed in later pieces (029d, 029f, M5).
+// (Defined in lifestart.cpp since TASK-029f2: it now uses startOfLife() and the pack tables, no oracle literals except $78/$79.)
+// Sources: the MAP is the pristine copy at $65BA of the data pack; the player bytes $52-$59 (score 0, level 1, items $F8, fruit counter $40, lives $83,
+// step counter 1) come from the new-game routines $54D5/$531E; Pac-Man's start, the four ghost records and the house countdowns come from the pack tables
+// at $5446/$5454/$54A4.. through the start-of-life routine $53E6 (lifestart.h). Only $78/$79 (leftovers of the ghost set-up) are literals from the oracle.
 // Returns false and leaves the state unchanged if the pack lacks the map.
 bool newGameState(const datapack::Pack& pack, GameState& out);
 
