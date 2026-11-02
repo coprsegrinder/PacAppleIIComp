@@ -42,3 +42,6 @@ Both routes now also build `pacman_view.exe` (GDI window; `--pack <pack> [--page
 
 ## Playing the current state (TASK-029h)
 `out\bat\pacman_pack.exe build "Pacman (1983)(Atari).dsk" scratch\local.pmpk` (once), then `out\bat\pacman_play.exe --pack scratch\local.pmpk --scale 3`. Ghosts do not exist yet (M5); closing the window quits.
+
+## Make a ready-to-run folder (dist/)
+`dist\` (git-ignored) holds pacman_play.exe, pacman_pack.exe, pacman_verify.exe (copied from `outat\` after `portuild.bat`) and `Play-PacMan.bat` (source: `tools\Play-PacMan.bat`): double-click it; the first time it builds `game.pmpk` from `Pacman (1983)(Atari).dsk` (next to it or one folder up), then starts the game. The data file and the disk image are never to be committed or shared.
