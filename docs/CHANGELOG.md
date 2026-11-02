@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2026-10-29
+* TASK-028j: window, pacing and input design decided (docs/WINDOW_DESIGN.md): square pixels, virtual cycle clock, hotkeys only, GDI for now.
 * TASK-028i: CMake route verified (all targets build, ctest passes, CMake-built viewer passes the window tests).
 * TASK-028h: cartoons 1-3 replay exactly in C++ (vertical cartoon lines added); window shows a mid-cartoon picture (`--calls N`), pixel-exact.
 * TASK-028g1: replay library; `pacman_view --script` shows a replayed original screen (0 differing pixels vs the original final page).
