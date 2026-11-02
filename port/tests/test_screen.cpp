@@ -1,5 +1,5 @@
 // Tests of the play screen drawing (src/core/screen): Pac-Man's frame choice, and the first-tick page against the oracle's (needs --image and
-// --page0 scratch/page_tick0.bin made by tools/record_page0.py). The page drawn from the NEW-GAME STATE (walls, door, dots, Pac-Man) must equal the
+// --page0 scratch/page_tick0.bin made by tools/record_page0.py). The page drawn from the NEW-GAME STATE (walls, door, dots, score area, labels, icons,
 // oracle's hi-res page at the first tick of a game everywhere except in the areas that later parts draw (score and labels, the lives and fruit icons); those areas are listed here, and the test also checks that the differences stay inside them.
 #include <cstdint>
 #include <fstream>
@@ -75,6 +75,7 @@ TEST(screen_first_tick_page_equals_the_oracle_outside_the_known_gaps) {
     CHECK(newGameState(loaded.pack, state));
     hires::Page page;
     CHECK(drawPlayfield(page, state, loaded.pack));
+    CHECK(drawHud(page, state, loaded.pack));
     CHECK(drawPacman(page, state, loaded.pack, false));   // the first draw of a life ($5839) clears the palette bit
 
     std::size_t differing = 0, outside = 0;
@@ -84,6 +85,7 @@ TEST(screen_first_tick_page_equals_the_oracle_outside_the_known_gaps) {
             const std::size_t off = hires::rowOffset(y) + static_cast<std::size_t>(c);
             if (page.byte(off) == oracle[off]) continue;
             ++differing;
+            if (differing <= 20) std::printf("    row %d column %d mine %02X oracle %02X\n", y, c, page.byte(off), oracle[off]);
             bool inside = false;
             for (std::size_t r = 0; r < 3; ++r) {
                 if (y >= kNotYet[r].y0 && y <= kNotYet[r].y1 && c >= kNotYet[r].c0 && c <= kNotYet[r].c1) {
@@ -93,12 +95,14 @@ TEST(screen_first_tick_page_equals_the_oracle_outside_the_known_gaps) {
             }
             if (!inside) {
                 ++outside;
-                if (outside <= 5) std::printf("    differs outside the known gaps: row %d column %d mine %02X oracle %02X\n", y, c, page.byte(off), oracle[off]);
+                if (outside <= 5 || true) std::printf("    differs outside the known gaps: row %d column %d mine %02X oracle %02X\n", y, c, page.byte(off), oracle[off]);
             }
         }
     }
     std::printf("    %zu bytes differ from the oracle's page, %zu of them outside the known gaps (score %zu, text %zu, icons %zu)\n", differing, outside, perArea[0],
                 perArea[1], perArea[2]);
-    CHECK(outside == 0);
-    CHECK(differing > 50);   // the gaps are really there: the test is not comparing an empty thing
+    CHECK(differing == 0);   // the complete first page of a game: all 8,192 bytes
+    std::size_t lit = 0;
+    for (std::size_t k = 0; k < hires::kPageBytes; ++k) lit += page.byte(k) != 0x80;
+    CHECK(lit > 1000);   // not an empty page: maze, dots, labels, Pac-Man
 }
