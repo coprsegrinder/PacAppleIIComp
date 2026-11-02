@@ -66,7 +66,7 @@ bool executeCall(hires::Page& page, const DrawCall& call, const datapack::Pack& 
 //     followed by a clear with the second mask table; then the dot pass, the screen's labels/score/high score/level icon/lives icons, Pac-Man at his start,
 //     the READY text and Pac-Man again;
 //   level end (after the last item's step and score display): Pac-Man erased and drawn again, the dot pass of the NEW map, the same labels..., Pac-Man at his start.
-enum class RestartKind { Death, LevelEnd };
+enum class RestartKind { Death, LevelEnd, GameOver };   // GameOver: the death of a player's last life: the death head, then the text "GAME" (column 15) and "OVER" (column 21) at row 105 instead of a rebuilt screen
 
 struct RestartInputs {
     int pacX = 0, pacY = 0;                     // Pac-Man's place when the sequence starts

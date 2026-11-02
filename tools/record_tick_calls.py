@@ -84,11 +84,12 @@ G.run(SC, stored['inputs'], stored['pokes'])
 G.state_bytes = orig_state
 if SC in ('F', 'G', 'H', 'J', 'K', 'L', 'M', 'P', 'Q', 'R'):
     import struct as _st
+    states = states[:N + 1]   # a run that ends early (game over leaves the main loop) has fewer states than requested
     h = b''
     for x in states[:N + 1]:
         h = hashlib.sha256(h + x).digest()
     with open('scratch/ticks_%s.bin' % SC, 'wb') as f:
-        f.write(b'TICK' + _st.pack('<II', N + 1, 1010) + h)
+        f.write(b'TICK' + _st.pack('<II', len(states), 1010) + h)
         for x in states[:N + 1]:
             f.write(x)
         f.write(_st.pack('<I', len(stored['inputs'])))

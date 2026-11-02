@@ -355,7 +355,7 @@ std::vector<DrawCall> restartCalls(RestartKind kind, const RestartInputs& in, co
     const auto frames = pack.find(0x96E8, 18);
     if (frames.empty()) return out;
     const int clearX = in.pacX - 4, clearY = in.pacY - 4;
-    if (kind == RestartKind::Death) {
+    if (kind != RestartKind::LevelEnd) {
         for (int g = 3; g >= 0; --g)                                                  // $8BEF-$8BFC: ghosts 4, 3, 2, 1
             out.push_back(DrawCall{3, {kMaskTable, in.ghostXY[static_cast<std::size_t>(g) * 2] - 4, in.ghostXY[static_cast<std::size_t>(g) * 2 + 1] - 4, 0, 0}});
         out.push_back(DrawCall{3, {kMaskTable, clearX, clearY, 0, 0}});              // $8BFE-$8C01: Pac-Man
@@ -368,6 +368,11 @@ std::vector<DrawCall> restartCalls(RestartKind kind, const RestartInputs& in, co
     } else {
         out.push_back(DrawCall{3, {kMaskTable, clearX, clearY, 0, 0}});              // the last step's Pac-Man is erased and drawn again before the maze flash
         out.push_back(DrawCall{1, {in.pacImage, in.pacX, in.pacY, 1, 0x80}});   // the image of his last step
+    }
+    if (kind == RestartKind::GameOver) {                                               // $7EC0.. then the GAME OVER text; no screen is rebuilt
+        out.push_back(DrawCall{2, {0x811D, 15, 105, 4, 7}});
+        out.push_back(DrawCall{2, {0x8139, 21, 105, 4, 7}});
+        return out;
     }
     dotPassCalls(out, after);
     // the screen's labels, score, high score, level icon, lives icons ($550A, $56CF) in the order the original issues them

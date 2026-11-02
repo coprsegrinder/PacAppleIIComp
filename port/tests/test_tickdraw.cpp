@@ -187,7 +187,7 @@ TEST(tickdraw_calls_and_pages_equal_the_oracle) {
         std::size_t ticks = 0, withCalls = 0, calls = 0, badTicks = 0, pagesCompared = 0, badPages = 0, shown = 0, doorCalls = 0, doorLowBit = 0;
         std::uint32_t nextPage = 0;
         // the recorder replays N ticks with the scenario's keys and pokes and runs on a little without them: only the first N ticks are valid (A, B, C: 700; D: 1600)
-        const std::size_t scenarioLimit = sc.letter == "D" ? 1600 : sc.letter == "A" ? 2090 : sc.letter == "G" ? 1399 : sc.letter == "H" ? 499 : sc.letter == "P" ? 2299 : sc.letter == "Q" ? 4699 : sc.letter == "R" ? 6999 : 700;
+        const std::size_t scenarioLimit = sc.letter == "D" ? 1600 : sc.letter == "A" ? 2090 : sc.letter == "G" ? 1399 : sc.letter == "H" ? 499 : sc.letter == "P" ? 2299 : sc.letter == "Q" ? 4699 : sc.letter == "R" ? 5574 : 700;
         const std::size_t limit = std::min<std::size_t>(scenarioLimit, std::min(logged.size(), tr.ticks()) - 1);
         for (std::size_t k = 0; k < limit; ++k) {
             // page comparison at the START of tick k (everything before it has been drawn)
@@ -341,6 +341,38 @@ TEST(tickdraw_death_and_level_end_sequences_equal_the_oracle_log) {
             }
             CHECK(same);
             ++checked;
+        }
+        // the last recorded tick may be the death of a player's LAST life: the death head, then the text GAME OVER (no state follows it, so it is checked here)
+        if (!logged.empty() && logged.size() == tr.ticks()) {
+            const auto& block = logged.back();
+            bool hasText = false;
+            for (const auto& c : block) hasText = hasText || (c.type == 2 && c.p[0] == 0x811D);
+            std::size_t start = 0;
+            for (std::size_t i = 0; hasText && i + 1 < block.size(); ++i)
+                if (block[i].type == 2 && block[i].p[0] == 0x55F7 && block[i + 1].type == 6) {
+                    start = i + 2;
+                    break;
+                }
+            if (hasText && start != 0 && block.size() >= start + 6) {
+                RestartInputs in;
+                for (int g = 0; g < 4; ++g) {
+                    in.ghostXY[static_cast<std::size_t>(3 - g) * 2] = block[start + static_cast<std::size_t>(g)].p[1] + 4;
+                    in.ghostXY[static_cast<std::size_t>(3 - g) * 2 + 1] = block[start + static_cast<std::size_t>(g)].p[2] + 4;
+                }
+                in.pacX = block[start + 4].p[1] + 4;
+                in.pacY = block[start + 4].p[2] + 4;
+                in.pacImage = block[start + 5].p[0];
+                DisplayState display;
+                const GameState last = fromOracleLayout(tr.state(tr.ticks() - 1));
+                const auto mine = restartCalls(RestartKind::GameOver, in, last, pack, display);
+                const std::vector<DrawCall> theirs(block.begin() + static_cast<std::ptrdiff_t>(start), block.end());
+                const bool same = mine == theirs;
+                std::printf("    %s tick %zu (last life): %zu calls logged, %zu derived, %s\n", sc.letter.c_str(), logged.size() - 1, theirs.size(), mine.size(), same ? "EQUAL" : "DIFFERENT");
+                CHECK(same);
+                hires::Page probe;
+                for (const auto& c : mine) CHECK(executeCall(probe, c, pack));
+                ++checked;
+            }
         }
     }
     CHECK(checked >= 1);
