@@ -68,8 +68,8 @@ Statuses: Planned / In progress / Implemented / Tested / Verified / Blocked / De
 | TASK-028 | M3: video + app window, menus, attract screens | Planned | 027 | Frames equal oracle pages; visual match with AppleWin |
 | TASK-029 | M4: game core without ghosts (+ scoring/level-table analysis first) | **Split (2026-11-02) into 029a-029i** (docs/M4_PLAN.md); the parent closes when 029h and 029i are done | 028 | Scenario traces match the oracle |
 | TASK-029a | Per-tick oracle recorder (scenarios A-D, full logical state, local) + C++ reader | **Done:** 34,000 ticks recorded in 4 files; each reproduces the golden chain hash in Python and in C++; reader tests incl. damaged-file refusal; 62 C++ tests pass; CMake route ok (docs/M4_PLAN.md) | 029 plan | tools/record_ticks.py; port/src/core/ticktrace.*; port/tests/test_ticktrace.cpp |
-| TASK-029b | State struct, new-game/new-life initial state from the pack | Planned (next) | 029a | State at tick 0 equals the oracle |
-| TASK-029c | Input: keys to direction, pause, sound switch, demo stream | Planned | 029b | Direction/flags equal the oracle per tick |
+| TASK-029b | State struct, new-game state from the pack | **Done (partly literal):** `GameState` + layout functions round-trip all 33,832 recorded ticks; `newGameState` equals tick 0 of A-D byte for byte (map from the pack, new-game constants from `$54D5`; start-of-life and ghost values are oracle literals until 029d/029f/M5); 65 C++ tests pass; a mutation was caught (docs/M4_PLAN.md) | 029a | port/src/core/gamestate.*; port/tests/test_gamestate.cpp |
+| TASK-029c | Input: keys to direction, pause, sound switch, demo stream | Planned (next) | 029b | Direction/flags equal the oracle per tick |
 | TASK-029d | Pac-Man movement (step timer, junction graph, turning, tunnel) | Planned | 029c | Position fields equal the oracle per tick |
 | TASK-029e | Eating and scoring (dots, energizers, map, score, bonus life, level complete) | Planned | 029d | Score/map/counters equal the oracle per tick |
 | TASK-029f | Death and lives (collision distances traced first) | Planned | 029e | Lives and restart ticks equal the oracle |
