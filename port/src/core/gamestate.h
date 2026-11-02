@@ -46,6 +46,7 @@ struct GameState {
     std::uint8_t level() const { return zp(0x55); }
     std::uint8_t dotsLeft() const { return zp(0x56); }
     std::uint8_t lives() const { return zp(0x58); }
+    std::uint8_t pacDirection() const { return zp(0x62); }
     std::uint8_t pacX() const { return zp(0x60); }
     std::uint8_t pacY() const { return zp(0x61); }
     unsigned score() const;   // the three BCD bytes $52-$54 (low, mid, high) as a number
