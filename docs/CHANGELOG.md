@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2026-10-29
+* TASK-029c: input poll rebuilt (keys, Ctrl-S, Esc pause, demo Space, game-port switches); equals the oracle on 33,819 recorded decisions.
 * TASK-029b: GameState with the golden layout (round-trips 33,832 recorded ticks) and the new-game state (equals tick 0 of all four scenarios; some values still oracle literals).
 * TASK-029a: per-tick oracle recordings of the four golden scenarios (34,000 ticks) and a C++ reader; chain hashes equal the golden ones.
 * TASK-029: M4 game core split into 029a-029i with a plan (docs/M4_PLAN.md).
