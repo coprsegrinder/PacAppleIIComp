@@ -94,3 +94,5 @@ Latest: door low-bit OR closed. Next open: player 2 death/level end + GAME OVER 
 Latest: 029g13 partly done (Q equal). Next: make R usable (1 state short), GAME OVER screens.
 
 Latest: 029g13 done (GAME OVER of the last life). Next: player 2 level end, high-score carry, then full-suite checkpoint.
+
+Latest: 029g14 done. Next: high-score carry, player 2 level end, then the full-suite checkpoint.

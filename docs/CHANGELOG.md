@@ -70,3 +70,5 @@
 - TASK-029g13 (part): scenario Q equal for 4,699 ticks (player 2 death + switch back); R recorded, not yet usable.
 
 - TASK-029g13: scenario R (5,567 ticks) equal; GAME OVER sequence (21 calls) equal.
+
+- TASK-029g14: player game-ending rule observed in both orders (scenarios R, S), all equal.
