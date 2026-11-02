@@ -78,3 +78,5 @@
 - TASK-029h1: tools/make_b33.py; image runs in a2run, game area equals the oracle at $4027.
 
 - TASK-029h2 (part): own collector for apple2tc run data (a2tc_collect/scenarios/merge/validate), A-D recorded and validated against a2run on the game area.
+
+- TASK-029h2b: run data of 30 scenarios, replays equal to the recordings; merged file 1,111 targets.
