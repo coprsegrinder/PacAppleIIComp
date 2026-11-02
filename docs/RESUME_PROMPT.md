@@ -88,3 +88,5 @@ Emulator control (verified): launch `AppleWin-x64.exe -d1 <scratch\work.dsk>`; d
 Latest: 029g10 partly done; next: the player-switch sequence (P tick 1976), then remaining open drawing items.
 
 Latest: 029g11 done (two-player switch). Next: remaining open drawing items; then a full-suite checkpoint.
+
+Latest: door low-bit OR closed. Next open: player 2 death/level end + GAME OVER recording; pauses/sounds; high-score carry; then full-suite checkpoint.

@@ -177,7 +177,7 @@ TEST(tickdraw_calls_and_pages_equal_the_oracle) {
         CHECK(drawHud(page, first, pack, {0, 0, 0}, pinfo.count(0), 0, 1));
         CHECK(drawPacman(page, first, pack, false));
         DisplayState display;
-        std::size_t ticks = 0, withCalls = 0, calls = 0, badTicks = 0, pagesCompared = 0, badPages = 0, shown = 0;
+        std::size_t ticks = 0, withCalls = 0, calls = 0, badTicks = 0, pagesCompared = 0, badPages = 0, shown = 0, doorCalls = 0, doorLowBit = 0;
         std::uint32_t nextPage = 0;
         // the recorder replays N ticks with the scenario's keys and pokes and runs on a little without them: only the first N ticks are valid (A, B, C: 700; D: 1600)
         const std::size_t scenarioLimit = sc.letter == "D" ? 1600 : sc.letter == "A" ? 2090 : sc.letter == "G" ? 1399 : sc.letter == "H" ? 499 : sc.letter == "P" ? 2299 : 700;
@@ -219,6 +219,11 @@ TEST(tickdraw_calls_and_pages_equal_the_oracle) {
             ++ticks;
             calls += theirs.size();
             withCalls += !theirs.empty();
+            for (const auto& c : mine)   // coverage of the door redraw (type 8) and of its low-bit OR ($1E with bits 0-6 set)
+                if (c.type == 8) {
+                    ++doorCalls;
+                    doorLowBit += (c.p[4] & 0x7F) != 0;
+                }
             const bool switched = pinfo.current(k + 1) != pinfo.current(k);
             const bool caughtTick = ((b.lives() & 0x7F) < (a.lives() & 0x7F) && a.lives() != 0) || switched || (b.level() > a.level() && a.dotsLeft() == 1);   // the death animation's own calls are not rebuilt (its result is, below)
             if (!caughtTick && !(compare == theirs)) {
@@ -245,8 +250,8 @@ TEST(tickdraw_calls_and_pages_equal_the_oracle) {
             }
             for (const auto& c : mine) executeCall(page, c, pack);
         }
-        std::printf("    scenario %s: %zu ticks, %zu with calls (%zu logged calls), %zu ticks differ; %zu pages compared, %zu differ\n", sc.letter.c_str(), ticks, withCalls, calls, badTicks,
-                    pagesCompared, badPages);
+        std::printf("    scenario %s: %zu ticks, %zu with calls (%zu logged calls), %zu ticks differ; %zu pages compared, %zu differ; door redraws %zu (%zu with the low-bit OR)\n", sc.letter.c_str(), ticks, withCalls, calls, badTicks,
+                    pagesCompared, badPages, doorCalls, doorLowBit);
         CHECK(badTicks == 0);
         CHECK(pagesCompared >= 50 && badPages == 0);
     }

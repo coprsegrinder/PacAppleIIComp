@@ -179,3 +179,7 @@ M5 (ghosts, ledger 030e) then replaces the fed ghost fields; M6 (levels, fruit, 
 - During play the current player's blink label (1UP column 0 / 2UP column 32 with mark `$7271`), score box (1 or 2) and digit position (40 or 266) follow `$50`. New API: `drawHud(..., players, otherScore, current)`, `RestartInputs{players,current,otherScore}`, `TickExtras::player`, type 10 p0 = 0/1 (box of 1UP/2UP).
 - Not covered: player 2's own death/level end in a recording (P ends before it); a recording with 3+ lives lost by both players; the "GAME OVER" screens.
 - Test note: the full-suite run is done at checkpoints, not after each step (user's decision). Today only the drawing/screen/restart tests were run on A, B, C, D, H, K, P.
+
+## TASK-029g12: door redraw low-bit OR proven reached (done)
+- The drawing test now counts door redraws and those with the low-bit OR (`$1E` bits 0-6 set). Result: D 4 redraws (2 with the OR), K 2 (2 with the OR), A 6 (0), F 2 (0), G 4 (0), J 2 (0), P 6 (0). Scenarios D and K reach the path and their pages equal the oracle.
+- Mutation check (done once, then restored): with the OR switched off, D shows 97 differing pages and K differs at tick 210, so the test really depends on the rule. The rule is verified for `$1E = 1` (and any value reached in D and K); other values of bits 0-6 are not reached by any recording.
