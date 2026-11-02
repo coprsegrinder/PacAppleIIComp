@@ -42,6 +42,7 @@ add_executable(pacman_tests
   tests/test_datapack.cpp
   tests/test_hires.cpp
   tests/test_hires_vectors.cpp
+  tests/test_dots.cpp
   tests/test_video.cpp
   tests/test_real_image.cpp)
 target_link_libraries(pacman_tests PRIVATE pacman_core_verify)

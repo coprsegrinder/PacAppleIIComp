@@ -69,6 +69,15 @@ bool mazePage(const std::wstring& packPath, pacman::hires::Page& page) {
         std::puts("wall table missing from the pack");
         return false;
     }
+    // the dots and energizers of a fresh game: the pristine map copy at $65BA (the game copies it to $623A at game start, $5331)
+    const auto map = loaded.pack.find(0x65BA, pacman::hires::kMazeMapBytes);
+    const auto dot = loaded.pack.find(0x61A8, pacman::hires::kDotTableBytes);
+    const auto tile = loaded.pack.find(0x61CA, pacman::hires::kTileTableBytes);
+    if (map.empty() || dot.empty() || tile.empty()) {
+        std::puts("dot data missing from the pack");
+        return false;
+    }
+    pacman::hires::drawDots(page, map, dot, tile);
     return true;
 }
 

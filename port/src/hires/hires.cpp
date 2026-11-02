@@ -119,6 +119,20 @@ void tile(Page& page, int x, int y, std::span<const std::uint8_t> tileTable) noe
     }
 }
 
+void drawDots(Page& page, std::span<const std::uint8_t> map, std::span<const std::uint8_t> dotTable, std::span<const std::uint8_t> tileTable) noexcept {
+    if (map.size() < kMazeMapBytes || dotTable.size() < kDotTableBytes || tileTable.size() < kTileTableBytes) return;
+    int column = 0;
+    for (int x = 0x3B; x < 0xDD; x += 6, ++column) {  // $0E: 27 columns, pointer $16/$17 advances 32 bytes per column
+        int y = 11;
+        for (int row = 1; row < 0x1F; ++row, y += 6) {  // $19 = 1..30, $11 = 11, 17, ...
+            const std::uint8_t cell = map[static_cast<std::size_t>(column) * 32 + static_cast<std::size_t>(row)];
+            if (cell == 0) continue;
+            if (cell & 1) smallDot(page, x, y, dotTable);
+            else tile(page, x - 1, y - 1, tileTable);
+        }
+    }
+}
+
 namespace {
 
 // The 6502 shift and rotate instructions on a byte with an explicit carry flag.

@@ -90,7 +90,25 @@ class RealMazeShot(unittest.TestCase):
         import wall_model
         data = open(body, "rb").read()
         table = data[0x5F69 - 0x4000: 0x5F69 - 0x4000 + 426]
-        page = wall_model.wall_page(table, 1)
+        page = bytearray(wall_model.wall_page(table, 1))
+        # independent dot model: fresh-game map at $65BA, small dot table $61A8, energizer tile table $61CA (docs/GRAPHICS.md)
+        mp = data[0x65BA - 0x4000: 0x65BA - 0x4000 + 896]
+        dt = data[0x61A8 - 0x4000: 0x61A8 - 0x4000 + 14]
+        tt = data[0x61CA - 0x4000: 0x61CA - 0x4000 + 112]
+        ra = lambda y: (y & 7) * 0x400 + ((y >> 3) & 7) * 0x80 + (y >> 6) * 0x28
+        for c in range(27):
+            for r in range(1, 31):
+                cell, x, y = mp[c * 32 + r], 59 + 6 * c, 11 + 6 * (r - 1)
+                if cell == 0:
+                    continue
+                if cell & 1:
+                    for k in range(2):
+                        for b in range(2):
+                            page[ra(y + k) + x // 7 + b] |= dt[(x % 7) * 2 + b]
+                else:
+                    for k in range(8):
+                        for b in range(2):
+                            page[ra(y - 1 + k) + (x - 1) // 7 + b] |= tt[((x - 1) % 7) * 16 + k * 2 + b]
         img = page_to_colours(page)
         with tempfile.TemporaryDirectory() as t:
             pack, out = os.path.join(t, "p.pmpk"), os.path.join(t, "m.bmp")

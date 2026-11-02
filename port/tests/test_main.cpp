@@ -11,6 +11,8 @@ int main(int argc, char** argv) {
             testfw::config().image = argv[++i];
         } else if (std::strcmp(argv[i], "--vectors") == 0 && i + 1 < argc) {
             testfw::config().vectors = argv[++i];
+        } else if (std::strcmp(argv[i], "--dots") == 0 && i + 1 < argc) {
+            testfw::config().dots = argv[++i];
         } else if (std::strcmp(argv[i], "--reference") == 0 && i + 1 < argc) {
             testfw::config().reference = argv[++i];
         } else {

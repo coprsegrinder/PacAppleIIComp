@@ -84,6 +84,11 @@ void smallDot(Page& page, int x, int y, std::span<const std::uint8_t> dotTable) 
 inline constexpr std::size_t kTileTableBytes = 112;     // 7 shifts x (8 rows x 2 bytes) (table $61CA)
 void tile(Page& page, int x, int y, std::span<const std::uint8_t> tileTable) noexcept;     // 8 x 2 bytes ORed ($693A)
 
+// The maze dot pass $6113: walks the 896-byte map (28 columns x 32 cells, column-major; the original loop visits 27 columns and rows 1..30) and draws
+// a small dot (cell bit 0 set, dot at pixel (59 + 6c, 11 + 6(r-1))) or, for any other non-zero cell, an energizer tile one pixel up and left of that spot.
+inline constexpr std::size_t kMazeMapBytes = 896;
+void drawDots(Page& page, std::span<const std::uint8_t> map, std::span<const std::uint8_t> dotTable, std::span<const std::uint8_t> tileTable) noexcept;
+
 // ---- character images through the dispatcher $6A20 and the two cartoon sprites ----
 // A 3 x 10 byte image with 7 pre-shifted copies (210 bytes) drawn for a sprite at pixel (x, y): the image goes to (x - 4, y - 4) and the copy for
 // (x - 4) mod 7 is used. orMode = flags $1D and $1E both nonzero: plain OR ($55A6); otherwise OR then clear the palette bit ($6A3F).
