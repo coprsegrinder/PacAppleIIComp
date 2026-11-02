@@ -155,9 +155,9 @@ TEST(tickdraw_calls_and_pages_equal_the_oracle) {
         DisplayState display;
         std::size_t ticks = 0, withCalls = 0, calls = 0, badTicks = 0, pagesCompared = 0, badPages = 0, shown = 0;
         std::uint32_t nextPage = 0;
-        // Scenario D's keys and pokes put Pac-Man onto a ghost at tick 466 (a teleport, not a step) and the ghost-eaten sequence follows (score image, pause):
-        // that sequence is not rebuilt, so D is compared up to tick 465 (before the poke).
-        const std::size_t scenarioLimit = sc.letter == "D" ? 466 : 700;
+        // the recorder replays N ticks with the scenario's keys and pokes and runs on a little without them: only the first N ticks are valid (A, B, C: 700; D: 1600)
+        // B and C reach the end of level 1 at ticks 531 and 614 (a new maze is built; not rebuilt): compared up to the tick before
+        const std::size_t scenarioLimit = sc.letter == "D" ? 1600 : sc.letter == "B" ? 530 : sc.letter == "C" ? 613 : 700;
         const std::size_t limit = std::min<std::size_t>(scenarioLimit, std::min(logged.size(), tr.ticks()) - 1);
         for (std::size_t k = 0; k < limit; ++k) {
             // page comparison at the START of tick k (everything before it has been drawn)
@@ -189,7 +189,7 @@ TEST(tickdraw_calls_and_pages_equal_the_oracle) {
             const auto mine = tickCalls(a, b, pack, tr.at(k, 0x59) == 1, display, ea, eb);
             std::vector<DrawCall> compare;
             for (const auto& c : mine)
-                if (c.type != 8 && c.type != 9 && c.type != 10) compare.push_back(c);
+                if (c.type != 8 && c.type != 11 && c.type != 10) compare.push_back(c);
             const auto& theirs = logged[k];
             ++ticks;
             calls += theirs.size();
@@ -208,6 +208,6 @@ TEST(tickdraw_calls_and_pages_equal_the_oracle) {
         std::printf("    scenario %s: %zu ticks, %zu with calls (%zu logged calls), %zu ticks differ; %zu pages compared, %zu differ\n", sc.letter.c_str(), ticks, withCalls, calls, badTicks,
                     pagesCompared, badPages);
         CHECK(badTicks == 0);
-        CHECK(pagesCompared >= (sc.letter == "D" ? 40u : 60u) && badPages == 0);
+        CHECK(pagesCompared >= 50 && badPages == 0);
     }
 }

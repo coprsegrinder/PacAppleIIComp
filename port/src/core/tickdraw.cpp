@@ -34,7 +34,8 @@ namespace {
 // after the ghost has been drawn (the contact test follows the draw), so the eyes flag of the start of the tick counts.
 GameState drawnState(const GameState& before, const GameState& after, std::size_t g) {
     GameState s = after;
-    s.ghosts[g].b[9] = before.ghosts[g].b[9];
+    s.ghosts[g].b[9] = before.ghosts[g].b[9] && after.ghosts[g].b[9];                 // eyes: set after the draw (eaten) or cleared before it (back in the house)
+    s.ghosts[g].b[8] = before.ghosts[g].b[8] || after.ghosts[g].b[8];                 // frightened: set early in the tick (energizer) or cleared after the draw (eaten)
     return s;
 }
 }  // namespace
@@ -43,8 +44,8 @@ std::vector<DrawCall> spriteCalls(const GameState& before, const GameState& afte
     std::vector<DrawCall> out;
     const auto pacFrames = pack.find(0x96E8, 18);
     if (pacFrames.empty()) return out;
-    const bool moved = before.pacX() != after.pacX() || before.pacY() != after.pacY();
-    if (moved || pacmanActed) {   // an acting Pac-Man that did not move was blocked and is redrawn where he stands
+    // Pac-Man is drawn when his step timer ran out (he moved, or was blocked and is redrawn where he stands); a changed position without an acting tick is a poke
+    if (pacmanActed) {
         out.push_back(DrawCall{3, {kMaskTable, before.pacX() - 4, before.pacY() - 4, 0, 0}});
         out.push_back(DrawCall{1, {word(pacFrames, static_cast<std::size_t>(pacmanFrame(after))), after.pacX(), after.pacY(), 1, 0x80}});
     }
@@ -76,6 +77,35 @@ void digitCalls(std::vector<DrawCall>& out, std::uint32_t bcd, int x, int y, con
 std::uint32_t bcd24(const GameState& s) { return s.zp(0x52) | (s.zp(0x53) << 8) | (s.zp(0x54) << 16); }
 
 }  // namespace
+namespace {
+
+std::uint32_t addBcd(std::uint32_t v, std::uint32_t add) {   // BCD addition of 24-bit values (packed decimal digits)
+    std::uint32_t r = 0, carry = 0;
+    for (int shift = 0; shift < 24; shift += 4) {
+        std::uint32_t d = ((v >> shift) & 0xF) + ((add >> shift) & 0xF) + carry;
+        carry = d > 9;
+        if (carry) d -= 10;
+        r |= d << shift;
+    }
+    return r;
+}
+
+}  // namespace
+
+namespace {
+
+void scoreDisplay(std::vector<DrawCall>& out, std::uint32_t score, DisplayState& display, const datapack::Pack& pack) {
+    const std::uint32_t hi = display.high[0] | (display.high[1] << 8) | (display.high[2] << 16);
+    if (score >= hi) {                                // $7091: the high score follows the score
+        display.high = {static_cast<std::uint8_t>(score & 0xFF), static_cast<std::uint8_t>((score >> 8) & 0xFF), static_cast<std::uint8_t>((score >> 16) & 0xFF)};
+        out.push_back(DrawCall{4, {0, 0, 0, 0, 0}});
+        digitCalls(out, score, 40, 94, pack);
+    }
+    out.push_back(DrawCall{4, {1, 0, 0, 0, 0}});
+    digitCalls(out, score, 40, 16, pack);
+}
+
+}  // namespace
 
 std::vector<DrawCall> tickCalls(const GameState& before, const GameState& after, const datapack::Pack& pack, bool pacmanActed, DisplayState& display,
                                 const TickExtras& exBefore, const TickExtras& exAfter) {
@@ -83,21 +113,31 @@ std::vector<DrawCall> tickCalls(const GameState& before, const GameState& after,
     const std::uint16_t timer = exAfter.frightenedTimer();
     const auto sprites = spriteCalls(before, after, pack, pacmanActed, timer);
     // Pac-Man's calls come first (the first two, if any), then the score display, then the ghosts' calls with their dot redraws
-    const bool pacDrawn = (before.pacX() != after.pacX() || before.pacY() != after.pacY() || pacmanActed);
+    const bool pacDrawn = pacmanActed;
     std::size_t split = pacDrawn ? 2 : 0;
     out.insert(out.end(), sprites.begin(), sprites.begin() + static_cast<std::ptrdiff_t>(split));
     if (pacDrawn) display.lastFlag1E = 0x80;   // Pac-Man's draw sets $1E = $80 ($79C2)
+    // The score can change twice in a tick: by an item (Pac-Man's phase) and by a ghost eaten (inside that ghost's step). The part due to the item is shown now.
     const std::uint32_t scoreBefore = bcd24(before), scoreAfter = bcd24(after);
-    if (scoreAfter != scoreBefore) {
-        const std::uint32_t hi = display.high[0] | (display.high[1] << 8) | (display.high[2] << 16);
-        if (scoreAfter >= hi) {                       // $7091: the high score follows the score
-            display.high = {after.zp(0x52), after.zp(0x53), after.zp(0x54)};
-            out.push_back(DrawCall{4, {0, 0, 0, 0, 0}});
-            digitCalls(out, scoreAfter, 40, 94, pack);
-        }
-        out.push_back(DrawCall{4, {1, 0, 0, 0, 0}});
-        digitCalls(out, scoreAfter, 40, 16, pack);
+    std::uint32_t scoreAfterItem = scoreBefore;
+    for (std::size_t i = 0; i < before.map.size(); ++i)
+        if (before.map[i] != 0 && after.map[i] == 0 && before.demo == 0) scoreAfterItem = addBcd(scoreAfterItem, (before.map[i] >> 1) != 0 ? 0x50 : 0x10);
+    // $7AC7-$7AD0: eating an ENERGIZER calls $5743 first, which erases the energizers at the four spots (those whose map cell is still non-zero: the eaten one is
+    // cleared only afterwards); the blink redraws them later
+    bool energizerEaten = false;
+    for (std::size_t i = 0; i < before.map.size(); ++i)
+        if (before.map[i] != 0 && after.map[i] == 0 && before.demo == 0 && (before.map[i] >> 1) != 0) energizerEaten = true;
+    if (energizerEaten) {
+        static constexpr std::size_t cells[4] = {1 * 32 + 3, 1 * 32 + 23, 26 * 32 + 3, 26 * 32 + 23};
+        static constexpr int maskX[4] = {63, 63, 214, 214}, maskY[4] = {21, 141, 21, 141};
+        for (int m = 0; m < 4; ++m)
+            if (before.map[cells[m]] != 0) out.push_back(DrawCall{11, {maskX[m], maskY[m], 0, 0, 0}});
     }
+    bool ghostEatenAny = false;
+    for (int g = 0; g < 4; ++g)
+        if (before.ghosts[static_cast<std::size_t>(g)].b[9] == 0 && after.ghosts[static_cast<std::size_t>(g)].b[9] == 1 && before.ghosts[static_cast<std::size_t>(g)].b[8] != 0) ghostEatenAny = true;
+    if (!ghostEatenAny && before.demo == 0) scoreAfterItem = scoreAfter;   // no ghost: the whole change is an item (also an item eaten from the master copy after a poke)
+    if (scoreAfterItem != scoreBefore) scoreDisplay(out, scoreAfterItem, display, pack);
     const auto dot = pack.find(0x61A8, hires::kDotTableBytes);
     std::size_t k = split;
     for (int g = 3; g >= 0; --g) {
@@ -107,7 +147,12 @@ std::vector<DrawCall> tickCalls(const GameState& before, const GameState& after,
         int flag = 0;
         ghostImageBase(drawnState(before, after, static_cast<std::size_t>(g)), static_cast<std::size_t>(g), timer, pack, flag);
         const int flagBefore = display.lastFlag1E;   // what the previous image draw left in $1E: the door lines are drawn with it
-        out.push_back(sprites[k++]);
+        out.push_back(sprites[k++]);   // the clear at the old place
+        if (a.b[9] == 1 && b.b[9] == 0) {              // back in the house: the ghost is put at its start place first ($6D30) and cleared there, then it steps
+            static constexpr int dx[4] = {0, 0, 2, -2}, dy[4] = {2, -2, 0, 0};   // directions 0 down, 1 up, 2 right, 3 left
+            const int startX = b.x() - dx[b.b[2] & 3], startY = b.y() - dy[b.b[2] & 3];
+            out.push_back(DrawCall{3, {kMaskTable, startX - 4, startY - 4, 0, 0}});
+        }
         out.push_back(sprites[k++]);
         display.lastFlag1E = flag;   // the ghost's own draw sets $1E from the table
         // $8A19: a ghost that leaves the door cell redraws the ghost-house door (two dotted lines); not logged by the call collector (type 8: hline)
@@ -126,6 +171,28 @@ std::vector<DrawCall> tickCalls(const GameState& before, const GameState& after,
             case 1: left = b.b[14] == 0; row += 1; break;
             default: break;
         }
+        // $8B9D: a frightened ghost that Pac-Man touches is eaten: the ghost's flags turn to eyes (record byte 9 = 1) and $7DB8 draws the score image
+        if (a.b[9] == 0 && b.b[9] == 1 && a.b[8] != 0 && before.demo == 0) {
+            const unsigned step = after.zp(0x68);                    // already doubled: the image shown is for the value before the doubling
+            const unsigned used = step == 0x04 ? 0x02 : step == 0x08 ? 0x04 : step == 0x16 ? 0x08 : step == 0x32 ? 0x16 : 0x02;
+            const int image = used == 0x02 ? 0x7FC7 : used == 0x04 ? 0x7FE5 : used == 0x08 ? 0x8003 : 0x8021;
+            const int px = after.pacX(), py = after.pacY(), gx = b.x(), gy = b.y();
+            out.push_back(DrawCall{3, {kMaskTable, px - 4, py - 4, 0, 0}});
+            out.push_back(DrawCall{3, {kMaskTable, gx - 4, gy - 4, 0, 0}});
+            out.push_back(DrawCall{9, {image, gx, gy, 1, 1}});
+            out.push_back(DrawCall{3, {0x6A04, gx - 5, gy - 4, 0, 0}});
+            const auto frames = pack.find(0x96E8, 18);
+            if (!frames.empty()) out.push_back(DrawCall{1, {word(frames, static_cast<std::size_t>(pacmanFrame(after))), px, py, 1, 0x80}});
+            display.lastFlag1E = 0x80;
+            std::uint32_t afterItem = scoreBefore;
+            for (std::size_t m = 0; m < before.map.size(); ++m)
+                if (before.map[m] != 0 && after.map[m] == 0) afterItem = addBcd(afterItem, (before.map[m] >> 1) != 0 ? 0x50 : 0x10);
+            if (scoreAfter != afterItem) scoreDisplay(out, scoreAfter, display, pack);
+        }
+        // the cell dot: only for a ghost that is outside the house (in-house flag $81 = byte 17 is 0) and moved normally; an eaten ghost still goes on to move, so its dot
+        // is redrawn AFTER the eaten sequence; a ghost that has just arrived back in the house (eyes 1 -> 0) is placed at its start and shows no dot
+        if (a.b[9] == 1 && b.b[9] == 0) left = false;
+        if (a.b[17] != 0 || b.b[17] != 0) left = false;
         if (left && col >= 0 && row >= 0 && static_cast<std::size_t>(col) * 32 + static_cast<std::size_t>(row) < after.map.size() && !dot.empty() &&
             (after.map[static_cast<std::size_t>(col) * 32 + static_cast<std::size_t>(row)] & 1) != 0)
             out.push_back(DrawCall{5, {col * 6 + 0x3B, row * 6 + 5, 0, 0, 0}});   // type 5: p0 = x, p1 = y (as logged)
@@ -145,7 +212,7 @@ std::vector<DrawCall> tickCalls(const GameState& before, const GameState& after,
         for (const Spot& sp : spots) {
             if (after.map[sp.cell] == 0) continue;
             if (after.zp(0x5F) == 1) out.push_back(DrawCall{6, {0x61CA, sp.tileX, sp.tileY, 0, 0}});
-            else out.push_back(DrawCall{9, {sp.maskX, sp.maskY, 0, 0, 0}});
+            else out.push_back(DrawCall{11, {sp.maskX, sp.maskY, 0, 0, 0}});
         }
     }
     return out;
@@ -197,7 +264,7 @@ bool executeCall(hires::Page& page, const DrawCall& c, const datapack::Pack& pac
                 for (int col = c.p[0] / 7; col <= c.p[1] / 7; ++col) page.orInto(hires::rowOffset(c.p[2]) + static_cast<std::size_t>(col), static_cast<std::uint8_t>(c.p[4] & 0x7F));
             return true;
         }
-        case 9: {                                                               // $7819: 8 rows, two bytes each: AND the mask pair of the shift, then set the palette bit
+        case 11: {                                                              // $7819: 8 rows, two bytes each: AND the mask pair of the shift, then set the palette bit
             const auto masks = pack.find(0x7843, 14);
             if (masks.empty()) return false;
             const int column = c.p[0] / 7, shift = c.p[0] % 7;
@@ -206,6 +273,12 @@ bool executeCall(hires::Page& page, const DrawCall& c, const datapack::Pack& pac
                 page.set(off, static_cast<std::uint8_t>((page.byte(off) & masks[static_cast<std::size_t>(shift) * 2]) | 0x80));
                 page.set(off + 1, static_cast<std::uint8_t>((page.byte(off + 1) & masks[static_cast<std::size_t>(shift) * 2 + 1]) | 0x80));
             }
+            return true;
+        }
+        case 9: {                                                               // $7E1F: the 3 x 10 score image drawn with software shifting at the ghost's place
+            const auto image = pack.find(static_cast<std::uint16_t>(c.p[0]), hires::kImage3x10);
+            if (image.empty()) return false;
+            hires::shiftedImage(page, c.p[1], c.p[2], image, c.p[3] != 0 && c.p[4] != 0);
             return true;
         }
         default: return false;

@@ -21,7 +21,7 @@ namespace pacman::core {
 struct DrawCall {
     int type = 0;                         // 3 = masked clear (p0 = mask table, p1 = x, p2 = y); 1 = 3 x 10 image (p0 = image base, p1 = x, p2 = y, p3 = $1D, p4 = $1E);
                                           // 4 = box clear (p0 = box index 0/1); 5 = small dot (p0 = x, p1 = y); 6 = tile (p0 = tile table address, p1 = x, p2 = y);
-                                          // 2 = OR blit (p0 = data address, p1 = column, p2 = row, p3 = width, p4 = rows); 9 = energizer erase (p0 = x, p1 = y);
+                                          // 2 = OR blit (p0 = data address, p1 = column, p2 = row, p3 = width, p4 = rows); 11 = energizer erase (p0 = x, p1 = y); 9 = shifted 3 x 10 image (p0 = image pointer, p1 = x, p2 = y, p3 = $1D, p4 = $1E: the score of an eaten ghost);
                                           // 10 = the 1UP box clear;
                                           // 8 = horizontal line (p0 = x0, p1 = x1, p2 = y, p3 = step, p4 = the value of $1E at that moment, i.e. the ghost's flag: $5CF0 ORs it into the touched bytes, so the palette bit is set only if bit 7 of it is): the ghost-house door
     std::array<int, 5> p{};

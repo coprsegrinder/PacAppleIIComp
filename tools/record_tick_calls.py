@@ -40,9 +40,40 @@ def patched():
     holder['col'], holder['pages'] = col, pages
     return mc
 G.factory = patched
-stored = json.load(open('tests/golden/gameplay_traces.json'))['scenarios'][SC]
+import hashlib
+if SC == 'F':
+    # scenario F (own, not golden): the keys of A; at tick 100 all four ghosts are made frightened and the frightened timer $E1/$E2 is set to $00B0, so the timer
+    # runs below $80 and the flashing frames appear (no energizer is eaten in A's first 700 ticks). Also writes scratch/ticks_F.bin like tools/record_ticks.py.
+    stored = dict(json.load(open('tests/golden/gameplay_traces.json'))['scenarios']['A'])
+    stored['pokes'] = [[100, 0x8C, 1], [100, 0xA0, 1], [100, 0xB4, 1], [100, 0xC8, 1], [100, 0xE1, 0xB0], [100, 0xE2, 0]]
+    G.SCENARIOS['F'] = dict(G.SCENARIOS['A'])
+else:
+    stored = json.load(open('tests/golden/gameplay_traces.json'))['scenarios'][SC]
 G.SCENARIOS[SC]['ticks'] = N
+states = []
+orig_state = G.state_bytes
+def rec(m):
+    b = orig_state(m)
+    states.append(b)
+    return b
+G.state_bytes = rec
 G.run(SC, stored['inputs'], stored['pokes'])
+G.state_bytes = orig_state
+if SC == 'F':
+    import struct as _st
+    h = b''
+    for x in states[:N + 1]:
+        h = hashlib.sha256(h + x).digest()
+    with open('scratch/ticks_F.bin', 'wb') as f:
+        f.write(b'TICK' + _st.pack('<II', N + 1, 1010) + h)
+        for x in states[:N + 1]:
+            f.write(x)
+        f.write(_st.pack('<I', len(stored['inputs'])))
+        for t, k in stored['inputs']:
+            f.write(_st.pack('<II', t, (ord(k) if isinstance(k, str) else k) | 0x80))
+        f.write(_st.pack('<I', len(stored['pokes'])))
+        for t, a, v in stored['pokes']:
+            f.write(_st.pack('<III', t, a, v))
 col, pages = holder['col'], holder['pages']
 out = []
 for t, p, _, _ in col.records:
