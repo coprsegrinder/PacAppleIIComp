@@ -17,6 +17,7 @@ add_library(pacman_core_verify STATIC
   src/datapack/datapack.cpp
   src/datapack/manifest.cpp
   src/hires/hires.cpp
+  src/hires/replay.cpp
   src/video/colour.cpp)
 target_include_directories(pacman_core_verify PUBLIC src)
 

@@ -32,6 +32,7 @@ def main(n=1):
     mc.cpu.step = hook
     H.cartoon(col, n)
     page = bytes(mc.m[0x2000:0x4000])
+    open('scratch/cartoon%d_final_page.bin' % n, 'wb').write(page)  # the original's final page (local only), for the window test
     recs = list(col.records)
     out = []
     ci = 0

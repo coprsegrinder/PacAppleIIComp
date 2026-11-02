@@ -159,6 +159,28 @@ class RealMazeShot(unittest.TestCase):
         self.assertGreater(sum(1 for r in img for v in r if v == WHITE), 500)  # text is really there
 
 
+    def test_replayed_cartoon_screen_scale_3(self):
+        """TASK-028g1: the window shows the page the C++ layer reaches by replaying the recorded drawing calls of a cartoon run (--script); every pixel
+        equals the colours of the ORIGINAL's final page (saved by tools/capture_script.py). Needs scratch/cartoon1_script.bin and cartoon1_final_page.bin."""
+        dsk = os.path.join(ROOT, "Pacman (1983)(Atari).dsk")
+        script = os.path.join(ROOT, "scratch", "cartoon1_script.bin")
+        final = os.path.join(ROOT, "scratch", "cartoon1_final_page.bin")
+        pk = os.path.join(ROOT, "out", "bat", "pacman_pack.exe")
+        if not all(os.path.exists(f) for f in (EXE, dsk, script, final, pk)):
+            self.skipTest("needs the build, the disk image and the captured cartoon script")
+        page = open(final, "rb").read()
+        self.assertEqual(len(page), 0x2000)
+        img = page_to_colours(page)
+        with tempfile.TemporaryDirectory() as t:
+            pack, out = os.path.join(t, "p.pmpk"), os.path.join(t, "c.bmp")
+            self.assertEqual(subprocess.run([pk, "build", dsk, pack], timeout=60, capture_output=True).returncode, 0)
+            self.assertEqual(subprocess.run([EXE, "--pack", pack, "--script", script, "--scale", "3", "--shot", out], timeout=60).returncode, 0)
+            w, h, got = read_bmp(out)
+        diff = sum(1 for y in range(h) for x in range(w) if got[y][x] != img[y // 3][x // 3])
+        self.assertEqual(diff, 0, "%d pixels differ" % diff)
+        self.assertGreater(sum(1 for r in img for v in r if v != BLACK), 100)
+
+
 def page_to_colours(page):
     """Standard hi-res rules from the 8192-byte page (independent of the C++ code)."""
     lit = [[0] * 280 for _ in range(192)]
