@@ -1,5 +1,7 @@
 #include "eating.h"
 
+#include "lives.h"
+
 namespace pacman::core {
 
 namespace {
@@ -24,7 +26,7 @@ void addToScore(GameState& s, std::uint8_t bcdLow) {
     s.zp(0x54) = bcdAdd(s.zp(0x54), 0, carry);
 }
 
-EatResult eatAt(GameState& s, const ItemTest& at, StepTimer& timer, const StepTables& tables) {
+EatResult eatAt(GameState& s, const ItemTest& at, StepTimer& timer, const StepTables& tables, int player) {
     EatResult r;
     const std::size_t index = static_cast<std::size_t>(at.column) * 32 + at.row;   // $7A6B: $623A + 32 * column + row
     if (index >= s.map.size()) {                                                   // outside the map: the original would read the master copy behind it
@@ -48,6 +50,7 @@ EatResult eatAt(GameState& s, const ItemTest& at, StepTimer& timer, const StepTa
         addToScore(s, 0x50);
     }
     s.map[index] = 0;                                                              // $7B0C-$7B10
+    awardBonusLife(s, player);                                                     // $7B12: JSR $7091 (the score routine contains the extra-life check)
     s.fruitCounter() = static_cast<std::uint8_t>(s.fruitCounter() - 1);            // $7B15
     s.dotsLeft() = static_cast<std::uint8_t>(s.dotsLeft() - 1);                    // $7B17
     r.levelComplete = s.dotsLeft() == 0;                                           // $7B19: BNE, else JMP $6CF4

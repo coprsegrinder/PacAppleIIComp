@@ -209,5 +209,39 @@ def m_e8(mc):
     return mc.m[0xE8] != 0
 
 
+def bonus():
+    """bonus : a normal game in which the score is POKED to 9,980 at tick 5 (BCD $52 = $80, $53 = $99, $54 = $00), so that the next dots cross 10,000 points and the
+    extra life is awarded (docs/PACMAN_RULES.md did this once by hand). 1,200 ticks, random keys, lives topped up only before the crossing is possible (never).
+    Writes scratch/ticks_B10.bin; recorded after TWO identical replays."""
+    ticks = 1200
+    G.SCENARIOS['B10'] = dict(seed=910, ticks=ticks, pokes=[])
+    inputs = G.make_inputs(910, ticks)
+    pokes = [[5, 0x52, 0x80], [5, 0x53, 0x99], [5, 0x54, 0x00]]
+    hashes = []
+    for attempt in range(int(os.environ.get('REPLAYS', '2'))):
+        states = []
+        original = G.state_bytes
+
+        def recording(m, states=states, original=original):
+            b = original(m)
+            states.append(b)
+            return b
+        G.state_bytes = recording
+        try:
+            G.run('B10', inputs, pokes)
+        finally:
+            G.state_bytes = original
+        h = b''
+        for s_ in states:
+            h = hashlib.sha256(h + s_).digest()
+        hashes.append(h)
+    if len(hashes) > 1 and hashes[0] != hashes[1]:
+        sys.exit('the two replays differ: nothing written')
+    if len(states) < 900:
+        sys.exit('only %d ticks' % len(states))
+    write('scratch/ticks_B10.bin', states, inputs, pokes)
+    print('bonus ticks', len(states), 'chain', hashes[0].hex()[:16], flush=True)
+
+
 if __name__ == '__main__':
-    {'tunnel': tunnel, 'demo': demo, 'tunnelnat': natural_tunnel}[sys.argv[1]]()
+    {'tunnel': tunnel, 'demo': demo, 'tunnelnat': natural_tunnel, 'bonus': bonus}[sys.argv[1]]()

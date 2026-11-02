@@ -110,7 +110,7 @@ std::size_t run(const TickTrace& tr, const JunctionGraph& graph, const datapack:
         // when the fruit counter $57 runs out the fruit routine ($6A7C, levels and fruit, M6) reloads it in the same pass: exempt, counted
         const bool fruitDue = r.ate && s.demo == 0 && s.zp(0x57) == 0;
         tot.fruitDue += fruitDue;
-        bool ok = s.zp(0x59) == tr.at(k + 1, 0x59) && s.zp(0x56) == tr.at(k + 1, 0x56) && (fruitDue || s.zp(0x57) == tr.at(k + 1, 0x57));
+        bool ok = s.zp(0x59) == tr.at(k + 1, 0x59) && s.zp(0x56) == tr.at(k + 1, 0x56) && (fruitDue || s.zp(0x57) == tr.at(k + 1, 0x57)) && s.zp(0x58) == tr.at(k + 1, 0x58);   // $58: the extra life at 10,000 points is part of eating now
         for (std::uint16_t a : {std::uint16_t{0x52}, std::uint16_t{0x53}, std::uint16_t{0x54}}) ok = ok && s.zp(a) == tr.at(k + 1, a);
         if (r.ate && test) ok = ok && tr.at(k + 1, static_cast<std::uint16_t>(0x623A + test->column * 32 + test->row)) == 0;
         if (!ok && mismatches == 0)  // show the first difference in detail

@@ -3,7 +3,7 @@
 //
 // NOT rebuilt here (other pieces): what an ENERGIZER does to the ghosts ($6D60: frightened flags, timers, score step $68, $E4 ...: ghost logic, M5),
 // the sounds ($7BDC, $7C45) and the drawing/high-score update ($7091, $5743), the level end ($6CF4 when the last item is gone: levels, M6),
-// the extra life at 10,000 points (it is not in this routine: it happens where the score is checked, see docs/M4_PLAN.md).
+// the sounds and drawing. The extra life at 10,000 points is checked here (it is inside the score routine $7091, which $7B12 calls): see lives.h.
 #pragma once
 
 #include <cstdint>
@@ -28,6 +28,6 @@ void addToScore(GameState& state, std::uint8_t bcdLow);
 // The item test of $7A5F for the cell Pac-Man's step reported. Cell value 0: nothing happens. Otherwise: StepTimer::itemEaten, then
 //   real game: dot (value 1): score + 10; energizer (any other non-zero value): score + 50; cell := 0; $57 -= 1; $56 -= 1.
 //   attract demo ($E8 <> 0): cell := 0 and $56 -= 1 only ($7B1F-$7B2E: no score, no fruit counter).
-EatResult eatAt(GameState& state, const ItemTest& cell, StepTimer& timer, const StepTables& tables);
+EatResult eatAt(GameState& state, const ItemTest& cell, StepTimer& timer, const StepTables& tables, int player = 1);
 
 }  // namespace pacman::core
