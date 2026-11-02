@@ -26,6 +26,7 @@ inline int& failures() {
 struct Config {
     std::string image;
     std::string reference;
+    std::string script;  // --script <cartoonN_script.bin>: ordered drawing calls of an original cartoon (local only)
     std::string dots;  // --dots <dots_vectors.bin>: dot-pass runs captured from the original (local only)
     std::string vectors;  // --vectors <hires_vectors.bin>: drawing calls captured from the original (local only)
 };

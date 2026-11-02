@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2026-10-29
+* TASK-028f: C++ replay of 29,422 recorded drawing calls (cartoon 1 run) reaches the original final page hash.
 * TASK-028e: `pacman_view --page text` shows the 12 attract strings; window pixels equal the independent text model.
 * TASK-028d: C++ dot pass (`drawDots`) equals 3 real oracle runs; the window now shows maze + dots + energizers (0 differing pixels vs an independent model).
 * TASK-028c: `pacman_view --pack` shows the real maze from the local data pack; window pixels equal the independent model (0 of 483,840 differ).
