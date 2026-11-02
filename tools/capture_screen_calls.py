@@ -37,7 +37,12 @@ def hook():
 mc.cpu.step = hook
 for st in ('key:1', 'key:cr', '70_000_000'):
     do_step(mc, st, lambda *_: None)
-start_game(mc)
+import os as _os
+if _os.environ.get('PLAYERS') == '2':
+    for st in ('key:sp', '3_000_000', 'key:2', '3_000_000', 'key:cr', '1_000_000'):
+        do_step(mc, st, lambda *_: None)
+else:
+    start_game(mc)
 try:
     for _ in range(80):
         try:
@@ -52,5 +57,5 @@ for at, pc, txt in extra:
 for i, r in enumerate(col.records):
     lines.append('%5d  type %d  %s' % (i, r[0], r[1]))
 lines.sort(key=lambda s: (int(s.split()[0]), 0 if 'call' in s else 1))
-open('scratch/screen_calls.txt', 'w').write('\n'.join(lines))
+open('scratch/screen_calls%s.txt' % ('_2p' if _os.environ.get('PLAYERS') == '2' else ''), 'w').write('\n'.join(lines))
 print(len(col.records), 'drawing calls,', len(extra), 'routine entries')

@@ -150,13 +150,13 @@ TEST(tickdraw_calls_and_pages_equal_the_oracle) {
 
         hires::Page page;
         CHECK(drawPlayfield(page, first, pack));
-        CHECK(drawHud(page, first, pack));
+        CHECK(drawHud(page, first, pack, {0, 0, 0}, sc.letter == "P" ? 2 : 1));
         CHECK(drawPacman(page, first, pack, false));
         DisplayState display;
         std::size_t ticks = 0, withCalls = 0, calls = 0, badTicks = 0, pagesCompared = 0, badPages = 0, shown = 0;
         std::uint32_t nextPage = 0;
         // the recorder replays N ticks with the scenario's keys and pokes and runs on a little without them: only the first N ticks are valid (A, B, C: 700; D: 1600)
-        const std::size_t scenarioLimit = sc.letter == "D" ? 1600 : sc.letter == "A" ? 2090 : sc.letter == "G" ? 1399 : sc.letter == "H" ? 499 : 700;
+        const std::size_t scenarioLimit = sc.letter == "D" ? 1600 : sc.letter == "A" ? 2090 : sc.letter == "G" ? 1399 : sc.letter == "H" ? 499 : sc.letter == "P" ? 1975 : 700;
         const std::size_t limit = std::min<std::size_t>(scenarioLimit, std::min(logged.size(), tr.ticks()) - 1);
         for (std::size_t k = 0; k < limit; ++k) {
             // page comparison at the START of tick k (everything before it has been drawn)
@@ -210,7 +210,7 @@ TEST(tickdraw_calls_and_pages_equal_the_oracle) {
                 // inside this tick and not rebuilt, only its result: the page is replaced.
                 hires::Page fresh;
                 CHECK(drawPlayfield(fresh, b, pack));
-                CHECK(drawHud(fresh, b, pack, display.high));
+                CHECK(drawHud(fresh, b, pack, display.high, sc.letter == "P" ? 2 : 1));
                 CHECK(drawPacman(fresh, b, pack, false));
                 page = fresh;
                 display.lastFlag1E = 0;

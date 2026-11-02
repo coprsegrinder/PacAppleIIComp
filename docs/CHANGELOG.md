@@ -60,3 +60,5 @@
 * Verifier rule confirmed by the user; release identity reconciled (Atari 1983); boot tracks found to be a modified DOS; gameplay memory compared with AppleWin.
 * Earlier the same day: disassembler, 6502 core and Apple II model, coverage and rendering tools, control and table analysis (see `docs/TASK_LEDGER.md`).
 * Correction: the first "read as data" statistics were inflated by the startup stub's own reads; recomputed (`docs/DATA_REGIONS.md`).
+
+- TASK-029g10 (partly): two-player first screen, scenarios K/L/M/P; player switch after a death still open.

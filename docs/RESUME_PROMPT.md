@@ -84,3 +84,5 @@ TASK-028b done (2026-11-02; GDI window port/src/app, docs/APP_WINDOW.md, tests/t
 Emulator control (verified): launch `AppleWin-x64.exe -d1 <scratch\work.dsk>`; drive it with
 `powershell -File tools/awin_ctl.ps1 -Key F7` (debugger), `-Text 'BSAVE "main.bin",0,C000'` (dump main RAM to scratch/),
 `-Shot <png>` (window-only capture). It posts messages straight to the window; the window may be minimized (script restores it).
+
+Latest: 029g10 partly done; next: the player-switch sequence (P tick 1976), then remaining open drawing items.

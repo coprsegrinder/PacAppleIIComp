@@ -33,6 +33,7 @@ def patched():
             state['t'] += 1
             col.records.append([-1, [state['t']], None, None])
             extra.extend([mc.m[0xE1], mc.m[0xE2], mc.m[0xE5], mc.m[0xE6], mc.m[0xE7], mc.m[0xE4]])
+            holder.setdefault('extra2', bytearray()).extend([mc.m[0x50], mc.m[0x51]])
             if state['t'] % 10 == 0:
                 pages.append((state['t'], bytes(mc.m[0x2000:0x4000])))
         return inner()
@@ -45,6 +46,10 @@ CUSTOM = {
     # own scenarios (not golden): A's keys plus these pokes [tick, address, value]
     'G': [[50, 0x57, 3], [300, 0x60, 0x8B], [300, 0x61, 0x6B]],     # fruit after 3 items; at tick 300 Pac-Man is put on the fruit's place (x $8B, y $6B)
     'H': [[5, 0x55, 6], [100, 0x56, 1]],
+    'K': [[200, 0x84, 0x8B], [200, 0x85, 0x47], [200, 0x95, 1], [200, 0xA0, 1], [200, 0xB4, 1], [200, 0xC8, 1], [200, 0xE1, 0xC0], [200, 0xE2, 0], [200, 0xE4, 1]],   # as J, and ghosts 2-4 frightened (blue image, flag $1E = 1) so that the last draw before the door redraw leaves $1E = 1
+    'L': [[5, 0x55, 14], [100, 0x56, 1]],       # level 14 -> 15
+    'M': [[5, 0x55, 25], [100, 0x56, 1]],       # level 25 -> 26 (the last table entry)
+    'P': [],                                    # TWO PLAYERS: A's keys, the players prompt answered with 2
     'J': [[200, 0x84, 0x8B], [200, 0x85, 0x47], [200, 0x95, 1]],      # ghost 1 is put on the door cell with its in-house flag set: it runs the house-exit script and redraws the door with $1E = its own flag 1                            # level 6; at tick 100 one item is left: the next item ends the level (-> level 7: icons)
 }
 if SC in CUSTOM:
@@ -60,6 +65,12 @@ elif SC == 'F':
 else:
     stored = json.load(open('tests/golden/gameplay_traces.json'))['scenarios'][SC]
 G.SCENARIOS[SC]['ticks'] = N
+if SC == 'P':
+    def two_players(mc):
+        from play import do_step
+        for st in ('key:sp', '3_000_000', 'key:2', '3_000_000', 'key:cr', '1_000_000'):
+            do_step(mc, st, lambda *_: None)
+    G.start_game = two_players
 states = []
 orig_state = G.state_bytes
 def rec(m):
@@ -69,7 +80,7 @@ def rec(m):
 G.state_bytes = rec
 G.run(SC, stored['inputs'], stored['pokes'])
 G.state_bytes = orig_state
-if SC in ('F', 'G', 'H', 'J'):
+if SC in ('F', 'G', 'H', 'J', 'K', 'L', 'M', 'P'):
     import struct as _st
     h = b''
     for x in states[:N + 1]:
@@ -97,4 +108,5 @@ with open('scratch/pages_%s.bin' % SC, 'wb') as f:
     for t, pg in pages:
         f.write(struct.pack('<I', t) + pg)
 open('scratch/extra_%s.bin' % SC, 'wb').write(bytes(holder['extra']))
+open('scratch/extra2_%s.bin' % SC, 'wb').write(bytes(holder['extra2']))   # $50 (current player) and $51 (number of players) per tick
 print('ticks', N, 'calls', sum(1 for r in col.records if r[0] != -1), 'pages', len(pages))

@@ -8,7 +8,12 @@ from play import do_step
 from cov_close import factory
 mc=factory()
 for st in ('key:1','key:cr','70_000_000'): do_step(mc,st,lambda *_:None)
-start_game(mc)
+import os as _os
+if _os.environ.get('PLAYERS') == '2':
+    for st in ('key:sp', '3_000_000', 'key:2', '3_000_000', 'key:cr', '1_000_000'):
+        do_step(mc, st, lambda *_: None)
+else:
+    start_game(mc)
 pages=[]
 step=mc.cpu.step
 def hook():
@@ -22,5 +27,5 @@ try:
         try: mc.run(150_000)
         except NeedKey: mc.push_key(13)
 except SystemExit: pass
-open('scratch/page_tick0.bin','wb').write(pages[0]); open('scratch/page_tick1.bin','wb').write(pages[1])
+open('scratch/page_tick0%s.bin' % ('_2p' if _os.environ.get('PLAYERS') == '2' else ''),'wb').write(pages[0]); open('scratch/page_tick1%s.bin' % ('_2p' if _os.environ.get('PLAYERS') == '2' else ''),'wb').write(pages[1])
 print('saved', len(pages))

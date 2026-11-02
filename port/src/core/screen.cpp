@@ -45,7 +45,7 @@ bool drawNumber(hires::Page& page, std::uint32_t bcd, int x, int y, const datapa
 
 }  // namespace
 
-bool drawHud(hires::Page& page, const GameState& s, const datapack::Pack& pack, const std::array<std::uint8_t, 3>& high) {
+bool drawHud(hires::Page& page, const GameState& s, const datapack::Pack& pack, const std::array<std::uint8_t, 3>& high, int players, std::uint32_t player2Score) {
     const auto label1 = pack.find(0x55F7, 49);
     const auto label2 = pack.find(0x5628, 49);
     const auto mark = pack.find(0x7201, hires::kTileTableBytes);
@@ -56,6 +56,18 @@ bool drawHud(hires::Page& page, const GameState& s, const datapack::Pack& pack, 
     const auto fruit = pack.find(static_cast<std::uint16_t>(fruitTable[levelIndex] | (fruitTable[levelIndex + 1] << 8)), 36);
     const auto life = pack.find(0x9CB8, hires::kSevenCopies3x10);
     if (label1.empty() || label2.empty() || mark.empty() || box.empty() || fruit.empty() || life.empty()) return false;
+    if (players >= 2) {                                                        // $550A loops from the last player down: player 2 first
+        const auto entry = pack.find(0x55C7 + 16, 8);                          // label column, row, mark x (16 bit), mark y, dotted line x0, y
+        const auto digits = pack.find(0x717D, 20);
+        if (entry.empty() || digits.empty()) return false;
+        const auto mark2 = pack.find(static_cast<std::uint16_t>(digits[4] | (digits[5] << 8)), hires::kTileTableBytes);   // the digit 2
+        if (mark2.empty()) return false;
+        hires::blitOr(page, entry[0], entry[1], 7, 7, label1);
+        hires::tile(page, entry[2] | (entry[3] << 8), entry[4], mark2);
+        hires::hLine(page, entry[5], entry[5] + 0x31, 14, 2, true);
+        hires::boxClear(page, box[4], box[5]);
+        if (!drawNumber(page, player2Score, 266, 16, pack)) return false;
+    }
     hires::blitOr(page, 0, 6, 7, 7, label1);                                   // $550A..: the player label
     hires::tile(page, 47, 6, mark);
     hires::hLine(page, 4, 0x35, 14, 2, true);                                  // $5CF6 under the player label: dotted line, x $04 to $35 (the oracle's values)
