@@ -126,6 +126,39 @@ class RealMazeShot(unittest.TestCase):
         self.assertGreater(sum(1 for r in img for v in r if v != BLACK), 1000)  # the maze is really there
 
 
+    def test_attract_text_page_scale_3(self):
+        """TASK-028e: all 12 attract-screen strings on one page (--page text) equal the independent Python text model (tools/text_model.py)."""
+        dsk = os.path.join(ROOT, "Pacman (1983)(Atari).dsk")
+        body = os.path.join(ROOT, "scratch", "extract", "PAC-MAN.1000.bin")
+        pk = os.path.join(ROOT, "out", "bat", "pacman_pack.exe")
+        if not all(os.path.exists(f) for f in (EXE, dsk, body, pk)):
+            self.skipTest("needs the build, the disk image and scratch/extract")
+        sys.path.insert(0, os.path.join(ROOT, "tools"))
+        import text_model
+        data = open(body, "rb").read()
+        page = bytearray([0x80]) * 0x2000
+        addr = 0x434F
+        n = 0
+        while addr < 0x43D2:
+            text_model.draw_string(page, data, addr)
+            addr += 2
+            while data[addr - 0x4000] < 0x80:
+                addr += 1
+            addr += 1
+            n += 1
+        self.assertEqual((n, addr), (12, 0x43D2))
+        img = page_to_colours(page)
+        with tempfile.TemporaryDirectory() as t:
+            pack, out = os.path.join(t, "p.pmpk"), os.path.join(t, "t.bmp")
+            self.assertEqual(subprocess.run([pk, "build", dsk, pack], timeout=60, capture_output=True).returncode, 0)
+            self.assertEqual(subprocess.run([EXE, "--pack", pack, "--page", "text", "--scale", "3", "--shot", out], timeout=30).returncode, 0)
+            w, h, got = read_bmp(out)
+        self.assertEqual((w, h), (840, 576))
+        diff = sum(1 for y in range(h) for x in range(w) if got[y][x] != img[y // 3][x // 3])
+        self.assertEqual(diff, 0, "%d pixels differ" % diff)
+        self.assertGreater(sum(1 for r in img for v in r if v == WHITE), 500)  # text is really there
+
+
 def page_to_colours(page):
     """Standard hi-res rules from the 8192-byte page (independent of the C++ code)."""
     lit = [[0] * 280 for _ in range(192)]
