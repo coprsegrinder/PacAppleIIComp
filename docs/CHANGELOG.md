@@ -92,3 +92,5 @@
 - TASK-029g16: player 2 level end equal to the oracle (scenario U).
 
 - TASK-029h: GameCore/GameDriver; 53,827 ticks free-running equal the oracle (ghosts fed); pages equal end to end in 11 scenarios; first playable program pacman_play.exe (no ghosts yet). D5: 4,870 cycles per tick.
+
+- TASK-030e planned (docs/M5_PLAN.md, rows 030e1-e9); 030e1 recorder done for A-D.

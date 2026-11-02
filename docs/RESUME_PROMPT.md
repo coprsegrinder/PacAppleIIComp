@@ -116,3 +116,5 @@ Latest: 029g15 done (high score carry). Next: player-2 level end, then 029h inte
 Latest: 029g16 done (player 2 level end). Drawing of gameplay is complete except pauses/sounds and post-GAME OVER. Next: 029h integration.
 
 Latest: 029h DONE. pacman_play.exe runs (no ghosts). Next: M5 ghosts (030e) - replace the fed ghost fields; or 029i/other ledger items.
+
+Latest: M5 planned; 030e1 done (A-D). Next: 030e2 GhostWorld state model, 030e3 countdown/frightened timer. User tried pacman_play.exe: movement feels great, fruit and power pills score; ghosts do not move (expected).
