@@ -16,11 +16,12 @@ struct ReplayStats {
     int unusable = 0;      // calls whose data is not in the pack (e.g. the working buffer at $7E70)
     int lastUnusable = -1; // index of the last such call
     int lastClear = -1;    // index of the last page clear
-    std::array<int, 11> used{};  // calls replayed per type (10 = page clear)
+    std::array<int, 13> used{};  // calls replayed per type (10 = page clear, 11 = vertical line, 12 = horizontal line)
     std::array<std::uint8_t, 32> recordedSha256{};  // the original's final-page hash stored in the script
 };
 
 // False if the script file is malformed. The page is replayed in place (starting from whatever it holds; a script normally begins with a clear).
-bool replayScript(const datapack::Pack& pack, std::span<const std::uint8_t> file, Page& page, ReplayStats& stats);
+// maxCalls: replay only the first maxCalls calls (0 = all), to reach a picture in the middle of a sequence.
+bool replayScript(const datapack::Pack& pack, std::span<const std::uint8_t> file, Page& page, ReplayStats& stats, std::uint32_t maxCalls = 0);
 
 }  // namespace pacman::hires

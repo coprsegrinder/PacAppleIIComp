@@ -4,13 +4,14 @@
 
 namespace pacman::hires {
 
-bool replayScript(const datapack::Pack& pack, std::span<const std::uint8_t> f, Page& page, ReplayStats& stats) {
+bool replayScript(const datapack::Pack& pack, std::span<const std::uint8_t> f, Page& page, ReplayStats& stats, std::uint32_t maxCalls) {
     if (f.size() < 40 || std::memcmp(f.data(), "CSCR", 4) != 0) return false;
     std::uint32_t count = 0;
     std::memcpy(&count, f.data() + 4, 4);
     const std::size_t rec = 1 + 8 * 4;
     if (f.size() != 40 + count * rec) return false;
     stats.calls = count;
+    if (maxCalls != 0 && maxCalls < count) count = maxCalls;
     std::memcpy(stats.recordedSha256.data(), f.data() + 8, 32);
     for (std::uint32_t i = 0; i < count && 40 + (i + 1) * rec <= f.size(); ++i) {
         const std::uint8_t* r = f.data() + 40 + i * rec;
@@ -39,6 +40,8 @@ bool replayScript(const datapack::Pack& pack, std::span<const std::uint8_t> f, P
                 maskedClear(page, p[1], p[2], m);
                 break;
             }
+            case 11: vLine(page, p[0], p[1], p[2]); break;
+            case 12: hLine(page, p[0], p[1], p[2], p[3] != 0 ? 2 : 1, true); break;
             case 4: {
                 const auto t = addr(0x6992, 12);
                 if (t.empty()) { ran = false; break; }

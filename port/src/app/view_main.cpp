@@ -86,11 +86,11 @@ bool textPage(const pacman::datapack::Pack& pack, pacman::hires::Page& page) {
 }
 
 // Replays a recorded drawing script (tools/capture_script.py) and shows the page it ends on.
-bool scriptPage(const pacman::datapack::Pack& pack, const std::wstring& scriptPath, pacman::hires::Page& page) {
+bool scriptPage(const pacman::datapack::Pack& pack, const std::wstring& scriptPath, std::uint32_t calls, pacman::hires::Page& page) {
     std::ifstream file(std::filesystem::path(scriptPath), std::ios::binary);
     const std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
     pacman::hires::ReplayStats stats;
-    if (!file || !pacman::hires::replayScript(pack, bytes, page, stats)) {
+    if (!file || !pacman::hires::replayScript(pack, bytes, page, stats, calls)) {
         std::puts("cannot replay the script");
         return false;
     }
@@ -124,6 +124,7 @@ int wmain(int argc, wchar_t** argv) {
     std::wstring pack;
     bool text = false;
     std::wstring script;
+    std::uint32_t calls = 0;
     for (int i = 1; i < argc; ++i) {
         const std::wstring a = argv[i];
         if (a == L"--scale" && i + 1 < argc) o.scale = _wtoi(argv[++i]);
@@ -133,6 +134,8 @@ int wmain(int argc, wchar_t** argv) {
             const std::wstring w = argv[++i];
             if (w == L"text") text = true;
             else if (w != L"maze") return 64;
+        } else if (a == L"--calls" && i + 1 < argc) {
+            calls = static_cast<std::uint32_t>(_wtoi(argv[++i]));
         } else if (a == L"--script" && i + 1 < argc) {
             script = argv[++i];
         } else if (a == L"--pack" && i + 1 < argc) pack = argv[++i];
@@ -142,7 +145,7 @@ int wmain(int argc, wchar_t** argv) {
     pacman::hires::Page page;  // cleared to $80 like the original's page clear, then the walls
     pacman::datapack::LoadResult loaded;
     if (!loadPackFile(pack, loaded)) return 3;
-    const bool ok = !script.empty() ? scriptPage(loaded.pack, script, page) : (text ? textPage(loaded.pack, page) : mazePage(loaded.pack, page));
+    const bool ok = !script.empty() ? scriptPage(loaded.pack, script, calls, page) : (text ? textPage(loaded.pack, page) : mazePage(loaded.pack, page));
     if (!ok) return 3;
     return pacman::app::showPage(page, o);
 }

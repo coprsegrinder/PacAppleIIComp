@@ -181,6 +181,29 @@ class RealMazeShot(unittest.TestCase):
         self.assertGreater(sum(1 for r in img for v in r if v != BLACK), 100)
 
 
+    def test_mid_cartoon_screen_scale_3(self):
+        """TASK-028h: a picture from the MIDDLE of cartoon 1: the first N recorded calls are replayed (--calls N) and the window shows the page; it equals
+        the colours of the original's page saved at that moment (scratch/cartoon1_page_at_29200.bin; N in scratch/cartoon1_snapshot.txt)."""
+        dsk = os.path.join(ROOT, "Pacman (1983)(Atari).dsk")
+        script = os.path.join(ROOT, "scratch", "cartoon1_script.bin")
+        snap = os.path.join(ROOT, "scratch", "cartoon1_page_at_29200.bin")
+        side = os.path.join(ROOT, "scratch", "cartoon1_snapshot.txt")
+        pk = os.path.join(ROOT, "out", "bat", "pacman_pack.exe")
+        if not all(os.path.exists(f) for f in (EXE, dsk, script, snap, side, pk)):
+            self.skipTest("needs the build, the disk image and the captured cartoon script + snapshot")
+        n = int(open(side).read().split()[0])
+        img = page_to_colours(open(snap, "rb").read())
+        lit = sum(1 for r in img for v in r if v != BLACK)
+        self.assertGreater(lit, 100)  # sprites are on screen (183 lit pixels: Pac-Man and the ghost; cartoon pictures are small)
+        with tempfile.TemporaryDirectory() as t:
+            pack, out = os.path.join(t, "p.pmpk"), os.path.join(t, "c.bmp")
+            self.assertEqual(subprocess.run([pk, "build", dsk, pack], timeout=60, capture_output=True).returncode, 0)
+            self.assertEqual(subprocess.run([EXE, "--pack", pack, "--script", script, "--calls", str(n), "--scale", "3", "--shot", out], timeout=60).returncode, 0)
+            w, h, got = read_bmp(out)
+        diff = sum(1 for y in range(h) for x in range(w) if got[y][x] != img[y // 3][x // 3])
+        self.assertEqual(diff, 0, "%d pixels differ" % diff)
+
+
 def page_to_colours(page):
     """Standard hi-res rules from the 8192-byte page (independent of the C++ code)."""
     lit = [[0] * 280 for _ in range(192)]
