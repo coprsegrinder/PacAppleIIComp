@@ -23,6 +23,7 @@ add_library(pacman_core_verify STATIC
   src/core/gamestate.cpp
   src/core/input.cpp
   src/core/steptimer.cpp
+  src/core/junction.cpp
   src/video/colour.cpp)
 target_include_directories(pacman_core_verify PUBLIC src)
 
@@ -56,6 +57,7 @@ add_executable(pacman_tests
   tests/test_gamestate.cpp
   tests/test_input.cpp
   tests/test_steptimer.cpp
+  tests/test_junction.cpp
   src/app/gamewindow.cpp
   tests/test_video.cpp
   tests/test_real_image.cpp)
