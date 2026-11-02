@@ -18,7 +18,9 @@
 namespace pacman::core {
 
 struct DrawCall {
-    int type = 0;                         // 3 = masked clear (p0 = mask table, p1 = x, p2 = y); 1 = 3 x 10 image (p0 = image base, p1 = x, p2 = y, p3 = $1D, p4 = $1E)
+    int type = 0;                         // 3 = masked clear (p0 = mask table, p1 = x, p2 = y); 1 = 3 x 10 image (p0 = image base, p1 = x, p2 = y, p3 = $1D, p4 = $1E);
+                                          // 4 = box clear (p0 = box index 0/1); 5 = small dot (p0 = x, p1 = y); 6 = tile (p0 = tile table address, p1 = x, p2 = y);
+                                          // 8 = horizontal line (p0 = x0, p1 = x1, p2 = y, p3 = step, p4 = the value of $1E at that moment, i.e. the ghost's flag: $5CF0 ORs it into the touched bytes, so the palette bit is set only if bit 7 of it is): the ghost-house door
     std::array<int, 5> p{};
     bool operator==(const DrawCall& o) const { return type == o.type && p == o.p; }
 };
@@ -30,5 +32,14 @@ std::uint16_t ghostImageBase(const GameState& state, std::size_t ghost, std::uin
 // pacmanActed: Pac-Man's step timer ran out in this tick. An acting Pac-Man that did not move is BLOCKED ($7905-$7912): he is erased and redrawn standing
 // ($66 was set to 2) at the same place.
 std::vector<DrawCall> spriteCalls(const GameState& before, const GameState& after, const datapack::Pack& pack, bool pacmanActed = false, std::uint16_t frightenedTimer = 0);
+
+// All the drawing calls of a tick that are derived from the state (TASK-029g5): the sprite calls, then in the order of the original
+//   - Pac-Man's eating: when the score changed, the score display ($7091): if the score is at least the high score, the high score takes the score's value
+//     and is drawn first (box clear 0, digits at x 40, y 94); then the score (box clear 1, digits at x 40, y 16); digits right to left, 6 pixels apart;
+//   - after each ghost's image: when the ghost's cell counters show that it has just left a cell that still holds a dot, the small dot of that cell is redrawn
+//     ($895F: leaving a cell is when the sub-counter wrapped: sub-counter 0 after the step: right/down: cell = counter - 1; left/up: cell = counter + 1).
+// `highScore` (three BCD bytes, low first) is the display's own state and is updated. NOT included: the energizer blink, the "1UP" blink, fruit.
+std::vector<DrawCall> tickCalls(const GameState& before, const GameState& after, const datapack::Pack& pack, bool pacmanActed, std::array<std::uint8_t, 3>& highScore,
+                                std::uint16_t frightenedTimer = 0);
 
 }  // namespace pacman::core

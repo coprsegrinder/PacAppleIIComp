@@ -2,6 +2,7 @@
 // (needs --image, --ticks scratch/ticks_A.bin and --tickcalls scratch/tick_calls_A.txt from tools/record_tick_calls.py): for every tick the sprite calls
 // (types 3 and 1) derived from the states at the start and at the end of the tick must equal the logged ones, in order. A second test executes those calls on a
 // page that starts as the first play screen and compares the page with the oracle's every 10th tick (--pages scratch/pages_A.bin).
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <fstream>
@@ -68,15 +69,18 @@ TEST(tickdraw_against_the_oracle_call_log) {
             DrawCall c;
             ss >> w >> c.type;
             for (auto& v : c.p) ss >> v;
-            if (c.type == 1 || c.type == 3) logged.back().push_back(c);
+            const bool blink = c.type == 2 || (c.type == 6 && (c.p[0] == 25034 || (c.p[0] == 29185 && c.p[1] == 47 && c.p[2] == 6)));   // energizer and 1UP blinks: not rebuilt
+            if ((c.type == 1 || c.type == 3 || c.type == 4 || c.type == 5 || c.type == 6) && !blink) logged.back().push_back(c);
         }
     }
     CHECK(logged.size() > 500);
     std::size_t ticks = 0, withCalls = 0, bad = 0, firstBad = 0, calls = 0;
+    std::array<std::uint8_t, 3> high{0, 0, 0};
     for (std::size_t k = 0; k + 1 < logged.size() && k + 1 < tr.ticks() && k < 700; ++k) {   // the log run goes on a little after tick 700 without the scenario's keys
         const GameState a = fromOracleLayout(tr.state(k));
         const GameState b = fromOracleLayout(tr.state(k + 1));
-        const auto mine = spriteCalls(a, b, loaded.pack, tr.at(k, 0x59) == 1);
+        auto mine = tickCalls(a, b, loaded.pack, tr.at(k, 0x59) == 1, high);
+        mine.erase(std::remove_if(mine.begin(), mine.end(), [](const DrawCall& c) { return c.type == 8; }), mine.end());   // door lines: not in the collector's log
         ++ticks;
         calls += logged[k].size();
         withCalls += !logged[k].empty();
@@ -128,10 +132,13 @@ TEST(tickdraw_pages_every_10_ticks_equal_the_oracle) {
     CHECK(drawHud(page, first, pack));
     CHECK(drawPacman(page, first, pack, false));
     const auto mask = pack.find(0x69CD, hires::kMaskTableBytes);
-    CHECK(!mask.empty());
+    const auto box = pack.find(0x6992, 12);
+    const auto dotTable = pack.find(0x61A8, hires::kDotTableBytes);
+    CHECK(!mask.empty() && !box.empty() && !dotTable.empty());
+    std::array<std::uint8_t, 3> highScore{0, 0, 0};
     // areas this piece does not draw: the score and high-score digits (rows 6-22 and 84-100, columns 0-7) and the four blinking energizers
     auto excluded = [](int y, int c) {
-        if ((y >= 6 && y <= 22 && c <= 7) || (y >= 84 && y <= 100 && c <= 7)) return true;
+        if (y >= 6 && y <= 13 && c <= 7) return true;   // the blinking 1UP label
         for (int ex : {64, 214})
             for (int ey : {22, 142})
                 if (y >= ey - 1 && y <= ey + 6 && c >= (ex - 1) / 7 && c <= (ex - 1) / 7 + 2) return true;
@@ -152,13 +159,13 @@ TEST(tickdraw_pages_every_10_ticks_equal_the_oracle) {
                         const std::size_t off = hires::rowOffset(y) + static_cast<std::size_t>(c);
                         if (excluded(y, c)) continue;
                         if (page.byte(off) != rp[4 + off]) {
-                            if (k <= 357 && badPages == 0 && diff < 6) std::printf("    first bad page, tick %zu: row %d column %d mine %02X oracle %02X\n", k, y, c, page.byte(off), rp[4 + off]);
+                            if (badPages == 0 && diff < 6) std::printf("    first bad page, tick %zu: row %d column %d mine %02X oracle %02X\n", k, y, c, page.byte(off), rp[4 + off]);
                             ++diff;
                         }
                     }
                 // The first dot restoration after a ghost step (a small-dot call, not rebuilt yet) happens in tick 357: pages up to the start of tick 357 must be
                 // exact; later pages are counted only (they differ by the missing dot redraws, see docs/M4_PLAN.md).
-                if (k > 357) {
+                if (false) {
                     laterDiffer += diff != 0;
                     ++laterPages;
                     ++nextPageSkipped;
@@ -175,9 +182,18 @@ TEST(tickdraw_pages_every_10_ticks_equal_the_oracle) {
         }
         const GameState a = fromOracleLayout(tr.state(k));
         const GameState b = fromOracleLayout(tr.state(k + 1));
-        for (const auto& c : spriteCalls(a, b, pack, tr.at(k, 0x59) == 1)) {
+        for (const auto& c : tickCalls(a, b, pack, tr.at(k, 0x59) == 1, highScore)) {
             if (c.type == 3) {
                 hires::maskedClear(page, c.p[1], c.p[2], mask);
+            } else if (c.type == 8) {
+                hires::hLine(page, c.p[0], c.p[1], c.p[2], c.p[3], c.p[4] != 0);   // empirical: the oracle shows the palette bit set for a ghost whose flag is 1 (ghost 1) and clear for flag 0 (ghost 3); not understood
+            } else if (c.type == 4) {
+                hires::boxClear(page, box[static_cast<std::size_t>(c.p[0]) * 2], box[static_cast<std::size_t>(c.p[0]) * 2 + 1]);
+            } else if (c.type == 5) {
+                hires::smallDot(page, c.p[0], c.p[1], dotTable);
+            } else if (c.type == 6) {
+                const auto t = pack.find(static_cast<std::uint16_t>(c.p[0]), hires::kTileTableBytes);
+                if (!t.empty()) hires::tile(page, c.p[1], c.p[2], t);
             } else {
                 const auto image = pack.find(static_cast<std::uint16_t>(c.p[0]), hires::kSevenCopies3x10);
                 if (!image.empty()) hires::drawImage(page, c.p[1], c.p[2], image, c.p[3] != 0 && c.p[4] != 0);
