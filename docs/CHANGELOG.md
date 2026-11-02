@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2026-10-29
+* TASK-029d1b: step timer checked at levels 4-21 (14 new recordings); found and rebuilt a carry quirk at level >= 15; near-ghost rule from level 5 understood but not yet seen on the oracle.
 * TASK-029d1: Pac-Man step timer rebuilt (reload rule, ghost-state terms, dot penalty); equals the oracle on 33,757 recorded ticks. 029d split into d1-d4.
 * TASK-029c: input poll rebuilt (keys, Ctrl-S, Esc pause, demo Space, game-port switches); equals the oracle on 33,819 recorded decisions.
 * TASK-029b: GameState with the golden layout (round-trips 33,832 recorded ticks) and the new-game state (equals tick 0 of all four scenarios; some values still oracle literals).

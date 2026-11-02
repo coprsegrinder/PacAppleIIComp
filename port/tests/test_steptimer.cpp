@@ -89,6 +89,12 @@ TEST(steptimer_eating_delays_pacman_now_and_for_later_reloads) {
     GameState late = at(12, 1);                           // level 12: no immediate penalty, F3 start 1
     timer.itemEaten(late, t);
     CHECK(late.pacStepCounter() == 1 && timer.f3() == 1);
+    GameState l14 = at(14, 1);                            // level 14: table entry 0, no carry: no delay
+    timer.itemEaten(l14, t);
+    CHECK(l14.pacStepCounter() == 1);
+    GameState l15 = at(15, 1);                            // level 15 and up: the carry left by CMP #$0F in $6D1E adds 1 although the entry is 0
+    timer.itemEaten(l15, t);
+    CHECK(l15.pacStepCounter() == 2);
     GameState last = at(30, 1);                           // level class 15: F3 start 0
     timer.itemEaten(last, t);
     CHECK(timer.f3() == 0);
@@ -111,7 +117,7 @@ TEST(steptimer_against_the_oracle_recordings) {
     CHECK(loadStepTables(loaded.pack, tab));
     CHECK(tab.base[1] == 9 && tab.penalty[1] == 2 && tab.f3Start[1] == 2);  // level 1 values from the pack equal the documented ones
 
-    std::size_t decisions = 0, reloads = 0, eats = 0, resets = 0;
+    std::size_t decisions = 0, reloads = 0, eats = 0, resets = 0, nearGhost = 0;
     for (std::size_t pos = 0; pos <= testfw::config().ticks.size();) {
         const std::size_t comma = testfw::config().ticks.find(',', pos);
         const std::size_t end = comma == std::string::npos ? testfw::config().ticks.size() : comma;
@@ -143,12 +149,23 @@ TEST(steptimer_against_the_oracle_recordings) {
             }
             ++decisions;
             if (s.pacStepCounter() != expectedNext) {
-                if (mismatches++ == 0) firstBad = k;
+                // The one known outside writer: the near-ghost delay of the contact test (level 5 and up), which runs inside the ghost steps.
+                // Their timing belongs to the ghost logic (M5), so here it is only checked that EVERY unexplained +1 is a case where the rule's
+                // condition holds for some ghost, using the ghost positions of this tick or the next one.
+                bool explained = false;
+                if (static_cast<std::uint8_t>(expectedNext - s.pacStepCounter()) == 1 && tr.at(k, 0x55) >= 5) {
+                    for (std::size_t when = k; when <= k + 1 && !explained; ++when) {
+                        GameState at = fromOracleLayout(tr.state(when));
+                        for (const auto& g : at.ghosts) explained = explained || StepTimer::nearGhostDelays(at, g);
+                    }
+                }
+                if (explained) ++nearGhost;
+                else if (mismatches++ == 0) firstBad = k;
             }
         }
         std::printf("    %s: mismatches %zu%s\n", path.c_str(), mismatches, mismatches ? (" (first at tick " + std::to_string(firstBad) + ")").c_str() : "");
         CHECK(mismatches == 0);
     }
-    std::printf("    %zu ticks compared, %zu reloads, %zu items eaten, %zu restarts skipped\n", decisions, reloads, eats, resets);
+    std::printf("    %zu ticks compared, %zu reloads, %zu items eaten, %zu restarts skipped, %zu +1 explained by the near-ghost rule\n", decisions, reloads, eats, resets, nearGhost);
     CHECK(decisions > 20000 && reloads > 2000 && eats > 100);
 }

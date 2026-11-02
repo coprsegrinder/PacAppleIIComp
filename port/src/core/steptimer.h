@@ -32,6 +32,12 @@ public:
     void itemEaten(GameState& state, const StepTables& tables);
     std::uint8_t f3() const noexcept { return f3_; }
 
+    // The "near ghost" delay inside the ghost/Pac-Man contact test $8B34-$8B65: from level 5 on, when a ghost is on the same row or column as Pac-Man
+    // and closer than 10 units, Pac-Man gets one more tick of delay ($59 += 1) unless bit 1 of a coordinate is set (see the .cpp for which one).
+    // The original runs it once for every ghost step (ghost logic, M5); this function is the rule itself.
+    static bool nearGhostDelays(const GameState& state, const GhostRecord& ghost) noexcept;
+    static void applyNearGhostDelay(GameState& state, const GhostRecord& ghost) noexcept;
+
 private:
     std::uint8_t f3_ = 0;
 };
