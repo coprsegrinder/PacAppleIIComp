@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "../datapack/datapack.h"
+#include "../hires/hires.h"
 #include "gamestate.h"
 
 namespace pacman::core {
@@ -20,6 +21,8 @@ namespace pacman::core {
 struct DrawCall {
     int type = 0;                         // 3 = masked clear (p0 = mask table, p1 = x, p2 = y); 1 = 3 x 10 image (p0 = image base, p1 = x, p2 = y, p3 = $1D, p4 = $1E);
                                           // 4 = box clear (p0 = box index 0/1); 5 = small dot (p0 = x, p1 = y); 6 = tile (p0 = tile table address, p1 = x, p2 = y);
+                                          // 2 = OR blit (p0 = data address, p1 = column, p2 = row, p3 = width, p4 = rows); 9 = energizer erase (p0 = x, p1 = y);
+                                          // 10 = the 1UP box clear;
                                           // 8 = horizontal line (p0 = x0, p1 = x1, p2 = y, p3 = step, p4 = the value of $1E at that moment, i.e. the ghost's flag: $5CF0 ORs it into the touched bytes, so the palette bit is set only if bit 7 of it is): the ghost-house door
     std::array<int, 5> p{};
     bool operator==(const DrawCall& o) const { return type == o.type && p == o.p; }
@@ -33,13 +36,27 @@ std::uint16_t ghostImageBase(const GameState& state, std::size_t ghost, std::uin
 // ($66 was set to 2) at the same place.
 std::vector<DrawCall> spriteCalls(const GameState& before, const GameState& after, const datapack::Pack& pack, bool pacmanActed = false, std::uint16_t frightenedTimer = 0);
 
+// Zero-page values outside the logical state of the recordings that the drawing needs (recorded by tools/record_tick_calls.py at the start of each tick):
+// the frightened timer $E1/$E2, the 1UP blink counter and phase $E5/$E6, the fruit state $E7, $E4.
+struct TickExtras {
+    std::uint8_t e1 = 0, e2 = 0, e5 = 0, e6 = 0, e7 = 0, e4 = 0;
+    std::uint16_t frightenedTimer() const noexcept { return static_cast<std::uint16_t>(e1 | (e2 << 8)); }
+};
+
 // All the drawing calls of a tick that are derived from the state (TASK-029g5): the sprite calls, then in the order of the original
 //   - Pac-Man's eating: when the score changed, the score display ($7091): if the score is at least the high score, the high score takes the score's value
 //     and is drawn first (box clear 0, digits at x 40, y 94); then the score (box clear 1, digits at x 40, y 16); digits right to left, 6 pixels apart;
 //   - after each ghost's image: when the ghost's cell counters show that it has just left a cell that still holds a dot, the small dot of that cell is redrawn
 //     ($895F: leaving a cell is when the sub-counter wrapped: sub-counter 0 after the step: right/down: cell = counter - 1; left/up: cell = counter + 1).
 // `highScore` (three BCD bytes, low first) is the display's own state and is updated. NOT included: the energizer blink, the "1UP" blink, fruit.
-std::vector<DrawCall> tickCalls(const GameState& before, const GameState& after, const datapack::Pack& pack, bool pacmanActed, std::array<std::uint8_t, 3>& highScore,
-                                std::uint16_t frightenedTimer = 0);
+struct DisplayState {
+    std::array<std::uint8_t, 3> high{0, 0, 0};   // the high score on the screen (BCD, low byte first)
+    int lastFlag1E = 0;                          // the zero-page flag $1E as the last image draw left it: the door lines ($5CF0) use it for the palette bit
+};
+std::vector<DrawCall> tickCalls(const GameState& before, const GameState& after, const datapack::Pack& pack, bool pacmanActed, DisplayState& display,
+                                const TickExtras& extrasBefore = {}, const TickExtras& extrasAfter = {});
+
+// Executes one call on the page with the verified hires routines (all call types of this file; the data comes from the pack). False if the pack lacks data.
+bool executeCall(hires::Page& page, const DrawCall& call, const datapack::Pack& pack);
 
 }  // namespace pacman::core

@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2026-10-29
+* TASK-029g6: door palette rule understood; 1UP and energizer blinks rebuilt; scenario A exact in calls and 70 pages with nothing excluded; scenario D exact up to tick 465.
 * TASK-029g5: score display, ghost dot redraw and door redraw; 700 ticks of scenario A: drawing calls and 70 pages equal the oracle (except the two blinks).
 * TASK-029g4 (part 1): per-tick sprite calls (erase, image, blocked redraw, ghost image choice) equal the oracle log for 700 ticks; pages exact to tick 357.
 * TASK-029g2/g3: score area, labels, dotted lines and icons drawn; the whole first play page equals the oracle (0 of 8,192 bytes differ).
