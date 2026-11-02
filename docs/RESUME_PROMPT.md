@@ -120,3 +120,5 @@ Latest: 029h DONE. pacman_play.exe runs (no ghosts). Next: M5 ghosts (030e) - re
 Latest: M5 planned; 030e1 done (A-D). Next: 030e2 GhostWorld state model, 030e3 countdown/frightened timer. User tried pacman_play.exe: movement feels great, fruit and power pills score; ghosts do not move (expected).
 
 Latest: 030e3 done (ghosttick.cpp head). Next 030e4: junction detection, decision $8C50, move queues.
+
+Latest: 030e4 done (D6: decision routines transliterated mechanically). Next 030e5: special junctions + house ($81) + $7A; then move 030e6.

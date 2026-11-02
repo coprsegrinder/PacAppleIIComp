@@ -112,7 +112,7 @@ Statuses: Planned / In progress / Implemented / Tested / Verified / Blocked / De
 | TASK-030e1 | Recorder: zero page + queue pages per tick | **Done (A-D, 33,832 ticks, replays equal the recordings)** | 029h | tools/record_ghost_ram.py; docs/M5_PLAN.md |
 | TASK-030e2 | GhostWorld state model and working-register swap | Merged into 030e3/e4 (records = GameState::ghosts, shared variables = GhostShared) | 030e1 | round trip exact |
 | TASK-030e3 | Step countdown, frightened timer, speed tables | **Done:** 33,796 ticks, 123,421 waiting + 11,763 acting ghost-ticks, 0 mismatches | 030e2 | `$80 $E1 $E2 $E4 $78` at k+1 |
-| TASK-030e4 | Junction detection, decision `$8C50`, move queues | Planned | 030e3 | `$72-$77` and queue bytes at k+1 |
+| TASK-030e4 | Junction detection, decision `$8C50`, move queues | **Done:** 96,000 routine vectors (all 48 routines) + 717 junction hits and 11,032 off-junction ticks of A-D, 0 mismatches | 030e3 | `$72-$77` and queue bytes at k+1 |
 | TASK-030e5 | Special junctions (door, tunnel, `$7A`, `$7B/$7D`) | Planned | 030e4 | same fields |
 | TASK-030e6 | The move (+-2, sub-step counters, tunnel wrap) | Planned | 030e5 | `$70/$71 $7B-$7D` |
 | TASK-030e7 | Mode timers, flips/reversals, energizer ghost effects | Planned | 030e6 | `$E9 $EA $EB`, directions |

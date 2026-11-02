@@ -96,3 +96,5 @@
 - TASK-030e planned (docs/M5_PLAN.md, rows 030e1-e9); 030e1 recorder done for A-D.
 
 - TASK-030e3: ghost tick head (countdown, frightened timer, speed tables) equals the oracle on 33,796 ticks.
+
+- TASK-030e4: ghost decision routines (generated C++ transliteration, 96,000 oracle vectors), junction detection and move queue equal the oracle. Decision D6.

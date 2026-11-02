@@ -32,6 +32,8 @@ add_library(pacman_core_verify STATIC
   src/core/tickdraw.cpp
   src/core/gamecore.cpp
   src/core/ghosttick.cpp
+  src/core/ghostjunction.cpp
+  src/core/ghostdecide_gen.cpp
   src/core/gamedriver.cpp
   src/video/colour.cpp)
 target_include_directories(pacman_core_verify PUBLIC src)
@@ -79,6 +81,8 @@ add_executable(pacman_tests
   tests/test_tickdraw.cpp
   tests/test_gamecore.cpp
   tests/test_ghosthead.cpp
+  tests/test_ghostjunction.cpp
+  tests/test_ghostdecide.cpp
   tests/test_gamedriver.cpp
   src/app/gamewindow.cpp
   tests/test_video.cpp
