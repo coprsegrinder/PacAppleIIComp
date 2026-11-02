@@ -24,7 +24,7 @@ if not exist "%OUT%\obj_cli" mkdir "%OUT%\obj_cli"
 if not exist "%OUT%\obj_pack" mkdir "%OUT%\obj_pack"
 if not exist "%OUT%\obj_tests" mkdir "%OUT%\obj_tests"
 set "FLAGS=/nologo /std:c++20 /W4 /WX /permissive- /utf-8 /EHsc /O2"
-set "CORE=src\verify\sha256.cpp src\verify\dos33.cpp src\verify\verify.cpp src\datapack\datapack.cpp src\datapack\manifest.cpp src\hires\hires.cpp src\hires\replay.cpp src\core\cycleclock.cpp src\core\ticktrace.cpp src\core\gamestate.cpp src\core\input.cpp src\core\steptimer.cpp src\core\junction.cpp src\core\pacstep.cpp src\core\eating.cpp src\core\lives.cpp src\core\lifestart.cpp src\core\screen.cpp src\video\colour.cpp"
+set "CORE=src\verify\sha256.cpp src\verify\dos33.cpp src\verify\verify.cpp src\datapack\datapack.cpp src\datapack\manifest.cpp src\hires\hires.cpp src\hires\replay.cpp src\core\cycleclock.cpp src\core\ticktrace.cpp src\core\gamestate.cpp src\core\input.cpp src\core\steptimer.cpp src\core\junction.cpp src\core\pacstep.cpp src\core\eating.cpp src\core\lives.cpp src\core\lifestart.cpp src\core\screen.cpp src\core\tickdraw.cpp src\video\colour.cpp"
 
 pushd "%ROOT%"
 if not exist "%OUT%\obj_view" mkdir "%OUT%\obj_view"
@@ -34,7 +34,7 @@ cl %FLAGS% /Fo"%OUT%\obj_cli\\" /Fe"%OUT%\pacman_verify.exe" src\app\verify_main
 if errorlevel 1 (popd & exit /b 1)
 cl %FLAGS% /Fo"%OUT%\obj_pack\\" /Fe"%OUT%\pacman_pack.exe" src\app\pack_main.cpp %CORE%
 if errorlevel 1 (popd & exit /b 1)
-cl %FLAGS% /Fo"%OUT%\obj_tests\\" /Fe"%OUT%\pacman_tests.exe" tests\test_main.cpp tests\test_sha256.cpp tests\test_verify.cpp tests\test_datapack.cpp tests\test_hires.cpp tests\test_hires_vectors.cpp tests\test_dots.cpp tests\test_script.cpp tests\test_gamewindow.cpp tests\test_cycleclock.cpp tests\test_ticktrace.cpp tests\test_gamestate.cpp tests\test_input.cpp tests\test_steptimer.cpp tests\test_junction.cpp tests\test_pacstep.cpp tests\test_eating.cpp tests\test_lives.cpp tests\test_lifestart.cpp tests\test_screen.cpp src\app\gamewindow.cpp tests\test_video.cpp tests\test_real_image.cpp %CORE% user32.lib gdi32.lib
+cl %FLAGS% /Fo"%OUT%\obj_tests\\" /Fe"%OUT%\pacman_tests.exe" tests\test_main.cpp tests\test_sha256.cpp tests\test_verify.cpp tests\test_datapack.cpp tests\test_hires.cpp tests\test_hires_vectors.cpp tests\test_dots.cpp tests\test_script.cpp tests\test_gamewindow.cpp tests\test_cycleclock.cpp tests\test_ticktrace.cpp tests\test_gamestate.cpp tests\test_input.cpp tests\test_steptimer.cpp tests\test_junction.cpp tests\test_pacstep.cpp tests\test_eating.cpp tests\test_lives.cpp tests\test_lifestart.cpp tests\test_screen.cpp tests\test_tickdraw.cpp src\app\gamewindow.cpp tests\test_video.cpp tests\test_real_image.cpp %CORE% user32.lib gdi32.lib
 if errorlevel 1 (popd & exit /b 1)
 popd
 

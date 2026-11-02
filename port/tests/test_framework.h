@@ -26,6 +26,8 @@ inline int& failures() {
 struct Config {
     std::string image;
     std::string reference;
+    std::string pages;  // --pages <pages_A.bin>: oracle hi-res pages every 10th tick (tools/record_tick_calls.py, local only)
+    std::string tickcalls;  // --tickcalls <tick_calls_A.txt>: per-tick drawing calls of the oracle (tools/record_tick_calls.py, local only)
     std::string page0;  // --page0 <page_tick0.bin>: the oracle hi-res page at the first tick of a game (tools/record_page0.py, local only)
     std::string demo;   // --demo <ticks_DEMO.bin>: attract-demo recording (tools/record_special.py demo; demo_stream.bin must lie next to it)
     std::string ticks;  // --ticks a.bin,b.bin: per-tick oracle recordings (tools/record_ticks.py, local only)

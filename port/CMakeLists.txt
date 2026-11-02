@@ -29,6 +29,7 @@ add_library(pacman_core_verify STATIC
   src/core/lives.cpp
   src/core/lifestart.cpp
   src/core/screen.cpp
+  src/core/tickdraw.cpp
   src/video/colour.cpp)
 target_include_directories(pacman_core_verify PUBLIC src)
 
@@ -68,6 +69,7 @@ add_executable(pacman_tests
   tests/test_lives.cpp
   tests/test_lifestart.cpp
   tests/test_screen.cpp
+  tests/test_tickdraw.cpp
   src/app/gamewindow.cpp
   tests/test_video.cpp
   tests/test_real_image.cpp)

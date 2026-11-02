@@ -11,6 +11,10 @@ int main(int argc, char** argv) {
             testfw::config().image = argv[++i];
         } else if (std::strcmp(argv[i], "--vectors") == 0 && i + 1 < argc) {
             testfw::config().vectors = argv[++i];
+        } else if (std::strcmp(argv[i], "--pages") == 0 && i + 1 < argc) {
+            testfw::config().pages = argv[++i];
+        } else if (std::strcmp(argv[i], "--tickcalls") == 0 && i + 1 < argc) {
+            testfw::config().tickcalls = argv[++i];
         } else if (std::strcmp(argv[i], "--page0") == 0 && i + 1 < argc) {
             testfw::config().page0 = argv[++i];
         } else if (std::strcmp(argv[i], "--demo") == 0 && i + 1 < argc) {
