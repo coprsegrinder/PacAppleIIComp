@@ -98,3 +98,5 @@
 - TASK-030e3: ghost tick head (countdown, frightened timer, speed tables) equals the oracle on 33,796 ticks.
 
 - TASK-030e4: ghost decision routines (generated C++ transliteration, 96,000 oracle vectors), junction detection and move queue equal the oracle. Decision D6.
+
+- TASK-030e5/e6 (+ house move): special junctions, ghost move, tunnel, house release equal the oracle on 198,588 ghost records of 21 recordings.

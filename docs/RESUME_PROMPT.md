@@ -122,3 +122,5 @@ Latest: M5 planned; 030e1 done (A-D). Next: 030e2 GhostWorld state model, 030e3 
 Latest: 030e3 done (ghosttick.cpp head). Next 030e4: junction detection, decision $8C50, move queues.
 
 Latest: 030e4 done (D6: decision routines transliterated mechanically). Next 030e5: special junctions + house ($81) + $7A; then move 030e6.
+
+Latest: 030e5/e6 done incl. house move. Next 030e7: mode timer $808C + reversal $80C1 + energizer ghost effects + eaten effects; then 030e9 integration (queue init at life start).

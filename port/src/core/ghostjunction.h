@@ -21,6 +21,8 @@ struct GhostDecisionData {
     std::array<std::uint16_t, 48> routineAddress{};    // $8DBE: entry address of each routine
     std::array<std::uint8_t, 10> corners{};            // $8CB4 + 2 * ghost: Y, X of the ghost's corner
     std::array<std::uint8_t, 64> returnRoute{};        // $A360: direction per junction for an eaten ghost
+    std::array<std::uint8_t, 10> startPlaces{};        // $6D3F + 2 * ghost: X, Y of a ghost's place in the house
+    std::array<std::array<std::uint8_t, 16>, 5> houseScripts{};   // index 1..4: the 16-byte exit script of that ghost (pointers at $8A3C + 2 (n-1))
     bool load(const datapack::Pack& pack);
 };
 
@@ -30,9 +32,15 @@ struct JunctionStepResult {
     bool onJunction = false;       // the ghost stood on one of its two junctions
     bool decided = false;          // the decision routine was run (the queue had no further move)
     std::uint8_t junction = 0;     // the junction it stood on
+    bool arrivedAtHouse = false;   // an eaten ghost reached the house door (junctions 23/24): it is put back in the house with its exit script ($8839-$8851)
 };
 
 // Runs $87BA-$880F for ghost `ghostNumber` (= $E0) AFTER ghostHead(); `sh` is not needed, `cornerPhase` is read from the state ($E9). Pac-Man's position and direction are read from the state.
 JunctionStepResult ghostJunction(GameState& s, int ghostNumber, GhostQueues& queues, const JunctionGraph& graph, const GhostDecisionData& data, const GhostTables& tables);
+
+// The move of a ghost ($8866-$8957, tunnel variant $8A9C-$8B12, house $8988-$8A38): for a ghost in the house the house routine runs first (release timer $82, the exit
+// moves it queues, the turns at the ends of its box, the departure through the door), then the plain move: two units along the direction of travel (the tunnel wraps at
+// x = $DD and x = $3B and exchanges the junction numbers) and the cell counters $7B/$7D (horizontal), $7C/$7E (vertical). The contact test and all drawing are not part of it.
+void ghostMove(GameState& s, int ghostNumber, GhostQueues& queues, const GhostDecisionData& data);
 
 }  // namespace pacman::core
