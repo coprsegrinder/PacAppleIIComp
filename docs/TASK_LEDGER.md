@@ -110,8 +110,8 @@ Statuses: Planned / In progress / Implemented / Tested / Verified / Blocked / De
 | TASK-031a2 | Level/fruit tables analysis | **Verified:** 15 level-indexed tables catalogued (docs/LEVEL_TABLES.md; entry 0 unused); fruit set-up and value routines run for levels 1-30 and equal the tables; lifetime = table ticks exactly (levels 1, 5, 26); fruit-eaten sound = `$7C61` list; one forced pick-up in play. Inferred: fruit names, ghost-delay roles, pick-up spot. Unknown: level 23's table entry points at a sprite that looks like the letters HAL. 6 unit tests | 030d, 031a | docs/LEVEL_TABLES.md; tools/level_tables.py, trace_fruit.py |
 | TASK-030e | Reconstruct ghost logic in C++ (M5) | **Split (2026-11-02) into 030e1-030e9** (docs/M5_PLAN.md); closes when 030e9 is done | 030b-d, 027, 029h | Ghost positions match oracle in recorded scenarios |
 | TASK-030e1 | Recorder: zero page + queue pages per tick | **Done (A-D, 33,832 ticks, replays equal the recordings)** | 029h | tools/record_ghost_ram.py; docs/M5_PLAN.md |
-| TASK-030e2 | GhostWorld state model and working-register swap | Planned | 030e1 | round trip exact |
-| TASK-030e3 | Step countdown, frightened timer, speed tables | Planned | 030e2 | `$80 $E1 $E2 $E4 $78` at k+1 |
+| TASK-030e2 | GhostWorld state model and working-register swap | Merged into 030e3/e4 (records = GameState::ghosts, shared variables = GhostShared) | 030e1 | round trip exact |
+| TASK-030e3 | Step countdown, frightened timer, speed tables | **Done:** 33,796 ticks, 123,421 waiting + 11,763 acting ghost-ticks, 0 mismatches | 030e2 | `$80 $E1 $E2 $E4 $78` at k+1 |
 | TASK-030e4 | Junction detection, decision `$8C50`, move queues | Planned | 030e3 | `$72-$77` and queue bytes at k+1 |
 | TASK-030e5 | Special junctions (door, tunnel, `$7A`, `$7B/$7D`) | Planned | 030e4 | same fields |
 | TASK-030e6 | The move (+-2, sub-step counters, tunnel wrap) | Planned | 030e5 | `$70/$71 $7B-$7D` |
