@@ -45,7 +45,7 @@ if SC == 'F':
     # scenario F (own, not golden): the keys of A; at tick 100 all four ghosts are made frightened and the frightened timer $E1/$E2 is set to $00B0, so the timer
     # runs below $80 and the flashing frames appear (no energizer is eaten in A's first 700 ticks). Also writes scratch/ticks_F.bin like tools/record_ticks.py.
     stored = dict(json.load(open('tests/golden/gameplay_traces.json'))['scenarios']['A'])
-    stored['pokes'] = [[100, 0x8C, 1], [100, 0xA0, 1], [100, 0xB4, 1], [100, 0xC8, 1], [100, 0xE1, 0xB0], [100, 0xE2, 0]]
+    stored['pokes'] = [[50, 0x57, 3], [400, 0x8C, 1], [400, 0xA0, 1], [400, 0xB4, 1], [400, 0xC8, 1], [400, 0xE1, 0x70], [400, 0xE2, 0], [400, 0xE4, 1]]   # fruit after 3 items; frightened ghosts with the timer at $B0 at tick 400 (the ghosts are out of the house by then)
     G.SCENARIOS['F'] = dict(G.SCENARIOS['A'])
 else:
     stored = json.load(open('tests/golden/gameplay_traces.json'))['scenarios'][SC]

@@ -197,6 +197,17 @@ std::vector<DrawCall> tickCalls(const GameState& before, const GameState& after,
             (after.map[static_cast<std::size_t>(col) * 32 + static_cast<std::size_t>(row)] & 1) != 0)
             out.push_back(DrawCall{5, {col * 6 + 0x3B, row * 6 + 5, 0, 0, 0}});   // type 5: p0 = x, p1 = y (as logged)
     }
+    // $6A7C at the end of the main loop: the bonus fruit. While it is active ($E7 = 1) and this is the tick in which $59 has counted down to 1 (the next tick is the
+    // acting one), its lifetime ($5A/$5B, counted down by the routine) either still runs: the fruit image ($5C/$5D, 12 x 3) is drawn at column 19, row 102;
+    // or has just run out: the box (column 16, row 102, 12 rows x 8 bytes) is cleared and the fruit is gone.
+    if (exAfter.e7 == 1 && after.zp(0x59) == 1 && before.demo == 0) {
+        const unsigned life = after.zp(0x5A) + after.zp(0x5B);
+        if (life != 0) out.push_back(DrawCall{7, {after.zp(0x5C) | (after.zp(0x5D) << 8), 19, 102, 0, 0}});
+        else out.push_back(DrawCall{12, {16, 102, 0, 0, 0}});
+    } else if (exBefore.e7 == 1 && exAfter.e7 == 0 && after.zp(0x59) != 1) {
+        // the lifetime ran out in the same call that the state shows with E7 already cleared
+        out.push_back(DrawCall{12, {16, 102, 0, 0, 0}});
+    }
     // $570C at the end of the tick: the 1UP blink, then the energizer blink
     if (exBefore.e6 != exAfter.e6) {
         if (exAfter.e6 == 1) {                                                   // $58FA -> $556E: label and mark
@@ -262,6 +273,16 @@ bool executeCall(hires::Page& page, const DrawCall& c, const datapack::Pack& pac
             hires::hLine(page, c.p[0], c.p[1], c.p[2], c.p[3], (c.p[4] & 0x80) != 0);
             if ((c.p[4] & 0x7F) != 0)
                 for (int col = c.p[0] / 7; col <= c.p[1] / 7; ++col) page.orInto(hires::rowOffset(c.p[2]) + static_cast<std::size_t>(col), static_cast<std::uint8_t>(c.p[4] & 0x7F));
+            return true;
+        }
+        case 7: {                                                               // $6EDA: the 12 x 3 fruit image, merged with the palette bit rule
+            const auto data = pack.find(static_cast<std::uint16_t>(c.p[0]), 36);
+            if (data.empty()) return false;
+            hires::blitMergePalette(page, c.p[1], c.p[2], 3, 12, data);
+            return true;
+        }
+        case 12: {                                                              // $6978: 12 rows x 8 bytes cleared to $80 at (column, row)
+            hires::boxClear(page, c.p[0], c.p[1]);
             return true;
         }
         case 11: {                                                              // $7819: 8 rows, two bytes each: AND the mask pair of the shift, then set the palette bit

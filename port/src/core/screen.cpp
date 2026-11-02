@@ -1,5 +1,7 @@
 #include "screen.h"
 
+#include <algorithm>
+
 namespace pacman::core {
 
 int pacmanFrame(const GameState& s) noexcept {
@@ -48,7 +50,10 @@ bool drawHud(hires::Page& page, const GameState& s, const datapack::Pack& pack, 
     const auto label2 = pack.find(0x5628, 49);
     const auto mark = pack.find(0x7201, hires::kTileTableBytes);
     const auto box = pack.find(0x6992, 12);
-    const auto fruit = pack.find(0x6B6E, 36);
+    const auto fruitTable = pack.find(0x6AFE, 27 * 4);                           // per level 4 bytes: the fruit image address ($5C/$5D) first ($6A80-$6A93)
+    if (fruitTable.empty()) return false;
+    const std::size_t levelIndex = std::min<std::size_t>(s.level(), 26) * 4;
+    const auto fruit = pack.find(static_cast<std::uint16_t>(fruitTable[levelIndex] | (fruitTable[levelIndex + 1] << 8)), 36);
     const auto life = pack.find(0x9CB8, hires::kSevenCopies3x10);
     if (label1.empty() || label2.empty() || mark.empty() || box.empty() || fruit.empty() || life.empty()) return false;
     hires::blitOr(page, 0, 6, 7, 7, label1);                                   // $550A..: the player label
@@ -62,7 +67,7 @@ bool drawHud(hires::Page& page, const GameState& s, const datapack::Pack& pack, 
     hires::boxClear(page, box[0], box[1]);                                     // $696A with $50 = 0
     const std::uint32_t hi = high[0] | (high[1] << 8) | (high[2] << 16);
     if (!drawNumber(page, hi, 40, 94, pack)) return false;
-    hires::blitMergePalette(page, 33, 176, 3, 12, fruit);                      // the level icon (level 1)
+    hires::blitMergePalette(page, 33, 176, 3, 12, fruit);                      // the level icon: the fruit image of the current level
     const int icons = (s.lives() & 0x7F) > 0 ? (s.lives() & 0x7F) - 1 : 0;     // $56CF: one icon less than the lives, 12 pixels apart
     for (int i = 0; i < icons; ++i) hires::drawImage(page, 9 + 12 * i, 178, life, true);
     return true;
