@@ -20,6 +20,15 @@ bool isExit(std::uint8_t v) { return (v & 0x80) == 0; }                         
 }  // namespace
 
 JunctionOutcome junctionStep(GameState& s, const JunctionGraph& graph, std::optional<std::uint8_t> demoStreamByte) {
+    StreamByteSource source;
+    if (demoStreamByte) {
+        const std::uint8_t b = *demoStreamByte;
+        source = [b] { return b; };
+    }
+    return junctionStep(s, graph, source);
+}
+
+JunctionOutcome junctionStep(GameState& s, const JunctionGraph& graph, const StreamByteSource& stream) {
     std::uint8_t& dir = s.pacDirection();            // $62
     std::uint8_t& wanted = s.requestedDirection();   // $63
     const Junction* here = &graph.at(s.pacJunction());   // the record the original has in $16/$17 after its first JSR $75F1
@@ -43,7 +52,7 @@ JunctionOutcome junctionStep(GameState& s, const JunctionGraph& graph, std::opti
         // $794B-$7959: between two junctions Pac-Man may only reverse (directions 0<->1 or 2<->3: the codes differ in bit 0 only)
         if ((wanted & 0x80) == 0 && (wanted ^ dir) == 1) dir = wanted;
     } else {
-        if (s.demo != 0 && demoStreamByte) wanted = *demoStreamByte;   // $78D7-$78E5
+        if (s.demo != 0 && stream) wanted = stream();   // $78D7-$78E5
         std::optional<std::uint8_t> neighbour;       // the junction Pac-Man will head for
         if ((wanted & 0x80) == 0) {                  // $78E7: a requested direction exists
             const std::uint8_t wantedNext = here->next[wanted & 3];     // INY INY / LDA ($16),Y: byte 2 + direction

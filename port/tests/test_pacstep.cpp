@@ -31,11 +31,13 @@ GameState pac(int x, int y, int dir) {
 }
 
 struct Totals {
-    std::size_t acting = 0, blocked = 0, tunnel = 0, items = 0, restarts = 0, turns = 0, wraps = 0;
+    std::size_t acting = 0, blocked = 0, tunnel = 0, items = 0, restarts = 0, turns = 0, wraps = 0, streamReads = 0, streamMismatches = 0, pointerMismatches = 0;
 };
 
 // Runs the piece over one recording; returns the number of mismatches. demoStream: the 3-byte records of tools/record_special.py demo (or empty).
-std::size_t compareRecording(const TickTrace& tr, const JunctionGraph& graph, const std::vector<std::uint8_t>& demoStream, Totals& tot, std::size_t& firstBad) {
+std::size_t compareRecording(const TickTrace& tr, const JunctionGraph& graph, const datapack::Pack& pack, const std::vector<std::uint8_t>& demoStream, Totals& tot,
+                             std::size_t& firstBad) {
+    DemoStream demo(pack);   // the stream pointer and its bytes come from the data pack; checked against the recorded pointer at EVERY tick of a demo recording
     std::multimap<std::uint32_t, std::uint32_t> keysAt;
     for (const auto& in : tr.inputs()) keysAt.emplace(in.tick, in.key);
     InputPoller poller;
@@ -47,6 +49,7 @@ std::size_t compareRecording(const TickTrace& tr, const JunctionGraph& graph, co
         const auto range = keysAt.equal_range(static_cast<std::uint32_t>(k));
         for (auto it = range.first; it != range.second; ++it) poller.pushKey(static_cast<std::uint8_t>(it->second));
         GameState s = fromOracleLayout(tr.state(k));
+        if (!demoStream.empty() && demo.pointer() != static_cast<std::uint16_t>(demoStream[k * 3] | (demoStream[k * 3 + 1] << 8))) ++tot.pointerMismatches;
         // the scenario's pokes of this tick are applied right after the keys, before the tick runs (docs/GOLDEN_TRACES.md); only zero-page ones matter here
         const auto pr = pokesAt.equal_range(static_cast<std::uint32_t>(k));
         for (auto it = pr.first; it != pr.second; ++it)
@@ -54,10 +57,21 @@ std::size_t compareRecording(const TickTrace& tr, const JunctionGraph& graph, co
         if (demoStream.empty()) poller.poll(s, keys, {});   // (in the demo no key is ever pressed)
         if (tr.at(k, 0x59) != 1) continue;                   // Pac-Man does not act in this tick
         const bool restart = tr.at(k + 1, 0x60) == 0x8B && tr.at(k + 1, 0x61) == 0x8F && !(tr.at(k, 0x60) == 0x8B && tr.at(k, 0x61) == 0x8F);
-        std::optional<std::uint8_t> stream;
-        if (!demoStream.empty() && k * 3 + 2 < demoStream.size()) stream = demoStream[k * 3 + 2];
         const std::uint8_t oldDir = s.pacDirection(), oldX = s.pacX();
-        const auto outcome = junctionStep(s, graph, stream);
+        JunctionOutcome outcome;
+        if (demoStream.empty()) {
+            outcome = junctionStep(s, graph);
+        } else {
+            const std::uint8_t recordedByte = demoStream[k * 3 + 2];
+            std::size_t calls = 0;
+            outcome = junctionStep(s, graph, StreamByteSource([&] {
+                ++calls;
+                const std::uint8_t b = demo.next();
+                if (b != recordedByte) ++tot.streamMismatches;   // the byte the original loaded into $63 at this tick
+                return b;
+            }));
+            tot.streamReads += calls;
+        }
         const auto test = stepPacman(s, outcome);
         if (restart) {
             ++tot.restarts;
@@ -82,12 +96,19 @@ std::vector<std::uint8_t> readAll(const std::string& path) {
     return std::vector<std::uint8_t>((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
 }
 
+datapack::Pack& thePack() {
+    static datapack::Pack pack;
+    return pack;
+}
+
 bool loadGraph(JunctionGraph& graph) {
     const auto img = readAll(testfw::config().image);
     const auto built = datapack::buildPack(img, verify::referenceExpected(), datapack::dataManifest());
     if (!built.ok) return false;
     const auto loaded = datapack::loadPack(built.bytes, verify::referenceExpected());
-    return loaded.ok && graph.load(loaded.pack);
+    if (!loaded.ok) return false;
+    thePack() = loaded.pack;
+    return graph.load(thePack());
 }
 
 std::vector<std::string> split(const std::string& list) {
@@ -177,7 +198,7 @@ TEST(pacstep_against_the_oracle_recordings) {
         CHECK_MSG(tr.ok(), path + ": " + why);
         if (!tr.ok()) continue;
         std::size_t firstBad = 0;
-        const std::size_t bad = compareRecording(tr, graph, {}, tot, firstBad);
+        const std::size_t bad = compareRecording(tr, graph, thePack(), {}, tot, firstBad);
         std::printf("    %s: mismatches %zu%s\n", path.c_str(), bad, bad ? (" (first at tick " + std::to_string(firstBad) + ")").c_str() : "");
         CHECK(bad == 0);
     }
@@ -204,7 +225,7 @@ TEST(pacstep_tunnel_recording_has_many_tunnel_ticks) {
         CHECK_MSG(tr.ok(), why);
         if (!tr.ok()) continue;
         std::size_t firstBad = 0;
-        CHECK(compareRecording(tr, graph, {}, tot, firstBad) == 0);
+        CHECK(compareRecording(tr, graph, thePack(), {}, tot, firstBad) == 0);
     }
     if (!found) {
         std::printf("    SKIPPED (no T00 file given)\n");
@@ -232,9 +253,12 @@ TEST(pacstep_attract_demo_recording) {
     CHECK(tr.at(0, 0xE8) != 0);                              // really the demo
     Totals tot;
     std::size_t firstBad = 0;
-    const std::size_t bad = compareRecording(tr, graph, stream, tot, firstBad);
+    const std::size_t bad = compareRecording(tr, graph, thePack(), stream, tot, firstBad);
     std::printf("    demo: %zu ticks, %zu acting ticks (%zu turns, %zu blocked, %zu tunnel), mismatches %zu%s\n", tr.ticks(), tot.acting, tot.turns, tot.blocked, tot.tunnel, bad,
                 bad ? (" (first at tick " + std::to_string(firstBad) + ")").c_str() : "");
+    std::printf("    demo stream: %zu pointer advances, %zu byte mismatches, %zu pointer mismatches over %zu ticks (start $%04X)\n", tot.streamReads, tot.streamMismatches,
+                tot.pointerMismatches, tr.ticks(), DemoStream::kStart);
     CHECK(bad == 0);
+    CHECK(tot.streamMismatches == 0 && tot.pointerMismatches == 0 && tot.streamReads >= 25);
     CHECK(tot.acting > 300 && tot.turns >= 15);
 }

@@ -197,6 +197,8 @@ TEST(input_against_the_oracle_recordings) {
         InputPoller poller;
         KeyConfig keys;
         std::size_t mismatches = 0, firstBad = 0, otherWriter = 0;
+        std::multimap<std::uint32_t, TickPoke> pokesAt;
+        for (const auto& p : t.pokes()) pokesAt.emplace(p.tick, p);
         for (std::size_t k = 0; k + 1 < t.ticks(); ++k) {
             if (t.at(k, 0xE8) != 0) continue;  // the golden ticks all have the demo off; kept as a guard
             const auto range = keysAt.equal_range(static_cast<std::uint32_t>(k));
@@ -205,6 +207,9 @@ TEST(input_against_the_oracle_recordings) {
                 ++polledKeys;
             }
             GameState s = fromOracleLayout(t.state(k));
+            const auto pr = pokesAt.equal_range(static_cast<std::uint32_t>(k));   // the scenario's pokes of this tick (zero page only) come before the tick runs
+            for (auto it = pr.first; it != pr.second; ++it)
+                if (it->second.address >= 0x52 && it->second.address <= 0x6F) s.zp(static_cast<std::uint16_t>(it->second.address)) = static_cast<std::uint8_t>(it->second.value);
             const std::uint8_t before = s.requestedDirection();
             poller.poll(s, keys, {});
             // Where the poll changes $63 the oracle must show exactly that value at the next tick. Where the poll leaves $63 alone but the oracle

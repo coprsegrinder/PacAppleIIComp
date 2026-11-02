@@ -8,6 +8,7 @@
 
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <optional>
 
 #include "../datapack/datapack.h"
@@ -36,8 +37,31 @@ enum class JunctionOutcome {
     Tunnel,   // in a tunnel: the original continues at $7B2F (tunnel transit)
 };
 
-// One pass of $78A5-$7961 for a tick in which Pac-Man acts. In the demo ($E8 <> 0) the requested direction comes from the demo stream:
-// pass the next byte of that stream (the original advances $1B/$1C and loads it into $63).
+// The attract demo's move stream (TASK-029d2c): the demo is a list of direction bytes in the program ($47DA onward, 71 bytes, 0..3). The original keeps a
+// pointer in $1B/$1C (set to $47DA when the demo starts, $47C9-$47CF), and at every junction pass of an acting demo tick it increments the pointer FIRST
+// and then loads the byte it points to into $63 ($78DB-$78E5). The bytes come from the data pack.
+class DemoStream {
+public:
+    static constexpr std::uint16_t kStart = 0x47DA;
+    explicit DemoStream(const datapack::Pack& pack, std::uint16_t start = kStart) : pack_(&pack), pointer_(start) {}
+    std::uint16_t pointer() const noexcept { return pointer_; }
+    // Advances the pointer and returns the byte there; 0xFF (no wish) if the pointer has left the data in the pack.
+    std::uint8_t next() {
+        ++pointer_;
+        const auto b = pack_->find(pointer_, 1);
+        return b.empty() ? std::uint8_t{0xFF} : b[0];
+    }
+private:
+    const datapack::Pack* pack_;
+    std::uint16_t pointer_;
+};
+
+using StreamByteSource = std::function<std::uint8_t()>;
+
+// One pass of $78A5-$7961 for a tick in which Pac-Man acts. In the demo ($E8 <> 0) the requested direction comes from the demo stream: `stream` is called
+// exactly when the original advances its pointer (only on the paths that reach $78D7), and its result replaces $63.
+JunctionOutcome junctionStep(GameState& state, const JunctionGraph& graph, const StreamByteSource& stream);
+// Convenience for tests: a fixed byte instead of a stream.
 JunctionOutcome junctionStep(GameState& state, const JunctionGraph& graph, std::optional<std::uint8_t> demoStreamByte = std::nullopt);
 
 }  // namespace pacman::core

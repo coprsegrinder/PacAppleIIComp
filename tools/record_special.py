@@ -5,7 +5,8 @@
   demo   : the attract-mode demo ($E8 = 1) played by the original's own move stream. Ticks are the executions of $7861 with $E8 <> 0. Writes
            scratch/ticks_DEMO.bin (same format; the inputs and pokes lists are empty) and scratch/demo_stream.bin: for every tick 3 bytes, the stream pointer
            $1B, $1C and the byte at pointer + 1 (the byte the original loads into $63 when Pac-Man acts in that tick, $78D7-$78E5).
-Usage: python -I tools/record_special.py tunnel|demo      (about 3-6 minutes)"""
+  tunnelnat : see natural_tunnel(): the same tunnel runs WITHOUT any poke, steered by keys; written to scratch/ticks_N00.bin.
+Usage: python -I tools/record_special.py tunnel|demo|tunnelnat      (about 3-6 minutes)"""
 import hashlib, os, struct, sys
 sys.path.insert(0, os.path.dirname(__file__))
 import golden_trace as G
@@ -100,5 +101,115 @@ def demo():
     print('demo ticks', len(states), 'chain', h.hex()[:16], flush=True)
 
 
+def natural_tunnel():
+    """tunnelnat: NATURAL play, no pokes at all. A closed-loop controller (breadth-first search over the junction graph read from the program body) presses
+    the direction keys so that Pac-Man runs through the left tunnel from junction 26 heading left, then turns at junction 29 and runs through the right
+    tunnel, and so on; the ghosts may catch it (restart ticks) and the run ends at game over or after TICKS ticks. Pass 1 plays with the controller and
+    records the key presses; pass 2 REPLAYS only the recorded key list through golden_trace.run and must give the identical state chain; the file
+    scratch/ticks_N00.bin is written only then (so two independent runs agree). Writes the same format as the other recordings."""
+    from apple2 import NeedKey
+    from autoplay import start_game
+    from play import do_step
+    from cov_close import factory
+    ticks = 3000
+    body = open('scratch/extract/PAC-MAN.1000.bin', 'rb').read()
+    rec = lambda j: body[0x760A - 0x4000 + 8 * j: 0x760A - 0x4000 + 8 * j + 8]
+    nxt = {j: [rec(j)[2 + d] for d in range(4)] for j in range(64)}
+    ok = lambda v: v < 0x80
+    KEY = {0: 'Z', 1: 'A', 2: 21, 3: 8}
+
+    def dist_to(goal):
+        d = {goal: 0}
+        todo = [goal]
+        while todo:
+            n = todo.pop(0)
+            for j in range(64):
+                if j not in d and any(ok(v) and v == n for v in nxt[j]):
+                    d[j] = d[n] + 1
+                    todo.append(j)
+        return d
+    dists = {26: dist_to(26), 29: dist_to(29)}
+    G.SCENARIOS['N00'] = dict(seed=0, ticks=ticks, pokes=[])
+    mc = factory()
+    for st in ('key:1', 'key:cr', '70_000_000'):
+        do_step(mc, st, lambda *_: None)
+    start_game(mc)
+    states, inputs = [], []
+    ctl = {'goal': 26, 'last': None, 'x': None, 'wraps': 0, 't': 0, 'done': False}
+    step = mc.cpu.step
+
+    def hook():
+        m = mc.m
+        if mc.cpu.pc == TICK_PC and m[0xE8] == 0 and not ctl['done']:
+            t = ctl['t']
+            states.append(G.state_bytes(m))
+            if t >= ticks:
+                ctl['done'] = True
+                return step()
+            x = m[0x60]
+            if ctl['x'] is not None and abs(x - ctl['x']) > 100:
+                ctl['wraps'] += 1
+                ctl['goal'] = 29 if ctl['goal'] == 26 else 26
+            ctl['x'] = x
+            goal = ctl['goal']
+            exit_dir = 3 if goal == 26 else 2
+            cur, nx, d = m[0x64], m[0x65], m[0x62]
+            dist = dists[goal]
+            want = None
+            if ok(nx):
+                ahead = 1 + dist.get(nx, 99)
+                back = 1 + dist.get(cur, 99)
+                if back + 1 < ahead and cur != nx:
+                    want = d ^ 1                              # turn round between junctions
+                else:
+                    node = nx
+                    want = exit_dir if node == goal else min((dd for dd in range(4) if ok(nxt[node][dd]) and dist.get(nxt[node][dd], 99) < dist.get(node, 99)), default=d, key=lambda dd: dist[nxt[node][dd]])
+            else:
+                node = cur
+                want = exit_dir if node == goal else min((dd for dd in range(4) if ok(nxt[node][dd]) and dist.get(nxt[node][dd], 99) < dist.get(node, 99)), default=d, key=lambda dd: dist[nxt[node][dd]])
+            if want != ctl['last']:
+                mc.push_key(KEY[want])
+                inputs.append([t, KEY[want]])
+                ctl['last'] = want
+            ctl['t'] = t + 1
+        return step()
+    mc.cpu.step = hook
+    for _ in range(3000):
+        if ctl['done'] or (m_e8(mc) and ctl['t'] > 0):
+            break
+        try:
+            mc.run(150_000)
+        except NeedKey:
+            mc.push_key(13)
+    if len(states) < 1000:
+        sys.exit('natural tunnel run: only %d ticks (game over?)' % len(states))
+    h1 = b''
+    for s_ in states:
+        h1 = hashlib.sha256(h1 + s_).digest()
+    # pass 2: replay of the recorded key list alone
+    G.SCENARIOS['N00'] = dict(seed=0, ticks=len(states) - 1, pokes=[])
+    states2 = []
+    original = G.state_bytes
+
+    def recording(m, states2=states2, original=original):
+        b = original(m)
+        states2.append(b)
+        return b
+    G.state_bytes = recording
+    try:
+        G.run('N00', inputs, [])
+    finally:
+        G.state_bytes = original
+    n = min(len(states), len(states2))
+    if states[:n] != states2[:n] or abs(len(states) - len(states2)) > 1:
+        sys.exit('the replay of the recorded keys differs from the controlled run: nothing written')
+    write('scratch/ticks_N00.bin', states[:n], inputs, [])
+    print('natural tunnel ticks', n, 'wraps seen', ctl['wraps'], 'key presses', len(inputs), 'replay identical', flush=True)
+
+
+def m_e8(mc):
+    return mc.m[0xE8] != 0
+
+
 if __name__ == '__main__':
-    {'tunnel': tunnel, 'demo': demo}[sys.argv[1]]()
+    {'tunnel': tunnel, 'demo': demo, 'tunnelnat': natural_tunnel}[sys.argv[1]]()
