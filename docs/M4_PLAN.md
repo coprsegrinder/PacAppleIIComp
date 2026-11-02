@@ -231,3 +231,6 @@ M5 (ghosts, ledger 030e) then replaces the fed ghost fields; M6 (levels, fruit, 
 - Needs the relocated image ($4000) and run data filtered to the game area (`tools/a2tc_runtime_image.py`), not the $1000 file image.
 - Code 10,386 bytes (38.3 %); equals our static code set except 76 bytes ($951F-$956A, never executed) and 4 mis-decoded bytes at data edges. 49 % of the game is non-zero data that is not declared to apple2tc yet.
 - `--simple-c` produced 16,478 lines (not compiled yet).
+
+## apple2tc method scrapped (2026-11-02, user decision)
+TASK-029h0..h5 (apple2tc toolchain, game image, run data, listing/C/coverage) are abandoned; their tools and the coverage note were removed from the tree (they stay in git history: commits cc4d811, b8a92e7, 7ae1b61, b5c1bbd, 60dd61c). What was learned and stays valid: our static code set (10,456 bytes) equals what 30 recorded scenarios execute except 76 bytes at $951F-$956A that no recording runs. We continue where we were: our own oracle-driven reconstruction (D2=A), next the still-open items of 029g (high-score carry, player-2 level end, pauses/sounds), a full-suite checkpoint, then 029h integration (the original 029h row, restored in the ledger).

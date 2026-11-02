@@ -82,3 +82,5 @@
 - TASK-029h2b: run data of 30 scenarios, replays equal to the recordings; merged file 1,111 targets.
 
 - TASK-029h3: apple2tc asm/C/coverage for PAC-MAN; code set equals ours except 76 never-run bytes.
+
+- apple2tc method scrapped by the user; 029h0-h5 marked abandoned, tools removed. Back to the M4 plan (original 029h = integration).

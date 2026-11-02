@@ -106,3 +106,5 @@ Latest: 029h2 partly done (A-D). Next: 029h2b other scenarios, then 029h3 apple2
 Latest: 029h2/2b done. Next 029h3: apple2tc on scratch/a2tc_PAC-MAN.b33 with scratch/a2tc_run_everything.json (asm listing + coverage report).
 
 Latest: 029h3 done (docs/APPLE2TC_COVERAGE.md). Next 029h4: compile/run the generated C vs the oracle; 029h5: declare data, close holes ($951F-$956A never executed).
+
+Latest: apple2tc method SCRAPPED. Continue M4: high-score carry, player-2 level end, full-suite checkpoint, then 029h integration.
