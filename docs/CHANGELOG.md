@@ -72,3 +72,5 @@
 - TASK-029g13: scenario R (5,567 ticks) equal; GAME OVER sequence (21 calls) equal.
 
 - TASK-029g14: player game-ending rule observed in both orders (scenarios R, S), all equal.
+
+- TASK-029h0: apple2tc-master (user-provided, MIT) built locally with MSYS2 gcc; sample decompiles. Plan 029h1-029h5.

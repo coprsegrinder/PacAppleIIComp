@@ -96,3 +96,5 @@ Latest: 029g13 partly done (Q equal). Next: make R usable (1 state short), GAME 
 Latest: 029g13 done (GAME OVER of the last life). Next: player 2 level end, high-score carry, then full-suite checkpoint.
 
 Latest: 029g14 done. Next: high-score carry, player 2 level end, then the full-suite checkpoint.
+
+Latest: apple2tc added and built (029h0). The user wants 100% of the game understood before more C++ conversion: next 029h1 (game image .b33), 029h2 (run data), 029h3 (coverage report).
