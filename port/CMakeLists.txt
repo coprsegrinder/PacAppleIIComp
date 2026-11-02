@@ -33,6 +33,7 @@ add_library(pacman_core_verify STATIC
   src/core/gamecore.cpp
   src/core/ghosttick.cpp
   src/core/ghostjunction.cpp
+  src/core/ghostmode.cpp
   src/core/ghostdecide_gen.cpp
   src/core/gamedriver.cpp
   src/video/colour.cpp)

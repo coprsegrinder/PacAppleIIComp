@@ -100,3 +100,5 @@
 - TASK-030e4: ghost decision routines (generated C++ transliteration, 96,000 oracle vectors), junction detection and move queue equal the oracle. Decision D6.
 
 - TASK-030e5/e6 (+ house move): special junctions, ghost move, tunnel, house release equal the oracle on 198,588 ghost records of 21 recordings.
+
+- TASK-030e7: corner/chase countdown and reversal, energizer and eaten-ghost timer effects, life-start queues equal the oracle.

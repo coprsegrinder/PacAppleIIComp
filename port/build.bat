@@ -24,7 +24,7 @@ if not exist "%OUT%\obj_cli" mkdir "%OUT%\obj_cli"
 if not exist "%OUT%\obj_pack" mkdir "%OUT%\obj_pack"
 if not exist "%OUT%\obj_tests" mkdir "%OUT%\obj_tests"
 set "FLAGS=/nologo /std:c++20 /W4 /WX /permissive- /utf-8 /EHsc /O2"
-set "CORE=src\verify\sha256.cpp src\verify\dos33.cpp src\verify\verify.cpp src\datapack\datapack.cpp src\datapack\manifest.cpp src\hires\hires.cpp src\hires\replay.cpp src\core\cycleclock.cpp src\core\ticktrace.cpp src\core\gamestate.cpp src\core\input.cpp src\core\steptimer.cpp src\core\junction.cpp src\core\pacstep.cpp src\core\eating.cpp src\core\lives.cpp src\core\lifestart.cpp src\core\screen.cpp src\core\tickdraw.cpp src\core\gamecore.cpp src\core\ghosttick.cpp src\core\ghostjunction.cpp src\core\ghostdecide_gen.cpp src\core\gamedriver.cpp src\video\colour.cpp"
+set "CORE=src\verify\sha256.cpp src\verify\dos33.cpp src\verify\verify.cpp src\datapack\datapack.cpp src\datapack\manifest.cpp src\hires\hires.cpp src\hires\replay.cpp src\core\cycleclock.cpp src\core\ticktrace.cpp src\core\gamestate.cpp src\core\input.cpp src\core\steptimer.cpp src\core\junction.cpp src\core\pacstep.cpp src\core\eating.cpp src\core\lives.cpp src\core\lifestart.cpp src\core\screen.cpp src\core\tickdraw.cpp src\core\gamecore.cpp src\core\ghosttick.cpp src\core\ghostjunction.cpp src\core\ghostmode.cpp src\core\ghostdecide_gen.cpp src\core\gamedriver.cpp src\video\colour.cpp"
 
 pushd "%ROOT%"
 if not exist "%OUT%\obj_view" mkdir "%OUT%\obj_view"
