@@ -2,6 +2,7 @@
 // --page0 scratch/page_tick0.bin made by tools/record_page0.py). The page drawn from the NEW-GAME STATE (walls, door, dots, score area, labels, icons,
 // oracle's hi-res page at the first tick of a game everywhere except in the areas that later parts draw (score and labels, the lives and fruit icons); those areas are listed here, and the test also checks that the differences stay inside them.
 #include <cstdint>
+#include <cstdlib>
 #include <fstream>
 #include <iterator>
 #include <string>
@@ -105,4 +106,60 @@ TEST(screen_first_tick_page_equals_the_oracle_outside_the_known_gaps) {
     std::size_t lit = 0;
     for (std::size_t k = 0; k < hires::kPageBytes; ++k) lit += page.byte(k) != 0x80;
     CHECK(lit > 1000);   // not an empty page: maze, dots, labels, Pac-Man
+}
+
+// TASK-029g15: the high score survives from one game to the next ($00-$02 are set once at the program's start and never cleared by a new game): the first page
+// of a SECOND game shows the first game's best score and a zero score. scratch/page_tick0_game2.bin and scratch/high_game2.txt come from tools/record_second_game.py.
+TEST(screen_second_game_first_page_shows_the_high_score_of_the_first_game) {
+    if (testfw::config().image.empty() || testfw::config().page0.empty()) {
+        std::printf("    SKIPPED (needs --image and --page0)\n");
+        return;
+    }
+    std::string base = testfw::config().page0;
+    const std::size_t at = base.rfind("page_tick0.bin");
+    if (at == std::string::npos) {
+        std::printf("    SKIPPED (--page0 is not named page_tick0.bin)\n");
+        return;
+    }
+    base.resize(at);
+    const auto oracle = readAll(base + "page_tick0_game2.bin");
+    const auto info = readAll(base + "high_game2.txt");
+    if (oracle.size() != hires::kPageBytes || info.empty()) {
+        std::printf("    SKIPPED (no page_tick0_game2.bin / high_game2.txt next to --page0)\n");
+        return;
+    }
+    const std::string text(info.begin(), info.end());
+    const std::size_t g2 = text.find("\"game2_tick0\"");
+    unsigned h0 = 0, h1 = 0, h2 = 0;
+    CHECK(g2 != std::string::npos);
+    if (g2 == std::string::npos) return;
+    const std::size_t hi = text.find("\"hi\": [", g2);
+    CHECK(hi != std::string::npos);
+    if (hi == std::string::npos) return;
+    {
+        const char* q = text.c_str() + hi + 7;   // after "hi": [
+        char* end = nullptr;
+        h0 = static_cast<unsigned>(std::strtoul(q, &end, 10));
+        h1 = static_cast<unsigned>(std::strtoul(end + 1, &end, 10));
+        h2 = static_cast<unsigned>(std::strtoul(end + 1, &end, 10));
+    }
+    CHECK(h0 + h1 + h2 != 0);   // game 1 really scored
+
+    const auto img = readAll(testfw::config().image);
+    const auto built = datapack::buildPack(img, verify::referenceExpected(), datapack::dataManifest());
+    CHECK_MSG(built.ok, built.reason);
+    if (!built.ok) return;
+    const auto loaded = datapack::loadPack(built.bytes, verify::referenceExpected());
+    CHECK_MSG(loaded.ok, loaded.reason);
+    if (!loaded.ok) return;
+    GameState state;
+    CHECK(newGameState(loaded.pack, state));
+    hires::Page page;
+    CHECK(drawPlayfield(page, state, loaded.pack));
+    CHECK(drawHud(page, state, loaded.pack, {static_cast<std::uint8_t>(h0), static_cast<std::uint8_t>(h1), static_cast<std::uint8_t>(h2)}));
+    CHECK(drawPacman(page, state, loaded.pack, false));
+    std::size_t differing = 0;
+    for (std::size_t k = 0; k < hires::kPageBytes; ++k) differing += page.byte(k) != oracle[k];
+    std::printf("    second game: high score %02X%02X%02X, %zu bytes differ from the oracle's page\n", h2, h1, h0, differing);
+    CHECK(differing == 0);
 }

@@ -110,3 +110,5 @@ Latest: 029h3 done (docs/APPLE2TC_COVERAGE.md). Next 029h4: compile/run the gene
 Latest: apple2tc method SCRAPPED. Continue M4: high-score carry, player-2 level end, full-suite checkpoint, then 029h integration.
 
 Latest: FULL-SUITE CHECKPOINT done (C++ 102/0, Python 172 OK) with `bash tools/full_suite.sh python` and --drawticks. Next: high-score carry, player-2 level end, then 029h integration.
+
+Latest: 029g15 done (high score carry). Next: player-2 level end, then 029h integration.
