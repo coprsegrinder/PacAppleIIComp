@@ -75,5 +75,65 @@ class WindowShot(unittest.TestCase):
         self.assertEqual(subprocess.run([EXE, "--nonsense"], timeout=15).returncode, 64)
 
 
+class RealMazeShot(unittest.TestCase):
+    """TASK-028c: the window shows the REAL maze (walls from a data pack built from the user's own disk image) in colour. The expected image comes from
+    the independent Python wall model (tools/wall_model.py, verified against the oracle) plus the standard colour rules. Needs the disk image,
+    scratch/extract (original data, git-ignored) and the build; skips otherwise."""
+
+    def test_maze_scale_3(self):
+        dsk = os.path.join(ROOT, "Pacman (1983)(Atari).dsk")
+        body = os.path.join(ROOT, "scratch", "extract", "PAC-MAN.1000.bin")
+        pk = os.path.join(ROOT, "out", "bat", "pacman_pack.exe")
+        if not all(os.path.exists(f) for f in (EXE, dsk, body, pk)):
+            self.skipTest("needs the build, the disk image and scratch/extract")
+        sys.path.insert(0, os.path.join(ROOT, "tools"))
+        import wall_model
+        data = open(body, "rb").read()
+        table = data[0x5F69 - 0x4000: 0x5F69 - 0x4000 + 426]
+        page = wall_model.wall_page(table, 1)
+        img = page_to_colours(page)
+        with tempfile.TemporaryDirectory() as t:
+            pack, out = os.path.join(t, "p.pmpk"), os.path.join(t, "m.bmp")
+            self.assertEqual(subprocess.run([pk, "build", dsk, pack], timeout=60, capture_output=True).returncode, 0)
+            self.assertEqual(subprocess.run([EXE, "--pack", pack, "--scale", "3", "--shot", out], timeout=30).returncode, 0)
+            w, h, got = read_bmp(out)
+            # a damaged pack must be refused (exit 3) and never show a window
+            bad = bytearray(open(pack, "rb").read())
+            bad[len(bad) // 2] ^= 1
+            open(pack, "wb").write(bad)
+            self.assertEqual(subprocess.run([EXE, "--pack", pack, "--shot", os.path.join(t, "x.bmp")], timeout=30, capture_output=True).returncode, 3)
+        self.assertEqual((w, h), (840, 576))
+        diff = sum(1 for y in range(h) for x in range(w) if got[y][x] != img[y // 3][x // 3])
+        self.assertEqual(diff, 0, "%d pixels differ" % diff)
+        self.assertGreater(sum(1 for r in img for v in r if v != BLACK), 1000)  # the maze is really there
+
+
+def page_to_colours(page):
+    """Standard hi-res rules from the 8192-byte page (independent of the C++ code)."""
+    lit = [[0] * 280 for _ in range(192)]
+    pal = [[0] * 280 for _ in range(192)]
+    for y in range(192):
+        a = 0x2000 + (y & 7) * 0x400 + ((y >> 3) & 7) * 0x80 + (y >> 6) * 0x28 - 0x2000
+        for c in range(40):
+            b = page[a + c]
+            for k in range(7):
+                lit[y][c * 7 + k] = b >> k & 1
+                pal[y][c * 7 + k] = b >> 7
+    out = [[BLACK] * 280 for _ in range(192)]
+    for y in range(192):
+        for x in range(280):
+            if not lit[y][x]:
+                continue
+            l = x > 0 and lit[y][x - 1]
+            r = x < 279 and lit[y][x + 1]
+            if l or r:
+                out[y][x] = WHITE
+            elif pal[y][x]:
+                out[y][x] = ORANGE if x & 1 else BLUE
+            else:
+                out[y][x] = GREEN if x & 1 else VIOLET
+    return out
+
+
 if __name__ == "__main__":
     unittest.main()

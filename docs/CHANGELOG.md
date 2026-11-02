@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2026-10-29
+* TASK-028c: `pacman_view --pack` shows the real maze from the local data pack; window pixels equal the independent model (0 of 483,840 differ).
 * TASK-028b: Windows app window (GDI) showing a hi-res page at an integer scale; `pacman_view.exe`; window-only screenshot test compares every pixel (docs/APP_WINDOW.md).
 * **Data pack (TASK-026, milestone M1):** `pacman_pack build/info`, a 60-range generated manifest (16,680 data bytes), loader that refuses any damaged or wrong-game pack (27 C++ tests).
 * TASK-028a: C++ page-to-colour function with tests (class counts equal the verified Python model).
