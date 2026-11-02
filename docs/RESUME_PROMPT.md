@@ -104,3 +104,5 @@ Latest: 029h1 done (make_b33.py, a2run runs the game). Next 029h2: run data from
 Latest: 029h2 partly done (A-D). Next: 029h2b other scenarios, then 029h3 apple2tc listing + coverage.
 
 Latest: 029h2/2b done. Next 029h3: apple2tc on scratch/a2tc_PAC-MAN.b33 with scratch/a2tc_run_everything.json (asm listing + coverage report).
+
+Latest: 029h3 done (docs/APPLE2TC_COVERAGE.md). Next 029h4: compile/run the generated C vs the oracle; 029h5: declare data, close holes ($951F-$956A never executed).

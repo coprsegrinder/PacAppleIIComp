@@ -80,3 +80,5 @@
 - TASK-029h2 (part): own collector for apple2tc run data (a2tc_collect/scenarios/merge/validate), A-D recorded and validated against a2run on the game area.
 
 - TASK-029h2b: run data of 30 scenarios, replays equal to the recordings; merged file 1,111 targets.
+
+- TASK-029h3: apple2tc asm/C/coverage for PAC-MAN; code set equals ours except 76 never-run bytes.

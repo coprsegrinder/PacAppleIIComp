@@ -226,3 +226,8 @@ M5 (ghosts, ledger 030e) then replaces the fed ghost fields; M6 (levels, fruit, 
 - 30 scenarios recorded: A, B, B10, C, D, DEMO, F, G, H, J, K, L, L04-L16, L21, M, N00, P, Q, R, S, T00. For every scenario except A-D (stored hashes) and DEMO (no chain), the replay's final chain hash equals the hash of the original recording, so the collector saw exactly the recorded runs.
 - Merged file `scratch/a2tc_run_everything.json`: 1,111 branch targets and 1,428 branch origins (A-D alone: 1,096 / 1,399, so the 26 extra scenarios added 15 targets and 29 origins), 29 distinct final code states (the 21 self-modified operands differ by run).
 - Not covered by any of these runs (by design of the scenario set, to be seen in 029h3): code reached only by other inputs, e.g. joystick/paddle mode (`mode != 1`), sound-only paths, the intermission cartoons beyond levels 2 and 3 (only what C passes), and anything needing real disk or DOS. The coverage report in 029h3 will list the exact bytes.
+
+## TASK-029h3: apple2tc listing, C and coverage (done; details in docs/APPLE2TC_COVERAGE.md)
+- Needs the relocated image ($4000) and run data filtered to the game area (`tools/a2tc_runtime_image.py`), not the $1000 file image.
+- Code 10,386 bytes (38.3 %); equals our static code set except 76 bytes ($951F-$956A, never executed) and 4 mis-decoded bytes at data edges. 49 % of the game is non-zero data that is not declared to apple2tc yet.
+- `--simple-c` produced 16,478 lines (not compiled yet).

@@ -98,7 +98,7 @@ Statuses: Planned / In progress / Implemented / Tested / Verified / Blocked / De
 | TASK-029h0 | apple2tc toolchain built (gcc), sample proven; plan for full-coverage decompilation | Done (2026-11-02) | - | Bolo sample decompiled to C; docs/M4_PLAN.md |
 | TASK-029h1 | Game memory image (.b33) from the verified disk | Done (2026-11-02) | 029h0 | image loads and runs in a2run |
 | TASK-029h2 | Run data (coverage) from all scenarios | Done (2026-11-02; 30 scenarios, merged file in scratch/) | 029h1 | JSON accepted by apple2tc |
-| TASK-029h3 | apple2tc listing + coverage report = what is still not understood | Planned | 029h2 | report in docs/ |
+| TASK-029h3 | apple2tc listing + coverage report = what is still not understood | Done (2026-11-02; docs/APPLE2TC_COVERAGE.md) | 029h2 | report in docs/ |
 | TASK-029h4 | Compare generated C with the rebuilt logic | Planned | 029h3 | - |
 | TASK-029h5 | Close the coverage holes | Planned | 029h3 | - |
 | TASK-029i | Menus and flow (mode screen, players prompt, attract, hidden menu, customised keys) | Planned | 029b | Screens/flags equal the oracle along the attract path |
