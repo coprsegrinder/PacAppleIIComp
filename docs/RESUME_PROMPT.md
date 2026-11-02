@@ -100,3 +100,5 @@ Latest: 029g14 done. Next: high-score carry, player 2 level end, then the full-s
 Latest: apple2tc added and built (029h0). The user wants 100% of the game understood before more C++ conversion: next 029h1 (game image .b33), 029h2 (run data), 029h3 (coverage report).
 
 Latest: 029h1 done (make_b33.py, a2run runs the game). Next 029h2: run data from all scenarios (key files).
+
+Latest: 029h2 partly done (A-D). Next: 029h2b other scenarios, then 029h3 apple2tc listing + coverage.

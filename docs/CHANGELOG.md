@@ -76,3 +76,5 @@
 - TASK-029h0: apple2tc-master (user-provided, MIT) built locally with MSYS2 gcc; sample decompiles. Plan 029h1-029h5.
 
 - TASK-029h1: tools/make_b33.py; image runs in a2run, game area equals the oracle at $4027.
+
+- TASK-029h2 (part): own collector for apple2tc run data (a2tc_collect/scenarios/merge/validate), A-D recorded and validated against a2run on the game area.
