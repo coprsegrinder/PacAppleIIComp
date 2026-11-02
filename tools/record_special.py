@@ -135,7 +135,8 @@ def natural_tunnel():
         do_step(mc, st, lambda *_: None)
     start_game(mc)
     states, inputs = [], []
-    ctl = {'goal': 26, 'last': None, 'x': None, 'wraps': 0, 't': 0, 'done': False}
+    ctl = {'goal': 26, 'last': None, 'last_t': -1, 'x': None, 'wraps': 0, 't': 0, 'done': False}
+    at_pos = {(rec(j)[0], rec(j)[1]): j for j in range(64)}   # junction coordinates -> number
     step = mc.cpu.step
 
     def hook():
@@ -153,24 +154,21 @@ def natural_tunnel():
             ctl['x'] = x
             goal = ctl['goal']
             exit_dir = 3 if goal == 26 else 2
-            cur, nx, d = m[0x64], m[0x65], m[0x62]
-            dist = dists[goal]
+            # Keys are pressed ONLY while Pac-Man stands exactly on a junction (between junctions a key opposite to the direction would reverse it at once,
+            # and in the tunnel nothing may be pressed). A wish given there is used by the junction logic in the next acting tick.
+            node = at_pos.get((x, m[0x61]))
             want = None
-            if ok(nx):
-                ahead = 1 + dist.get(nx, 99)
-                back = 1 + dist.get(cur, 99)
-                if back + 1 < ahead and cur != nx:
-                    want = d ^ 1                              # turn round between junctions
+            if node is not None and not m[0x69]:
+                dist = dists[goal]
+                if node == goal:
+                    want = exit_dir
                 else:
-                    node = nx
-                    want = exit_dir if node == goal else min((dd for dd in range(4) if ok(nxt[node][dd]) and dist.get(nxt[node][dd], 99) < dist.get(node, 99)), default=d, key=lambda dd: dist[nxt[node][dd]])
-            else:
-                node = cur
-                want = exit_dir if node == goal else min((dd for dd in range(4) if ok(nxt[node][dd]) and dist.get(nxt[node][dd], 99) < dist.get(node, 99)), default=d, key=lambda dd: dist[nxt[node][dd]])
-            if want != ctl['last']:
+                    options = [dd for dd in range(4) if ok(nxt[node][dd]) and dist.get(nxt[node][dd], 99) < dist.get(node, 99)]
+                    want = min(options, key=lambda dd: dist[nxt[node][dd]]) if options else None
+            if want is not None and m[0x63] != want and ctl['last_t'] != t:
                 mc.push_key(KEY[want])
                 inputs.append([t, KEY[want]])
-                ctl['last'] = want
+                ctl['last_t'] = t
             ctl['t'] = t + 1
         return step()
     mc.cpu.step = hook

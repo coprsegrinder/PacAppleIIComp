@@ -207,32 +207,34 @@ TEST(pacstep_against_the_oracle_recordings) {
     CHECK(tot.acting > 5000 && tot.items > 500);
 }
 
-TEST(pacstep_tunnel_recording_has_many_tunnel_ticks) {
-    // needs the T00 recording among the --ticks files; checks that the weak spot (only 8 tunnel ticks in the golden scenarios) is now covered
+TEST(pacstep_tunnel_recordings_have_many_tunnel_ticks_and_wraps) {
+    // The weak spot of the golden scenarios (8 tunnel ticks, no wrap) is covered by two recordings: T00 (Pac-Man poked onto the tunnel-end junctions) and
+    // N00 (NO pokes: a key-pressing controller steers Pac-Man through the tunnel). Each is checked on its own when given among the --ticks files.
     if (testfw::config().ticks.empty() || testfw::config().image.empty()) {
         std::printf("    SKIPPED (needs --ticks and --image)\n");
         return;
     }
     JunctionGraph graph;
     CHECK(loadGraph(graph));
-    Totals tot;
-    bool found = false;
-    for (const auto& path : split(testfw::config().ticks)) {
-        if (path.find("T00") == std::string::npos) continue;
-        found = true;
-        std::string why;
-        const auto tr = TickTrace::load(path, why);
-        CHECK_MSG(tr.ok(), why);
-        if (!tr.ok()) continue;
-        std::size_t firstBad = 0;
-        CHECK(compareRecording(tr, graph, thePack(), {}, tot, firstBad) == 0);
+    struct Want { const char* tag; std::size_t tunnel, wraps; };
+    bool any = false;
+    for (const Want& w : {Want{"T00", 100, 5}, Want{"N00", 100, 2}}) {
+        for (const auto& path : split(testfw::config().ticks)) {
+            if (path.find(w.tag) == std::string::npos) continue;
+            any = true;
+            std::string why;
+            const auto tr = TickTrace::load(path, why);
+            CHECK_MSG(tr.ok(), why);
+            if (!tr.ok()) continue;
+            Totals tot;
+            std::size_t firstBad = 0;
+            const std::size_t bad = compareRecording(tr, graph, thePack(), {}, tot, firstBad);
+            std::printf("    %s: %zu tunnel ticks, %zu edge wraps, mismatches %zu\n", w.tag, tot.tunnel, tot.wraps, bad);
+            CHECK(bad == 0);
+            CHECK(tot.tunnel >= w.tunnel && tot.wraps >= w.wraps);
+        }
     }
-    if (!found) {
-        std::printf("    SKIPPED (no T00 file given)\n");
-        return;
-    }
-    std::printf("    tunnel recording: %zu tunnel ticks, %zu edge wraps\n", tot.tunnel, tot.wraps);
-    CHECK(tot.tunnel > 100 && tot.wraps >= 5);
+    if (!any) std::printf("    SKIPPED (no T00 or N00 file given)\n");
 }
 
 TEST(pacstep_attract_demo_recording) {
