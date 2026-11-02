@@ -28,6 +28,12 @@ add_executable(pacman_pack_cli src/app/pack_main.cpp)
 target_link_libraries(pacman_pack_cli PRIVATE pacman_core_verify)
 set_target_properties(pacman_pack_cli PROPERTIES OUTPUT_NAME pacman_pack)
 
+if(WIN32)
+  add_executable(pacman_view src/app/view_main.cpp src/app/pagewindow.cpp)
+  target_link_libraries(pacman_view PRIVATE pacman_core_verify user32 gdi32)
+  target_link_options(pacman_view PRIVATE /ENTRY:wmainCRTStartup /SUBSYSTEM:WINDOWS)
+endif()
+
 # --- tests ---
 add_executable(pacman_tests
   tests/test_main.cpp

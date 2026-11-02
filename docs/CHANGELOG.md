@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2026-10-29
+* TASK-028b: Windows app window (GDI) showing a hi-res page at an integer scale; `pacman_view.exe`; window-only screenshot test compares every pixel (docs/APP_WINDOW.md).
 * **Data pack (TASK-026, milestone M1):** `pacman_pack build/info`, a 60-range generated manifest (16,680 data bytes), loader that refuses any damaged or wrong-game pack (27 C++ tests).
 * TASK-028a: C++ page-to-colour function with tests (class counts equal the verified Python model).
 * TASK-027b3: the 3 failing vectors were a capture fault; 149 verified shifted-image pairs; all 1,891 C++ hires vectors pass.

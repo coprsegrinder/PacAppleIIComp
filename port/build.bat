@@ -27,6 +27,9 @@ set "FLAGS=/nologo /std:c++20 /W4 /WX /permissive- /utf-8 /EHsc /O2"
 set "CORE=src\verify\sha256.cpp src\verify\dos33.cpp src\verify\verify.cpp src\datapack\datapack.cpp src\datapack\manifest.cpp src\hires\hires.cpp src\video\colour.cpp"
 
 pushd "%ROOT%"
+if not exist "%OUT%\obj_view" mkdir "%OUT%\obj_view"
+cl %FLAGS% /Fo"%OUT%\obj_view\\" /Fe"%OUT%\pacman_view.exe" src\app\view_main.cpp src\app\pagewindow.cpp %CORE% user32.lib gdi32.lib /link /ENTRY:wmainCRTStartup /SUBSYSTEM:WINDOWS
+if errorlevel 1 (popd & exit /b 1)
 cl %FLAGS% /Fo"%OUT%\obj_cli\\" /Fe"%OUT%\pacman_verify.exe" src\app\verify_main.cpp %CORE%
 if errorlevel 1 (popd & exit /b 1)
 cl %FLAGS% /Fo"%OUT%\obj_pack\\" /Fe"%OUT%\pacman_pack.exe" src\app\pack_main.cpp %CORE%
