@@ -26,7 +26,13 @@ class GameDriver {
 public:
     bool init(const datapack::Pack& pack);
     bool newGame();                        // new core state and the first screen
-    TickEvents tick(FrightenAware& ghosts);
+    TickEvents tick(FrightenAware& ghosts);   // the ghosts are supplied by the caller (tests)
+    TickEvents tick();                        // the ghosts of the game core (M5)
+    void syncExtras() noexcept {              // after the shared ghost variables were replaced from outside
+        prev_.e1 = core_.ghostShared().e1;
+        prev_.e2 = core_.ghostShared().e2;
+        prev_.e4 = core_.ghostShared().e4;
+    }
     void nextLevelUnverified() { core_.startNextLevelUnverified(); rebuildScreen(); }   // see GameCore::startNextLevelUnverified
     void rebuildScreen();                  // the page from the state: walls, door, dots, labels, score, high score, icons, Pac-Man (no ghosts)
     GameCore& core() noexcept { return core_; }
@@ -39,6 +45,7 @@ public:
 
 private:
     void drawStaticGhosts();
+    TickEvents tickImpl(FrightenAware* fed);
     const datapack::Pack* pack_ = nullptr;
     GameCore core_;
     hires::Page page_;
@@ -46,6 +53,7 @@ private:
     TickExtras prev_;
     bool staticGhosts_ = false;
     std::int64_t extraCycles_ = 0;
+    bool newGamePending_ = false;   // after GAME OVER the next tick starts a new game
     std::vector<DrawCall> lastCalls_;
 };
 

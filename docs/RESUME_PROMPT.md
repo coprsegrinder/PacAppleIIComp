@@ -126,3 +126,5 @@ Latest: 030e4 done (D6: decision routines transliterated mechanically). Next 030
 Latest: 030e5/e6 done incl. house move. Next 030e7: mode timer $808C + reversal $80C1 + energizer ghost effects + eaten effects; then 030e9 integration (queue init at life start).
 
 Latest: 030e7 done. Next 030e9: GhostSource inside GameCore (all ghost logic), no fed fields; free-running A-D must equal the oracle incl. eaten ghosts, catches, house.
+
+Latest: M5 DONE (ghosts). Next: M6 (level change, level tables, intermission cartoons), M7 sound, M8 pacing/packaging; small open items: READY pause, death animation, title/attract, two-player core.

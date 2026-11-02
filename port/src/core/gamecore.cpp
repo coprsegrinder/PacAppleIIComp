@@ -7,6 +7,7 @@ namespace pacman::core {
 bool GameCore::init(const datapack::Pack& pack) {
     pack_ = &pack;
     if (!graph_.load(pack) || !loadStepTables(pack, steps_) || !loadStartTables(pack, start_)) return false;
+    if (!ghostTables_.load(pack) || !ghostData_.load(pack) || !ghostModes_.load(pack)) return false;
     const auto a = pack.find(0x5733, 16), b = pack.find(0x5903, 16);
     if (a.empty() || b.empty()) return false;
     std::copy(a.begin(), a.end(), energizerBlink_.begin());
@@ -21,6 +22,10 @@ bool GameCore::init(const datapack::Pack& pack) {
 bool GameCore::newGame(int players) {
     (void)players;
     player_ = 1;
+    ghostShared_ = GhostShared{};
+    ghostShared_.e2 = 0xFF;                   // $E1/$E2 at the start of a game: $FF00 (recorded at tick 0)
+    ghostShared_.ea = 0xA0;                   // $53E6: 160 mode ticks of corner phase
+    initGhostQueues(queues_, ghostData_);
     e5_ = 3;                  // $E5 at the start of a game (recorded at tick 0 of every scenario); $E6 = $E7 = 0
     e6_ = e7_ = 0;
     demoPointer_ = DemoStream::kStart;
@@ -108,7 +113,43 @@ void GameCore::startNextLevelUnverified() {
     e7_ = 0;
 }
 
-TickEvents GameCore::tick(GhostSource& ghosts) {
+bool GameCore::contactTest(int g, TickEvents& ev) {
+    GameState& s = state_;
+    GhostRecord& gh = s.ghosts[static_cast<std::size_t>(g)];
+    if (gh.b[9] != 0 || gh.b[17] != 0) return false;     // eyes and ghosts still in the house (in-house flag $81 = byte 17): no contact
+    const Contact c = ghostContact(s, gh);
+    if (c == Contact::None) return false;
+    StepTimer::applyNearGhostDelay(s, gh);                // $8B4A-$8B65 (level 5 and up)
+    if (c != Contact::Touch) return false;
+    if (gh.b[8] != 0) {                                   // frightened: eaten
+        ghostEaten(s, static_cast<std::size_t>(g), player_);
+        ghostEatenTimer(s, ghostShared_, ghostModes_);    // $8BA4-$8BB5
+        s.mode78 = 0;
+        s.mode79 = 1;
+        ev.ghostEaten[static_cast<std::size_t>(g)] = true;
+        return false;
+    }
+    pacmanCaught(s);                                      // $8C0E: DEC $58
+    ev.caught = true;
+    ev.gameOver = s.lives() == 0;
+    if (!ev.gameOver) {
+        const PlayerSave kept = savePlayer(s);            // $8C1A / $8C1D
+        startOfLife(s, start_, kept);
+        e7_ = 0;                                          // $541C: the bonus fruit is gone
+        // the ghost side of $53E6: queues ($6E79), corner phase for 160 mode ticks, no frightened period
+        initGhostQueues(queues_, ghostData_);
+        ghostShared_.ea = 0xA0;
+        ghostShared_.eb = 0;
+        ghostShared_.e4 = 0;
+    }
+    return true;
+}
+
+TickEvents GameCore::tick(GhostSource& ghosts) { return tickImpl(&ghosts); }
+
+TickEvents GameCore::tick() { return tickImpl(nullptr); }
+
+TickEvents GameCore::tickImpl(GhostSource* fed) {
     TickEvents ev;
     GameState& s = state_;
     // ---- $7861: Pac-Man ----
@@ -121,6 +162,7 @@ TickEvents GameCore::tick(GhostSource& ghosts) {
     }
     ev.acted = timer_.tick(s, steps_);
     if (ev.acted) {
+        if (fed == nullptr) modeTimerStep(s, ghostShared_, queues_);   // $7874: JSR $808C
         const auto outcome = junctionStep(s, graph_, StreamByteSource([&] {
             ++demoPointer_;
             const auto b = pack_->find(demoPointer_, 1);
@@ -133,9 +175,13 @@ TickEvents GameCore::tick(GhostSource& ghosts) {
             ev.ate = r.ate;
             ev.energizer = r.energizer;
             ev.outsideMap = r.outsideMap;
-            if (r.energizer && s.level() < 0x15) {              // $6D60-$6D9D (the ghosts' part and the timer $E1/$E2 are ghost logic, M5)
-                s.zp(0x68) = 2;                                  // the next ghost eaten is worth 200
-                s.cornerPhase = 1;                               // $E9
+            if (r.energizer) {
+                if (fed == nullptr) {
+                    energizerGhostEffects(s, ghostShared_, queues_, ghostModes_);   // $6D60 (levels below 21)
+                } else if (s.level() < 0x15) {
+                    s.zp(0x68) = 2;                                                 // the fed ghost source supplies the rest
+                    s.cornerPhase = 1;
+                }
             }
             if (r.levelComplete) {
                 ev.levelComplete = true;
@@ -144,31 +190,22 @@ TickEvents GameCore::tick(GhostSource& ghosts) {
         }
     }
     // ---- $86EA: the ghosts ----
-    const std::array<bool, 4> moved = ghosts.step(s, ev.energizer);
-    for (int g = 3; g >= 0; --g) {
-        GhostRecord& gh = s.ghosts[static_cast<std::size_t>(g)];
-        if (!moved[static_cast<std::size_t>(g)]) continue;   // only a ghost that acted runs the contact test
-        if (gh.b[9] != 0 || gh.b[17] != 0) continue;      // eyes and ghosts still in the house (in-house flag $81 = byte 17): no contact (Inferred from scenario D, tick 830)
-        const Contact c = ghostContact(s, gh);
-        if (c == Contact::None) continue;
-        StepTimer::applyNearGhostDelay(s, gh);            // $8B4A-$8B65 (level 5 and up)
-        if (c != Contact::Touch) continue;
-        if (gh.b[8] != 0) {                               // frightened: eaten
-            ghostEaten(s, static_cast<std::size_t>(g), player_);
-            s.mode78 = 0;
-            s.mode79 = 1;
-            ev.ghostEaten[static_cast<std::size_t>(g)] = true;
-            continue;
+    if (fed != nullptr) {
+        const std::array<bool, 4> moved = fed->step(s, ev.energizer);
+        for (int g = 3; g >= 0; --g) {
+            if (!moved[static_cast<std::size_t>(g)]) continue;   // only a ghost that acted runs the contact test
+            if (contactTest(g, ev)) return ev;
         }
-        pacmanCaught(s);                                  // $8C0E: DEC $58
-        ev.caught = true;
-        ev.gameOver = s.lives() == 0;
-        if (!ev.gameOver) {
-            const PlayerSave kept = savePlayer(s);        // $8C1A / $8C1D
-            startOfLife(s, start_, kept);
-            e7_ = 0;                                      // $541C: the bonus fruit is gone
+    } else {
+        for (int n = 4; n >= 1; --n) {
+            const HeadResult h = ghostHead(s, n, ghostShared_, ghostTables_);
+            if (!h.acted) continue;
+            ghostJunction(s, n, queues_, graph_, ghostData_, ghostTables_);
+            ghostMove(s, n, queues_, ghostData_);
+            if (contactTest(n - 1, ev)) return ev;
         }
-        return ev;
+        s.mode78 = s.ghosts[0].b[8];   // the working registers keep the last ghost processed (ghost 1)
+        s.mode79 = s.ghosts[0].b[9];
     }
     // ---- $6A7C: the bonus fruit ----
     fruit();

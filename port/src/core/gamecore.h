@@ -15,6 +15,7 @@
 #include "input.h"
 #include "junction.h"
 #include "lifestart.h"
+#include "ghostmode.h"
 #include "lives.h"
 #include "steptimer.h"
 
@@ -58,7 +59,12 @@ public:
     std::uint8_t blink1UpPhase() const noexcept { return e6_; }
     std::uint8_t fruitState() const noexcept { return e7_; }      // $E7: 0 none, 1 on the screen, 2 its points are shown
 
+    // One tick with the ghosts moved by the caller's GhostSource (the tests feed the oracle's records) ...
     TickEvents tick(GhostSource& ghosts);
+    // ... and one tick with the ghost logic of this class (M5): the mode timer, the energizer's effect, the ghosts' turns, their contact with Pac-Man.
+    TickEvents tick();
+    GhostShared& ghostShared() noexcept { return ghostShared_; }
+    GhostQueues& ghostQueues() noexcept { return queues_; }
     // UNVERIFIED STAND-IN for the level change (the real one, $6CF4 and the level tables, is M6): level + 1, the pristine maze, the counters of a fresh level, the
     // score and the lives kept, then the start of a life. Only used by the playable program.
     void startNextLevelUnverified();
@@ -71,6 +77,8 @@ public:
     }
 
 private:
+    TickEvents tickImpl(GhostSource* fed);
+    bool contactTest(int ghostIndex, TickEvents& ev);   // $8B34 and what follows for one ghost; true if Pac-Man was caught (the tick ends)
     void blinks();
     void fruitEatenCheck();
     void fruit();
@@ -85,6 +93,11 @@ private:
     StepTimer timer_;
     int player_ = 1;
     std::uint8_t e5_ = 0, e6_ = 0;       // $E5 / $E6: the 1UP blink counter and phase (outside the logical state)
+    GhostShared ghostShared_;
+    GhostQueues queues_{};
+    GhostTables ghostTables_;
+    GhostDecisionData ghostData_;
+    GhostModeTables ghostModes_;
     std::uint8_t e7_ = 0;                // $E7: the bonus fruit state (outside the logical state)
     std::uint16_t demoPointer_ = DemoStream::kStart;
     std::array<std::uint8_t, 16> energizerBlink_{}, oneUpBlink_{}, fruitPoints_{};   // $5733, $5903, $6CD4

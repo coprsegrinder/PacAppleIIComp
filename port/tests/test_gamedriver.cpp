@@ -237,3 +237,148 @@ TEST(gamedriver_pages_equal_the_oracle_end_to_end) {
     }
     CHECK(scenarios >= 1);
 }
+
+TEST(gamedriver_free_running_pages_equal_the_oracle_with_its_own_ghosts) {
+    const std::string& list = testfw::config().drawticks.empty() ? testfw::config().ticks : testfw::config().drawticks;
+    if (list.empty() || testfw::config().image.empty()) {
+        std::printf("    SKIPPED (needs --image and --ticks / --drawticks)\n");
+        return;
+    }
+    const auto img = readAll(testfw::config().image);
+    const auto built = datapack::buildPack(img, verify::referenceExpected(), datapack::dataManifest());
+    CHECK_MSG(built.ok, built.reason);
+    if (!built.ok) return;
+    const auto loaded = datapack::loadPack(built.bytes, verify::referenceExpected());
+    CHECK_MSG(loaded.ok, loaded.reason);
+    if (!loaded.ok) return;
+    std::size_t scenarios = 0;
+    for (const auto& path : split(list)) {
+        const std::size_t slash = path.find_last_of("/\\");
+        const std::string dir = slash == std::string::npos ? "" : path.substr(0, slash + 1);
+        const std::string name = path.substr(slash == std::string::npos ? 0 : slash + 1);
+        if (name.size() < 11 || name.compare(0, 6, "ticks_") != 0) continue;
+        const std::string letter = name.substr(6, name.size() - 10);
+        const auto pagesFile = readAll(dir + "pages_" + letter + ".bin");
+        const auto extras = readAll(dir + "extra_" + letter + ".bin");
+        const auto players = readAll(dir + "extra2_" + letter + ".bin");
+        if (pagesFile.size() < 8 || extras.empty()) continue;
+        const auto ram = readAll(dir + "ghostram_" + letter + ".bin");
+        if (ram.size() < 12 + 1280 || std::memcmp(ram.data(), "GRAM", 4) != 0) continue;
+        bool onePlayer = true;
+        for (std::size_t i = 1; i < players.size(); i += 2) onePlayer = onePlayer && players[i] <= 1;
+        if (!onePlayer) continue;
+        std::string why;
+        const auto tr = TickTrace::load(path, why);
+        CHECK_MSG(tr.ok(), why);
+        if (!tr.ok()) continue;
+        std::uint32_t count = 0;
+        std::memcpy(&count, pagesFile.data() + 4, 4);
+        const std::size_t rec = 4 + hires::kPageBytes;
+        CHECK(pagesFile.size() == 8 + count * rec);
+        GameDriver drv;
+        CHECK(drv.init(loaded.pack));
+        CHECK(drv.newGame());
+        drv.core().state() = fromOracleLayout(tr.state(0));
+        auto loadShared = [&](const std::uint8_t* z) {
+            GhostShared& sh = drv.core().ghostShared();
+            sh.e1 = z[0xE1];
+            sh.e2 = z[0xE2];
+            sh.e4 = z[0xE4];
+            sh.ea = z[0xEA];
+            sh.eb = z[0xEB];
+            for (std::size_t g = 0; g < 4; ++g) std::copy(z + 256 + 256 * g, z + 512 + 256 * g, drv.core().ghostQueues()[g].begin());
+            drv.syncExtras();
+        };
+        loadShared(ram.data() + 12);
+        drv.rebuildScreen();
+        std::multimap<std::uint32_t, std::uint32_t> keysAt;
+        for (const auto& in : tr.inputs()) keysAt.emplace(in.tick, in.key);
+        std::multimap<std::uint32_t, TickPoke> pokesAt;
+        for (const auto& p : tr.pokes()) pokesAt.emplace(p.tick, p);
+        const auto logged = parseLog(dir + "tick_calls_" + letter + ".txt");
+        // the call logs, pages and extras cover only the first ticks of a recording (A 2,090, D 1,600, ...)
+        // the recorded range of each scenario, as in the drawing test (A 2,090, D 1,093 here - from tick 1094 the poked position of Pac-Man leaves the map -, G 1,399, H 499, the others 700; beyond it the call logs and pages are not usable)
+        const std::size_t recorded = letter == "D" ? 1093 : letter == "A" ? 2090 : letter == "G" ? 1399 : letter == "H" ? 499 : 700;
+        const std::size_t limit = std::min<std::size_t>({tr.ticks() - 1, extras.size() / 6 - 1, logged.empty() ? tr.ticks() : logged.size() - 1, recorded});
+        std::size_t badCalls = 0;
+        std::size_t nextPage = 0, compared = 0, badPages = 0, resyncs = 0, shown = 0;
+        for (std::size_t k = 0; k < limit; ++k) {
+            // the page at the START of tick k
+            while (nextPage < count) {
+                const std::uint8_t* rp = pagesFile.data() + 8 + nextPage * rec;
+                std::uint32_t tick = 0;
+                std::memcpy(&tick, rp, 4);
+                if (tick > k) break;
+                if (tick == k) {
+                    std::size_t diff = 0;
+                    for (int y = 0; y < 192; ++y)
+                        for (int c = 0; c < 40; ++c) {
+                            const std::size_t off = hires::rowOffset(y) + static_cast<std::size_t>(c);
+                            if (drv.page().byte(off) != rp[4 + off]) {
+                                if (shown++ < 4) std::printf("    %s page at tick %zu: row %d column %d mine %02X oracle %02X\n", letter.c_str(), k, y, c, drv.page().byte(off), rp[4 + off]);
+                                ++diff;
+                            }
+                        }
+                    ++compared;
+                    badPages += diff != 0;
+                }
+                ++nextPage;
+            }
+            const auto kr = keysAt.equal_range(static_cast<std::uint32_t>(k));
+            for (auto it = kr.first; it != kr.second; ++it) drv.core().input().pushKey(static_cast<std::uint8_t>(it->second));
+            GameState& s = drv.core().state();
+            const auto pr = pokesAt.equal_range(static_cast<std::uint32_t>(k));
+            for (auto it = pr.first; it != pr.second; ++it) {
+                const auto a = it->second.address;
+                if (a >= 0x52 && a <= 0x6F) s.zp(static_cast<std::uint16_t>(a)) = static_cast<std::uint8_t>(it->second.value);
+                if (a >= 0x623A && a <= 0x65B9) s.map[a - 0x623A] = static_cast<std::uint8_t>(it->second.value);
+                if (a == 0xE1) drv.core().ghostShared().e1 = static_cast<std::uint8_t>(it->second.value);
+                if (a == 0xE2) drv.core().ghostShared().e2 = static_cast<std::uint8_t>(it->second.value);
+                if (a == 0xE4) drv.core().ghostShared().e4 = static_cast<std::uint8_t>(it->second.value);
+                if (a == 0xEA) drv.core().ghostShared().ea = static_cast<std::uint8_t>(it->second.value);
+                if (a == 0xEB) drv.core().ghostShared().eb = static_cast<std::uint8_t>(it->second.value);
+                if (a >= 0x84 && a <= 0xD3) s.ghosts[(a - 0x84) / 20].b[(a - 0x84) % 20] = static_cast<std::uint8_t>(it->second.value);   // ghost records (the timer reads their flags)
+                if (a == 0x78) s.mode78 = static_cast<std::uint8_t>(it->second.value);
+                if (a == 0x79) s.mode79 = static_cast<std::uint8_t>(it->second.value);
+                if (a == 0xE9) s.cornerPhase = static_cast<std::uint8_t>(it->second.value);
+            }
+            const GameState a = fromOracleLayout(tr.state(k));
+            const GameState b = fromOracleLayout(tr.state(k + 1));
+            drv.syncExtras();
+            const TickEvents ev = drv.tick();
+            if (!logged.empty() && k < logged.size() && !ev.caught && !ev.levelComplete) {   // the call lists, as in the drawing test (types the collector does not log are left out)
+                std::vector<DrawCall> mine;
+                for (const auto& c : drv.lastCalls())
+                    if (c.type != 8 && c.type != 10 && c.type != 11 && c.type != 12) mine.push_back(c);
+                const bool restartTick = (b.lives() & 0x7F) < (a.lives() & 0x7F) || (b.level() > a.level() && a.dotsLeft() == 1);
+                if (!restartTick && !(mine == logged[k])) {
+                    if (badCalls++ < 3) {
+                        std::printf("    %s tick %zu: pac before %02X dir %u req %u, mine after %02X dir %u, oracle after %02X dir %u; mine", letter.c_str(), k, a.pacX(), a.pacDirection(), a.zp(0x63), drv.core().state().pacX(), drv.core().state().pacDirection(), b.pacX(), b.pacDirection());
+                        for (const auto& c : mine) std::printf(" [%d %d %d %d]", c.type, c.p[0], c.p[1], c.p[2]);
+                        std::printf(" | oracle");
+                        for (const auto& c : logged[k]) std::printf(" [%d %d %d %d]", c.type, c.p[0], c.p[1], c.p[2]);
+                        std::printf("\n");
+                    }
+                }
+            }
+            bool pokedLives = false;
+            for (auto it = pr.first; it != pr.second; ++it) pokedLives = pokedLives || it->second.address == 0x58 || it->second.address == 0x55;
+            const bool oracleRestart = !pokedLives && ((b.lives() & 0x7F) < (a.lives() & 0x7F) || (b.level() > a.level() && a.dotsLeft() == 1));
+            const bool restart = ev.caught || ev.levelComplete || ev.outsideMap || oracleRestart;
+            if (restart) {
+                const bool outside = ev.outsideMap && b.dotsLeft() < a.dotsLeft();
+                drv.core().state() = b;
+                loadShared(ram.data() + 12 + (k + 1) * 1280);
+                if (outside) drv.core().itemEatenOutsideTheMap();
+                drv.rebuildScreen();
+                ++resyncs;
+                if (false) std::printf("    %s resync at tick %zu: caught %d level %d outside %d oracle %d\n", letter.c_str(), k, ev.caught, ev.levelComplete, ev.outsideMap, oracleRestart);
+            }
+        }
+        std::printf("    scenario %s: %zu ticks, %zu pages compared, %zu differ (%zu catches / level ends / poke artefacts resynchronised)\n", letter.c_str(), limit, compared, badPages, resyncs);
+        CHECK(compared >= 20);
+        CHECK(badPages == 0);
+        ++scenarios;
+    }
+    CHECK(scenarios >= 1);
+}

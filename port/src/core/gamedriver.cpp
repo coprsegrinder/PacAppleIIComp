@@ -9,8 +9,11 @@ bool GameDriver::init(const datapack::Pack& pack) {
 
 bool GameDriver::newGame() {
     if (!core_.newGame()) return false;
+    const auto high = display_.high;   // the high score survives into the next game
     display_ = DisplayState{};
+    display_.high = high;
     prev_ = TickExtras{};
+    syncExtras();
     rebuildScreen();
     return true;
 }
@@ -34,19 +37,42 @@ void GameDriver::rebuildScreen() {
     if (staticGhosts_) drawStaticGhosts();
 }
 
-TickEvents GameDriver::tick(FrightenAware& ghosts) {
+TickEvents GameDriver::tick(FrightenAware& ghosts) { return tickImpl(&ghosts); }
+
+TickEvents GameDriver::tick() { return tickImpl(nullptr); }
+
+TickEvents GameDriver::tickImpl(FrightenAware* fed) {
+    if (newGamePending_) {   // the pause after GAME OVER is over
+        newGamePending_ = false;
+        newGame();
+        extraCycles_ = 0;
+        return TickEvents{};
+    }
     const GameState before = core_.state();
     const bool acting = before.zp(0x59) == 1;
-    TickEvents ev = core_.tick(ghosts);
+    TickEvents ev = fed != nullptr ? core_.tick(*fed) : core_.tick();
     extraCycles_ = 0;
     lastCalls_.clear();
     if (ev.paused) return ev;
     const GameState& after = core_.state();
     TickExtras now;
-    ghosts.frightenState(now.e1, now.e2, now.e4);
+    if (fed != nullptr) {
+        fed->frightenState(now.e1, now.e2, now.e4);
+    } else {
+        now.e1 = core_.ghostShared().e1;
+        now.e2 = core_.ghostShared().e2;
+        now.e4 = core_.ghostShared().e4;
+    }
     now.e5 = core_.blink1UpCounter();
     now.e6 = core_.blink1UpPhase();
     now.e7 = core_.fruitState();
+    if (ev.gameOver) {   // the last life: the words GAME OVER ($811D, $8139) on the playfield, then a new game after a pause (no death animation yet)
+        executeCall(page_, DrawCall{2, {0x811D, 15, 105, 4, 7}}, *pack_);
+        executeCall(page_, DrawCall{2, {0x8139, 21, 105, 4, 7}}, *pack_);
+        extraCycles_ = kDeathSequenceCycles;
+        newGamePending_ = true;
+        return ev;
+    }
     if (ev.caught || ev.levelComplete) {
         // the high score follows the score as the score routine ($7091) would have done; the screen is rebuilt from the state
         const std::uint32_t sc = after.zp(0x52) | (after.zp(0x53) << 8) | (after.zp(0x54) << 16);

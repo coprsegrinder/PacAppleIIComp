@@ -1,6 +1,6 @@
 // TASK-029h: the first playable program: Pac-Man, the maze, the dots, the score, lives, the blinks and the bonus fruit run on the C++ game core and are drawn with
-// the verified hi-res routines into a GameWindow. THE GHOSTS ARE NOT IMPLEMENTED YET (M5): the four ghosts stand still where a life starts and nothing can catch
-// Pac-Man. The level change is an unverified stand-in (level + 1, fresh maze); there is no sound and no READY pause yet.
+// the verified hi-res routines into a GameWindow, now WITH THE GHOSTS (M5: all four move, are frightened by the energizers, can be eaten and can catch Pac-Man).
+// The level change is an unverified stand-in (level + 1, fresh maze); there is no sound, no READY pause and no death animation yet.
 //
 // Usage: pacman_play --pack <data.pack> [--scale N] [--seconds N] [--ticks N --dump <page.bin>]
 //   --scale N      whole-number window scale (default 3)
@@ -32,11 +32,6 @@ namespace {
 
 using namespace pacman;
 
-class StillGhosts : public core::FrightenAware {
-public:
-    std::array<bool, 4> step(core::GameState&, bool) override { return {}; }
-};
-
 bool loadPackFile(const std::wstring& packPath, datapack::LoadResult& loaded) {
     std::ifstream file(std::filesystem::path(packPath), std::ios::binary);
     if (!file) {
@@ -53,14 +48,13 @@ bool loadPackFile(const std::wstring& packPath, datapack::LoadResult& loaded) {
 }
 
 // One tick with the consequences the live program draws: a completed maze starts the (unverified) next level.
-core::TickEvents liveTick(core::GameDriver& drv, StillGhosts& ghosts) {
-    const core::TickEvents ev = drv.tick(ghosts);
+core::TickEvents liveTick(core::GameDriver& drv) {
+    const core::TickEvents ev = drv.tick();
     if (ev.levelComplete) drv.nextLevelUnverified();
     return ev;
 }
 
 void gameThread(core::GameDriver& drv, app::GameWindow& window, std::atomic<bool>& quit, int seconds) {
-    StillGhosts ghosts;
     core::CycleClock clock;
     clock.start(core::nowNanoseconds());
     std::int64_t budget = 0;
@@ -76,7 +70,7 @@ void gameThread(core::GameDriver& drv, app::GameWindow& window, std::atomic<bool
         budget += clock.cyclesDue(now);
         bool changed = false;
         while (budget >= core::kTypicalTickCycles) {
-            liveTick(drv, ghosts);
+            liveTick(drv);
             budget -= core::kTypicalTickCycles + drv.extraCycles();
             changed = true;
             if (budget < -core::kDeathSequenceCycles * 2) budget = 0;
@@ -108,11 +102,8 @@ int wmain(int argc, wchar_t** argv) {
         std::puts("the data pack lacks tables the game core needs");
         return 3;
     }
-    drv.setStaticGhosts(true);
-    drv.rebuildScreen();
     if (ticks >= 0) {   // headless: run N ticks, write the page
-        StillGhosts ghosts;
-        for (long t = 0; t < ticks; ++t) liveTick(drv, ghosts);
+        for (long t = 0; t < ticks; ++t) liveTick(drv);
         if (!dump.empty()) {
             std::ofstream out(std::filesystem::path(dump), std::ios::binary);
             for (std::size_t k = 0; k < hires::kPageBytes; ++k) out.put(static_cast<char>(drv.page().byte(k)));

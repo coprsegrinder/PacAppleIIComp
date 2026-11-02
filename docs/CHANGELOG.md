@@ -102,3 +102,5 @@
 - TASK-030e5/e6 (+ house move): special junctions, ghost move, tunnel, house release equal the oracle on 198,588 ghost records of 21 recordings.
 
 - TASK-030e7: corner/chase countdown and reversal, energizer and eaten-ghost timer effects, life-start queues equal the oracle.
+
+- TASK-030e9 / M5 done: ghost logic inside GameCore; 54,428 ticks free-running equal the oracle; pacman_play.exe has moving ghosts. dist/ rebuilt.

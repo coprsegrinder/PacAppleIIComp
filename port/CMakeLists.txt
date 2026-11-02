@@ -84,6 +84,7 @@ add_executable(pacman_tests
   tests/test_ghosthead.cpp
   tests/test_ghostjunction.cpp
   tests/test_ghostmove.cpp
+  tests/test_ghostworld.cpp
   tests/test_ghostdecide.cpp
   tests/test_gamedriver.cpp
   src/app/gamewindow.cpp
