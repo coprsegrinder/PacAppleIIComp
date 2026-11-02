@@ -78,7 +78,7 @@ struct Scenario {
 // ticks_X.bin -> the sibling files of scenario X (only A and D have been recorded)
 std::vector<Scenario> scenarios() {
     std::vector<Scenario> out;
-    for (const auto& p : split(testfw::config().ticks)) {
+    for (const auto& p : split(testfw::config().drawticks.empty() ? testfw::config().ticks : testfw::config().drawticks)) {
         const std::size_t slash = p.find_last_of("/\\");
         const std::string dir = slash == std::string::npos ? std::string() : p.substr(0, slash + 1);
         const std::string name = p.substr(slash == std::string::npos ? 0 : slash + 1);
@@ -150,7 +150,7 @@ TEST(tickdraw_synthetic_rules) {
 }
 
 TEST(tickdraw_calls_and_pages_equal_the_oracle) {
-    if (testfw::config().image.empty() || testfw::config().ticks.empty()) {
+    if (testfw::config().image.empty() || (testfw::config().ticks.empty() && testfw::config().drawticks.empty())) {
         std::printf("    SKIPPED (needs --image and --ticks)\n");
         return;
     }
@@ -265,7 +265,7 @@ TEST(tickdraw_calls_and_pages_equal_the_oracle) {
 }
 
 TEST(tickdraw_death_and_level_end_sequences_equal_the_oracle_log) {
-    if (testfw::config().image.empty() || testfw::config().ticks.empty()) {
+    if (testfw::config().image.empty() || (testfw::config().ticks.empty() && testfw::config().drawticks.empty())) {
         std::printf("    SKIPPED (needs --image and --ticks)\n");
         return;
     }

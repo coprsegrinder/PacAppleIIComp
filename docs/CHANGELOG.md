@@ -84,3 +84,5 @@
 - TASK-029h3: apple2tc asm/C/coverage for PAC-MAN; code set equals ours except 76 never-run bytes.
 
 - apple2tc method scrapped by the user; 029h0-h5 marked abandoned, tools removed. Back to the M4 plan (original 029h = integration).
+
+- Full-suite checkpoint (2026-11-02): C++ 102/0 with all inputs, Python 40 files/172 tests OK. New --drawticks flag and tools/full_suite.sh.

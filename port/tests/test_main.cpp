@@ -1,4 +1,4 @@
-// Usage: pacman_tests [--image <game.dsk>] [--vectors <hires_vectors.bin>] [--reference <other DOS 3.3 disk>]
+// Usage: pacman_tests [--drawticks <list>] [--image <game.dsk>] [--vectors <hires_vectors.bin>] [--reference <other DOS 3.3 disk>]
 // Tests that need the real disk images are skipped (and reported as skipped) when the paths are not given.
 #include <cstdio>
 #include <cstring>
@@ -21,6 +21,8 @@ int main(int argc, char** argv) {
             testfw::config().demo = argv[++i];
         } else if (std::strcmp(argv[i], "--ticks") == 0 && i + 1 < argc) {
             testfw::config().ticks = argv[++i];
+        } else if (std::strcmp(argv[i], "--drawticks") == 0 && i + 1 < argc) {
+            testfw::config().drawticks = argv[++i];
         } else if (std::strcmp(argv[i], "--script") == 0 && i + 1 < argc) {
             testfw::config().script = argv[++i];
         } else if (std::strcmp(argv[i], "--dots") == 0 && i + 1 < argc) {
