@@ -88,3 +88,5 @@
 - Full-suite checkpoint (2026-11-02): C++ 102/0 with all inputs, Python 40 files/172 tests OK. New --drawticks flag and tools/full_suite.sh.
 
 - TASK-029g15: high score ($00-$02) survives into the next game; second-game first page equals the oracle (test added).
+
+- TASK-029g16: player 2 level end equal to the oracle (scenario U).

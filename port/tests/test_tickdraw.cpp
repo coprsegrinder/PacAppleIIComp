@@ -187,7 +187,7 @@ TEST(tickdraw_calls_and_pages_equal_the_oracle) {
         std::size_t ticks = 0, withCalls = 0, calls = 0, badTicks = 0, pagesCompared = 0, badPages = 0, shown = 0, doorCalls = 0, doorLowBit = 0;
         std::uint32_t nextPage = 0;
         // the recorder replays N ticks with the scenario's keys and pokes and runs on a little without them: only the first N ticks are valid (A, B, C: 700; D: 1600)
-        const std::size_t scenarioLimit = sc.letter == "D" ? 1600 : sc.letter == "A" ? 2090 : sc.letter == "G" ? 1399 : sc.letter == "H" ? 499 : sc.letter == "P" ? 2299 : sc.letter == "Q" ? 4699 : sc.letter == "R" ? 5574 : sc.letter == "S" ? 6999 : 700;
+        const std::size_t scenarioLimit = sc.letter == "D" ? 1600 : sc.letter == "A" ? 2090 : sc.letter == "G" ? 1399 : sc.letter == "H" ? 499 : sc.letter == "P" ? 2299 : sc.letter == "Q" ? 4699 : sc.letter == "R" ? 5574 : sc.letter == "S" ? 6999 : sc.letter == "U" ? 2599 : 700;
         const std::size_t limit = std::min<std::size_t>(scenarioLimit, std::min(logged.size(), tr.ticks()) - 1);
         for (std::size_t k = 0; k < limit; ++k) {
             // page comparison at the START of tick k (everything before it has been drawn)
@@ -314,7 +314,7 @@ TEST(tickdraw_death_and_level_end_sequences_equal_the_oracle_log) {
                 // level end: the tail starts with the Pac-Man clear that follows the label pair; take the pair that precedes a type 3
                 std::size_t s2 = 0;
                 for (std::size_t i = 0; i + 2 < block.size(); ++i)
-                    if (block[i].type == 6 && block[i].p[0] == 0x7201 && block[i].p[1] == 47 && block[i + 1].type == 3 && block[i + 2].type == 1) s2 = i + 1;
+                    if (block[i].type == 6 && ((block[i].p[0] == 0x7201 && block[i].p[1] == 47) || (block[i].p[0] == 0x7271 && block[i].p[1] == 271)) && block[i + 1].type == 3 && block[i + 2].type == 1) s2 = i + 1;
                 if (s2 == 0) continue;
                 start = s2;
                 in.pacX = block[start].p[1] + 4;

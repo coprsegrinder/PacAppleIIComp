@@ -240,3 +240,8 @@ TASK-029h0..h5 (apple2tc toolchain, game image, run data, listing/C/coverage) ar
 - Recording (`tools/record_second_game.py`, about 2.5 minutes): game 1 (A's keys, lives poked to 1 at tick 5) ends at tick 1977 with score = high = 170 points; game 2 started from the attract mode: at its first tick `$00-$02` = 170 still, score 0, lives 3, level 1.
 - Test: `screen_second_game_first_page_shows_the_high_score_of_the_first_game` (needs `--page0`; reads `page_tick0_game2.bin` and `high_game2.txt` next to it): the page built from the new-game state with the high score of game 1 equals the oracle's whole page (0 of 8,192 bytes differ).
 - Still open: player 2's level end; pauses/sounds inside sequences (and what happens after GAME OVER: attract mode and the title screen).
+
+## TASK-029g16: player 2's level end (done)
+- Scenario U (`tools/record_tick_calls.py 2600 U`): two players, player 1 dies at tick 1976, at tick 2000 player 2 has one item left; its level ends at tick 2018 (level 1 -> 2, `$50` = 2). Calls and pages equal the oracle for all 2,599 ticks (260 pages); the level-end sequence of player 2 (270 calls: item/score box 2 and digits at x 266, 2UP label pair, maze flash and dot pass, both players' blocks with player 2 first, high score, level icon, lives, Pac-Man) equals `restartCalls(LevelEnd, players=2, current=2)` exactly - no new drawing code was needed, only the test's search for the start of the tail now also accepts the 2UP label pair.
+- U is part of the drawing recordings of `tools/full_suite.sh`.
+- Still open in the drawing area: pauses/sounds inside the sequences; what follows GAME OVER (attract mode, title screen).
