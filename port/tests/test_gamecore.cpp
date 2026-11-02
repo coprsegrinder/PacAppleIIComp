@@ -1,0 +1,185 @@
+// TASK-029h: GameCore::tick against the oracle. The state is carried from tick to tick (no re-start from the oracle's state), with the ghosts FED from the
+// oracle (ghost logic is M5) and every byte that is outside what the core owns reported. Pokes and keys of the recording are applied at the start of each tick.
+// After a tick in which the oracle restarts a life, completes a level or changes player, our state is replaced by the oracle's (those set-ups are tested
+// elsewhere: lifestart, M6). Mismatching bytes are counted per state offset and then copied from the oracle so that one difference does not cascade.
+#include <cstdint>
+#include <cstdio>
+#include <fstream>
+#include <iterator>
+#include <cstring>
+#include <map>
+#include <string>
+#include <vector>
+
+#include "../src/core/gamecore.h"
+#include "../src/datapack/datapack.h"
+#include "../src/verify/verify.h"
+#include "test_framework.h"
+
+using namespace pacman;
+using namespace pacman::core;
+
+namespace {
+
+std::vector<std::uint8_t> readAll(const std::string& path) {
+    std::ifstream f(path, std::ios::binary);
+    return std::vector<std::uint8_t>((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+}
+
+std::vector<std::string> split(const std::string& list) {
+    std::vector<std::string> out;
+    for (std::size_t pos = 0; pos <= list.size();) {
+        const std::size_t comma = list.find(',', pos);
+        const std::size_t end = comma == std::string::npos ? list.size() : comma;
+        if (end > pos) out.push_back(list.substr(pos, end - pos));
+        pos = end + 1;
+    }
+    return out;
+}
+
+class FedGhosts : public GhostSource {
+public:
+    const GameState* next = nullptr;
+    const GameState* before = nullptr;
+    bool caughtTick = false;
+    std::array<bool, 4> step(GameState& s, bool) override {
+        std::array<bool, 4> moved{};
+        for (std::size_t g = 0; g < 4; ++g) moved[g] = before->ghosts[g].b[0] != next->ghosts[g].b[0] || before->ghosts[g].b[1] != next->ghosts[g].b[1];
+        s.ghosts = next->ghosts;
+        if (caughtTick) {
+            // The recording's next state is already the RESTARTED life, so the ghosts' positions at the moment of the catch are not in it. The feed offers each ghost
+            // where it was at the start of the tick and one step further along its direction; the core's contact test has to find the catch at one of them.
+            for (std::size_t g = 0; g < 4; ++g) {
+                GhostRecord cand = before->ghosts[g];
+                static constexpr int dx[4] = {0, 0, 2, -2}, dy[4] = {2, -2, 0, 0};
+                GhostRecord moved1 = cand;
+                moved1.b[0] = static_cast<std::uint8_t>(cand.b[0] + dx[cand.b[2] & 3]);
+                moved1.b[1] = static_cast<std::uint8_t>(cand.b[1] + dy[cand.b[2] & 3]);
+                s.ghosts[g] = cand;
+                if (ghostContact(s, cand) != Contact::Touch && ghostContact(s, moved1) == Contact::Touch) s.ghosts[g] = moved1;
+            }
+            return {true, true, true, true};
+        }
+        for (std::size_t g = 0; g < 4; ++g) {   // a ghost that turns into eyes in this tick is eaten by the CONTACT test of the core: the ghost logic hands it over frightened
+            const auto& b0 = before->ghosts[g].b;
+            auto& b1 = s.ghosts[g].b;
+            if (b0[9] == 0 && b1[9] == 1 && b0[8] != 0 && b1[8] == 0) {
+                b1[8] = b0[8];
+                b1[9] = 0;
+            }
+        }
+        s.mode78 = next->mode78;
+        s.mode79 = next->mode79;
+        if (next->cornerPhase == 0 && s.cornerPhase != 0) s.zp(0x68) = 2;   // the end of the frightened period resets the ghost score step (ghost logic, M5)
+        s.cornerPhase = next->cornerPhase;
+        return moved;
+    }
+};
+
+std::string offsetName(std::size_t i) {
+    char buf[40];
+    if (i < 30) std::snprintf(buf, sizeof buf, "$%02zX", 0x52 + i);
+    else if (i < 34) std::snprintf(buf, sizeof buf, "$%02X", i == 30 ? 0x78 : i == 31 ? 0x79 : i == 32 ? 0xE8 : 0xE9);
+    else if (i < 114) std::snprintf(buf, sizeof buf, "ghost%zu.b%zu", (i - 34) / 20 + 1, (i - 34) % 20);
+    else std::snprintf(buf, sizeof buf, "map[%zu]", i - 114);
+    return buf;
+}
+
+}  // namespace
+
+TEST(gamecore_against_the_oracle_recordings) {
+    if (testfw::config().ticks.empty() || testfw::config().image.empty()) {
+        std::printf("    SKIPPED (needs --ticks and --image)\n");
+        return;
+    }
+    const auto img = readAll(testfw::config().image);
+    const auto built = datapack::buildPack(img, verify::referenceExpected(), datapack::dataManifest());
+    CHECK_MSG(built.ok, built.reason);
+    if (!built.ok) return;
+    const auto loaded = datapack::loadPack(built.bytes, verify::referenceExpected());
+    CHECK_MSG(loaded.ok, loaded.reason);
+    if (!loaded.ok) return;
+    std::map<std::size_t, std::pair<std::size_t, std::size_t>> diffs;   // offset -> (count, first tick)
+    std::map<std::size_t, std::string> firstFile;
+    std::size_t ticksRun = 0, resyncs = 0, wrongEvents = 0, caughtChecked = 0, badRestart = 0;
+    std::vector<std::string> files = split(testfw::config().ticks);
+    if (!testfw::config().demo.empty()) files.push_back(testfw::config().demo);   // the attract demo: Pac-Man steered by the original's own move stream
+    for (const auto& path : files) {
+        std::string why;
+        const auto tr = TickTrace::load(path, why);
+        CHECK_MSG(tr.ok(), path + ": " + why);
+        if (!tr.ok()) continue;
+        GameCore core;
+        CHECK(core.init(loaded.pack));
+        core.state() = fromOracleLayout(tr.state(0));
+        std::multimap<std::uint32_t, std::uint32_t> keysAt;
+        for (const auto& in : tr.inputs()) keysAt.emplace(in.tick, in.key);
+        std::multimap<std::uint32_t, TickPoke> pokesAt;
+        for (const auto& p : tr.pokes()) pokesAt.emplace(p.tick, p);
+        FedGhosts feed;
+        for (std::size_t k = 0; k + 1 < tr.ticks(); ++k) {
+            const auto kr = keysAt.equal_range(static_cast<std::uint32_t>(k));
+            for (auto it = kr.first; it != kr.second; ++it) core.input().pushKey(static_cast<std::uint8_t>(it->second));
+            GameState& s = core.state();
+            const auto pr = pokesAt.equal_range(static_cast<std::uint32_t>(k));
+            for (auto it = pr.first; it != pr.second; ++it) {
+                const auto a = it->second.address;
+                if (a >= 0x52 && a <= 0x6F) s.zp(static_cast<std::uint16_t>(a)) = static_cast<std::uint8_t>(it->second.value);
+                if (a >= 0x623A && a <= 0x65B9) s.map[a - 0x623A] = static_cast<std::uint8_t>(it->second.value);
+            }
+            const GameState a = fromOracleLayout(tr.state(k));
+            const GameState b = fromOracleLayout(tr.state(k + 1));
+            feed.next = &b;
+            feed.before = &a;
+            feed.caughtTick = (b.lives() & 0x7F) < (a.lives() & 0x7F) && a.lives() != 0;
+            const TickEvents ev = core.tick(feed);
+            ++ticksRun;
+            const bool oracleCaught = (b.lives() & 0x7F) < (a.lives() & 0x7F) && a.lives() != 0;
+            const bool oracleLevelEnd = b.level() > a.level() && a.dotsLeft() == 1;
+            bool pokedLevel = false;
+            for (auto it = pr.first; it != pr.second; ++it) pokedLevel = pokedLevel || it->second.address == 0x55 || it->second.address == 0x58;
+            if (!pokedLevel) {
+                if (oracleCaught != ev.caught) { ++wrongEvents; if (wrongEvents <= 12) std::printf("    %s tick %zu: caught: oracle %d mine %d\n", path.c_str(), k, oracleCaught, ev.caught); }
+                if (oracleLevelEnd != ev.levelComplete) { ++wrongEvents; if (wrongEvents <= 12) std::printf("    %s tick %zu: level end: oracle %d mine %d\n", path.c_str(), k, oracleLevelEnd, ev.levelComplete); }
+            }
+            if (ev.caught && !ev.gameOver && !pokedLevel) {   // the restarted life must equal the oracle's state (except the working-slot flags $78 $79)
+                const auto m2 = toOracleLayout(core.state()), o2 = toOracleLayout(b);
+                std::size_t d = 0;
+                for (std::size_t i = 0; i < m2.size(); ++i) d += i != 30 && i != 31 && m2[i] != o2[i];
+                ++caughtChecked;
+                if (d != 0) { ++badRestart; if (badRestart <= 3) std::printf("    %s tick %zu: restarted life differs in %zu bytes\n", path.c_str(), k, d); }
+            }
+            const bool restart = ev.caught || ev.levelComplete || ev.outsideMap || b.level() != a.level() || (b.lives() & 0x7F) < (a.lives() & 0x7F);
+            if (restart) {
+                const bool outside = ev.outsideMap && b.dotsLeft() < a.dotsLeft();
+                core.state() = b;
+                if (outside) core.itemEatenOutsideTheMap();
+                ++resyncs;
+                continue;
+            }
+            const auto mine = toOracleLayout(core.state());
+            const auto theirs = toOracleLayout(b);
+            for (std::size_t i = 0; i < mine.size(); ++i) {
+                if (i >= 34 && i < 114) continue;   // fed ghosts
+                if (i == 30 || i == 31 || i == 33) continue;   // fed $78 $79 $E9
+                if (mine[i] == theirs[i]) continue;
+                auto& d = diffs[i];
+                if (d.first++ == 0) {
+                    d.second = k;
+                    char buf[160];
+                    std::snprintf(buf, sizeof buf, "%s (mine %02X oracle %02X; before %02X; acted %d ate %d energizer %d eaten %d%d%d%d)", path.c_str(), mine[i], theirs[i],
+                                  toOracleLayout(a)[i], ev.acted, ev.ate, ev.energizer, ev.ghostEaten[0], ev.ghostEaten[1], ev.ghostEaten[2], ev.ghostEaten[3]);
+                    firstFile[i] = buf;
+                }
+                core.state() = fromOracleLayout(theirs);   // copy the oracle's byte (all of them, cheap) so that one difference does not cascade
+                core.state().ghosts = b.ghosts;
+            }
+        }
+    }
+    std::printf("    %zu ticks run, %zu resynchronised after a catch / level end\n", ticksRun, resyncs);
+    for (const auto& [off, d] : diffs) std::printf("    %-12s differs in %zu ticks (first: tick %zu of %s)\n", offsetName(off).c_str(), d.first, d.second, firstFile[off].c_str());
+    std::printf("    %zu catches compared with the oracle's restarted life, %zu differ; %zu catch / level-end events disagree\n", caughtChecked, badRestart, wrongEvents);
+    CHECK(diffs.empty());
+    CHECK(wrongEvents == 0 && badRestart == 0 && caughtChecked >= 8);
+    CHECK(ticksRun > 10000);
+}

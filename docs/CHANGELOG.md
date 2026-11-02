@@ -90,3 +90,5 @@
 - TASK-029g15: high score ($00-$02) survives into the next game; second-game first page equals the oracle (test added).
 
 - TASK-029g16: player 2 level end equal to the oracle (scenario U).
+
+- TASK-029h: GameCore/GameDriver; 53,827 ticks free-running equal the oracle (ghosts fed); pages equal end to end in 11 scenarios; first playable program pacman_play.exe (no ghosts yet). D5: 4,870 cycles per tick.

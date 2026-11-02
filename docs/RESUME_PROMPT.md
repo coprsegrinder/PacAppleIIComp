@@ -114,3 +114,5 @@ Latest: FULL-SUITE CHECKPOINT done (C++ 102/0, Python 172 OK) with `bash tools/f
 Latest: 029g15 done (high score carry). Next: player-2 level end, then 029h integration.
 
 Latest: 029g16 done (player 2 level end). Drawing of gameplay is complete except pauses/sounds and post-GAME OVER. Next: 029h integration.
+
+Latest: 029h DONE. pacman_play.exe runs (no ghosts). Next: M5 ghosts (030e) - replace the fed ghost fields; or 029i/other ledger items.

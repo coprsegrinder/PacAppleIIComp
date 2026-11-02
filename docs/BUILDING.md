@@ -39,3 +39,6 @@ The two `-D` options are optional: they add the `real_image` test, which checks 
 
 ## Window viewer and the optional test inputs (TASK-028i, 2026-11-02)
 Both routes now also build `pacman_view.exe` (GDI window; `--pack <pack> [--page maze|text] [--script s.bin [--calls N]] [--scale N] [--seconds N] [--shot out.bmp]`; see docs/APP_WINDOW.md). Verified on 2026-11-02: the CMake route (Visual Studio generator, Release) builds all five targets with /W4 /WX; `ctest -C Release` passes 2 of 2 (unit tests, and the real-image check with `-DPACMAN_DSK`); the CMake-built viewer passes the same window tests as the `build.bat` build (scale 1 and 3 test page, real maze with dots, attract text; 4 of 4, none skipped). The optional local test inputs are passed to `pacman_tests` directly: `--image <dsk> --vectors scratch/hires_vectors.bin --dots scratch/dots_vectors.bin --script scratch/cartoon1_script.bin,...`; ctest does not pass them (those tests then report SKIPPED).
+
+## Playing the current state (TASK-029h)
+`out\bat\pacman_pack.exe build "Pacman (1983)(Atari).dsk" scratch\local.pmpk` (once), then `out\bat\pacman_play.exe --pack scratch\local.pmpk --scale 3`. Ghosts do not exist yet (M5); closing the window quits.

@@ -30,6 +30,8 @@ add_library(pacman_core_verify STATIC
   src/core/lifestart.cpp
   src/core/screen.cpp
   src/core/tickdraw.cpp
+  src/core/gamecore.cpp
+  src/core/gamedriver.cpp
   src/video/colour.cpp)
 target_include_directories(pacman_core_verify PUBLIC src)
 
@@ -45,6 +47,10 @@ if(WIN32)
   add_executable(pacman_view src/app/view_main.cpp src/app/pagewindow.cpp)
   target_link_libraries(pacman_view PRIVATE pacman_core_verify user32 gdi32)
   target_link_options(pacman_view PRIVATE /ENTRY:wmainCRTStartup /SUBSYSTEM:WINDOWS)
+
+  add_executable(pacman_play src/app/play_main.cpp src/app/gamewindow.cpp)
+  target_link_libraries(pacman_play PRIVATE pacman_core_verify user32 gdi32)
+  target_link_options(pacman_play PRIVATE /ENTRY:wmainCRTStartup /SUBSYSTEM:WINDOWS)
 endif()
 
 # --- tests ---
@@ -70,6 +76,8 @@ add_executable(pacman_tests
   tests/test_lifestart.cpp
   tests/test_screen.cpp
   tests/test_tickdraw.cpp
+  tests/test_gamecore.cpp
+  tests/test_gamedriver.cpp
   src/app/gamewindow.cpp
   tests/test_video.cpp
   tests/test_real_image.cpp)
