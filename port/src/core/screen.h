@@ -23,9 +23,9 @@ bool drawPlayfield(hires::Page& page, const GameState& state, const datapack::Pa
 // was read from the oracle). `highScore` is the three BCD bytes of the high score (low first; outside the game state, 0 in a fresh run). Verified only for the
 // first screen of a game: score 0, 3 lives, level 1; the digit loop and the lives rule are read from the code, the level icon is the one of level 1.
 // players = 2 adds the second player's label ("2UP": column 32, mark = the digit 2 at x 271, dotted line x 228-277, score box 2, score digits from x 266, y 16;
-// positions from the table at $55C7 + 8 x 2); player2Score is that player's score (BCD, 24 bits; outside the game state, 0 at the start).
+// positions from the table at $55C7 + 8 x 2); otherScore is the score (BCD, 24 bits) of the player the state does NOT hold (the state's $52-$54 are the CURRENT player's: `current` = 1 or 2); both are drawn.
 bool drawHud(hires::Page& page, const GameState& state, const datapack::Pack& pack, const std::array<std::uint8_t, 3>& highScore = {0, 0, 0}, int players = 1,
-             std::uint32_t player2Score = 0);
+             std::uint32_t otherScore = 0, int current = 1);
 
 // Pac-Man's 3 x 10 image through the dispatcher at his position ($79A4-$79CA: frame table $96E8). orMode = plain OR ($1E = $80, the draw of every tick);
 // the very first draw of a life ($5839: $1E = 0, always frame 0 at the start position) ORs and then clears the palette bit instead.

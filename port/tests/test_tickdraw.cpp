@@ -41,6 +41,29 @@ std::vector<std::string> split(const std::string& list) {
     return out;
 }
 
+// Two-player recordings (extra2_X.bin, 2 bytes per tick: $50 = the current player, $51 = the number of players). Without the file: one player.
+struct PlayerInfo {
+    std::vector<std::uint8_t> bytes;
+    int current(std::size_t t) const { return 2 * t + 1 < bytes.size() ? bytes[2 * t] : 1; }
+    int count(std::size_t t) const { return 2 * t + 1 < bytes.size() ? bytes[2 * t + 1] : 1; }
+};
+PlayerInfo loadPlayers(const std::string& extraPath) {
+    std::string p = extraPath;
+    const auto at = p.rfind("extra_");
+    if (at != std::string::npos) p.replace(at, 6, "extra2_");
+    return PlayerInfo{readAll(p)};
+}
+// The score of the player who is NOT current at tick t, as last seen while that player was current (the game keeps it outside the logical state).
+std::uint32_t otherScoreAt(const PlayerInfo& pi, const TickTrace& tr, std::size_t t) {
+    const int cur = pi.current(t);
+    for (std::size_t u = t + 1; u-- > 0;)
+        if (pi.current(u) != cur) {
+            const GameState g = fromOracleLayout(tr.state(u));
+            return g.zp(0x52) | (g.zp(0x53) << 8) | (g.zp(0x54) << 16);
+        }
+    return 0;
+}
+
 struct Scenario {
     std::string letter, ticksPath, callsPath, pagesPath, extraPath;
 };
@@ -140,6 +163,7 @@ TEST(tickdraw_calls_and_pages_equal_the_oracle) {
         if (!tr.ok()) continue;
         const auto logged = parseLog(sc.callsPath);
         const auto extras = readAll(sc.extraPath);
+        const PlayerInfo pinfo = loadPlayers(sc.extraPath);
         const auto pagesFile = readAll(sc.pagesPath);
         CHECK(pagesFile.size() > 8 && std::memcmp(pagesFile.data(), "PAGS", 4) == 0);
         if (pagesFile.size() < 8) continue;
@@ -150,13 +174,13 @@ TEST(tickdraw_calls_and_pages_equal_the_oracle) {
 
         hires::Page page;
         CHECK(drawPlayfield(page, first, pack));
-        CHECK(drawHud(page, first, pack, {0, 0, 0}, sc.letter == "P" ? 2 : 1));
+        CHECK(drawHud(page, first, pack, {0, 0, 0}, pinfo.count(0), 0, 1));
         CHECK(drawPacman(page, first, pack, false));
         DisplayState display;
         std::size_t ticks = 0, withCalls = 0, calls = 0, badTicks = 0, pagesCompared = 0, badPages = 0, shown = 0;
         std::uint32_t nextPage = 0;
         // the recorder replays N ticks with the scenario's keys and pokes and runs on a little without them: only the first N ticks are valid (A, B, C: 700; D: 1600)
-        const std::size_t scenarioLimit = sc.letter == "D" ? 1600 : sc.letter == "A" ? 2090 : sc.letter == "G" ? 1399 : sc.letter == "H" ? 499 : sc.letter == "P" ? 1975 : 700;
+        const std::size_t scenarioLimit = sc.letter == "D" ? 1600 : sc.letter == "A" ? 2090 : sc.letter == "G" ? 1399 : sc.letter == "H" ? 499 : sc.letter == "P" ? 2299 : 700;
         const std::size_t limit = std::min<std::size_t>(scenarioLimit, std::min(logged.size(), tr.ticks()) - 1);
         for (std::size_t k = 0; k < limit; ++k) {
             // page comparison at the START of tick k (everything before it has been drawn)
@@ -184,7 +208,9 @@ TEST(tickdraw_calls_and_pages_equal_the_oracle) {
             }
             const GameState a = fromOracleLayout(tr.state(k));
             const GameState b = fromOracleLayout(tr.state(k + 1));
-            const TickExtras ea = extrasAt(extras, k), eb = extrasAt(extras, k + 1);
+            TickExtras ea = extrasAt(extras, k), eb = extrasAt(extras, k + 1);
+            ea.player = pinfo.current(k);
+            eb.player = pinfo.current(k + 1);
             const auto mine = tickCalls(a, b, pack, tr.at(k, 0x59) == 1, display, ea, eb);
             std::vector<DrawCall> compare;
             for (const auto& c : mine)
@@ -193,7 +219,8 @@ TEST(tickdraw_calls_and_pages_equal_the_oracle) {
             ++ticks;
             calls += theirs.size();
             withCalls += !theirs.empty();
-            const bool caughtTick = ((b.lives() & 0x7F) < (a.lives() & 0x7F) && a.lives() != 0) || (b.level() > a.level() && a.dotsLeft() == 1);   // the death animation's own calls are not rebuilt (its result is, below)
+            const bool switched = pinfo.current(k + 1) != pinfo.current(k);
+            const bool caughtTick = ((b.lives() & 0x7F) < (a.lives() & 0x7F) && a.lives() != 0) || switched || (b.level() > a.level() && a.dotsLeft() == 1);   // the death animation's own calls are not rebuilt (its result is, below)
             if (!caughtTick && !(compare == theirs)) {
                 if (badTicks++ < 4) {
                     std::printf("    %s tick %zu: mine", sc.letter.c_str(), k);
@@ -204,13 +231,13 @@ TEST(tickdraw_calls_and_pages_equal_the_oracle) {
                 }
             }
             const bool levelUp = (b.level() > a.level() && a.dotsLeft() == 1);   // the level was completed: the original flashes the maze and builds the next level's first screen
-            if (((b.lives() & 0x7F) < (a.lives() & 0x7F) && a.lives() != 0) || levelUp) {
+            if (((b.lives() & 0x7F) < (a.lives() & 0x7F) && a.lives() != 0) || switched || levelUp) {
                 // Pac-Man was caught: the original plays the death animation and then builds the first screen again from the state (walls, door, dots of the CURRENT
                 // map, labels, the score and high score, lives icons, Pac-Man at his start); the ghosts appear with the steps of the next ticks. The animation itself is
                 // inside this tick and not rebuilt, only its result: the page is replaced.
                 hires::Page fresh;
                 CHECK(drawPlayfield(fresh, b, pack));
-                CHECK(drawHud(fresh, b, pack, display.high, sc.letter == "P" ? 2 : 1));
+                CHECK(drawHud(fresh, b, pack, display.high, pinfo.count(k + 1), otherScoreAt(pinfo, tr, k + 1), pinfo.current(k + 1)));
                 CHECK(drawPacman(fresh, b, pack, false));
                 page = fresh;
                 display.lastFlag1E = 0;
@@ -238,11 +265,12 @@ TEST(tickdraw_death_and_level_end_sequences_equal_the_oracle_log) {
         const auto tr = TickTrace::load(sc.ticksPath, why);
         if (!tr.ok()) continue;
         const auto logged = parseLog(sc.callsPath);
+        const PlayerInfo pinfo = loadPlayers(sc.extraPath);
         const std::size_t limit = std::min(logged.size(), tr.ticks()) - 1;
         for (std::size_t k = 0; k < limit; ++k) {
             const GameState a = fromOracleLayout(tr.state(k));
             const GameState b = fromOracleLayout(tr.state(k + 1));
-            const bool death = (b.lives() & 0x7F) < (a.lives() & 0x7F) && a.lives() != 0;
+            const bool death = ((b.lives() & 0x7F) < (a.lives() & 0x7F) && a.lives() != 0) || pinfo.current(k + 1) != pinfo.current(k);
             const bool levelEnd = (b.level() > a.level() && a.dotsLeft() == 1);
             if (!death && !levelEnd) continue;
             const auto& block = logged[k];
@@ -257,6 +285,9 @@ TEST(tickdraw_death_and_level_end_sequences_equal_the_oracle_log) {
                 }
             if (!found) continue;
             RestartInputs in;
+            in.players = pinfo.count(k + 1);
+            in.current = pinfo.current(k + 1);
+            in.otherScore = otherScoreAt(pinfo, tr, k + 1);
             if (death) {
                 // positions and the last Pac-Man image are what the game core knows at that moment; here they are read from the first calls of the tail
                 std::vector<DrawCall> tail(block.begin() + static_cast<std::ptrdiff_t>(start), block.end());
@@ -279,7 +310,10 @@ TEST(tickdraw_death_and_level_end_sequences_equal_the_oracle_log) {
                 in.pacImage = block[start + 1].p[0];
             }
             DisplayState display;
-            display.high = {b.zp(0x52), b.zp(0x53), b.zp(0x54)};   // the high score equals the score in these runs
+            {   // the high score is the best score of the runs (in two-player games the other player's score may be the higher one)
+                const std::uint32_t mineScore = b.zp(0x52) | (b.zp(0x53) << 8) | (b.zp(0x54) << 16), best = std::max(mineScore, in.otherScore);
+                display.high = {static_cast<std::uint8_t>(best), static_cast<std::uint8_t>(best >> 8), static_cast<std::uint8_t>(best >> 16)};
+            }
             const auto mine = restartCalls(death ? RestartKind::Death : RestartKind::LevelEnd, in, b, pack, display);
             std::vector<DrawCall> theirs;
             for (std::size_t i = start; i < block.size(); ++i) theirs.push_back(block[i]);

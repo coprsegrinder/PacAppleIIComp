@@ -40,6 +40,7 @@ std::vector<DrawCall> spriteCalls(const GameState& before, const GameState& afte
 // the frightened timer $E1/$E2, the 1UP blink counter and phase $E5/$E6, the fruit state $E7, $E4.
 struct TickExtras {
     std::uint8_t e1 = 0, e2 = 0, e5 = 0, e6 = 0, e7 = 0, e4 = 0;
+    int player = 1;                              // $50: the current player (1 or 2) in a two-player game
     std::uint16_t frightenedTimer() const noexcept { return static_cast<std::uint16_t>(e1 | (e2 << 8)); }
 };
 
@@ -70,6 +71,8 @@ enum class RestartKind { Death, LevelEnd };
 struct RestartInputs {
     int pacX = 0, pacY = 0;                     // Pac-Man's place when the sequence starts
     int pacImage = 0;                           // the image address of his last frame (the step draw of that tick)
+    int players = 1, current = 1;               // two-player games: both labels and scores are drawn; `current` = the player whose data `after` holds
+    std::uint32_t otherScore = 0;               // the other player's score (BCD)
     std::array<int, 8> ghostXY{};               // ghost 1..4 places (x, y pairs) when the sequence starts (death only)
 };
 

@@ -62,3 +62,5 @@
 * Correction: the first "read as data" statistics were inflated by the startup stub's own reads; recomputed (`docs/DATA_REGIONS.md`).
 
 - TASK-029g10 (partly): two-player first screen, scenarios K/L/M/P; player switch after a death still open.
+
+- TASK-029g11: two-player play and player switch equal to the oracle (scenario P, 2,299 ticks).

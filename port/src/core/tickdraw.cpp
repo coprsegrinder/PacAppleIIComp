@@ -110,15 +110,15 @@ std::uint32_t addBcd(std::uint32_t v, std::uint32_t add) {   // BCD addition of 
 
 namespace {
 
-void scoreDisplay(std::vector<DrawCall>& out, std::uint32_t score, DisplayState& display, const datapack::Pack& pack) {
+void scoreDisplay(std::vector<DrawCall>& out, std::uint32_t score, DisplayState& display, const datapack::Pack& pack, int player) {
     const std::uint32_t hi = display.high[0] | (display.high[1] << 8) | (display.high[2] << 16);
     if (score >= hi) {                                // $7091: the high score follows the score
         display.high = {static_cast<std::uint8_t>(score & 0xFF), static_cast<std::uint8_t>((score >> 8) & 0xFF), static_cast<std::uint8_t>((score >> 16) & 0xFF)};
         out.push_back(DrawCall{4, {0, 0, 0, 0, 0}});
         digitCalls(out, score, 40, 94, pack);
     }
-    out.push_back(DrawCall{4, {1, 0, 0, 0, 0}});
-    digitCalls(out, score, 40, 16, pack);
+    out.push_back(DrawCall{4, {player == 2 ? 2 : 1, 0, 0, 0, 0}});          // $696A with $50 = the player: its score box; digits from the player's x ($7141)
+    digitCalls(out, score, player == 2 ? 266 : 40, 16, pack);
 }
 
 }  // namespace
@@ -159,7 +159,7 @@ std::vector<DrawCall> tickCalls(const GameState& before, const GameState& after,
         out.push_back(DrawCall{12, {16, 102, 0, 0, 0}});
         out.push_back(DrawCall{4, {1, 0, 0, 0, 0}});
     }
-    if (scoreAfterItem != scoreBefore) scoreDisplay(out, scoreAfterItem, display, pack);
+    if (scoreAfterItem != scoreBefore) scoreDisplay(out, scoreAfterItem, display, pack, exAfter.player);
     const auto dot = pack.find(0x61A8, hires::kDotTableBytes);
     std::size_t k = split;
     for (int g = 3; g >= 0; --g) {
@@ -209,7 +209,7 @@ std::vector<DrawCall> tickCalls(const GameState& before, const GameState& after,
             std::uint32_t afterItem = scoreBefore;
             for (std::size_t m = 0; m < before.map.size(); ++m)
                 if (before.map[m] != 0 && after.map[m] == 0) afterItem = addBcd(afterItem, (before.map[m] >> 1) != 0 ? 0x50 : 0x10);
-            if (scoreAfter != afterItem) scoreDisplay(out, scoreAfter, display, pack);
+            if (scoreAfter != afterItem) scoreDisplay(out, scoreAfter, display, pack, exAfter.player);
         }
         // the cell dot: only for a ghost that is outside the house (in-house flag $81 = byte 17 is 0) and moved normally; an eaten ghost still goes on to move, so its dot
         // is redrawn AFTER the eaten sequence; a ghost that has just arrived back in the house (eyes 1 -> 0) is placed at its start and shows no dot
@@ -239,10 +239,11 @@ std::vector<DrawCall> tickCalls(const GameState& before, const GameState& after,
     // $570C at the end of the tick: the 1UP blink, then the energizer blink
     if (exBefore.e6 != exAfter.e6) {
         if (exAfter.e6 == 1) {                                                   // $58FA -> $556E: label and mark
-            out.push_back(DrawCall{2, {0x55F7, 0, 6, 7, 7}});
-            out.push_back(DrawCall{6, {0x7201, 47, 6, 0, 0}});
+            const bool two = exAfter.player == 2;                                // the blinking label is the current player's: 1UP (column 0) or 2UP (column 32)
+            out.push_back(DrawCall{2, {0x55F7, two ? 32 : 0, 6, 7, 7}});
+            out.push_back(DrawCall{6, {two ? 0x7271 : 0x7201, two ? 271 : 47, 6, 0, 0}});
         } else {                                                                 // $58E7 -> $6978: box clear at (column, row - $0F)
-            out.push_back(DrawCall{10, {0, 0, 0, 0, 0}});
+            out.push_back(DrawCall{10, {exAfter.player == 2 ? 1 : 0, 0, 0, 0, 0}});
         }
     }
     if (before.zp(0x5F) != after.zp(0x5F)) {
@@ -281,7 +282,7 @@ bool executeCall(hires::Page& page, const DrawCall& c, const datapack::Pack& pac
         case 10: {                                                              // 10: the 1UP box: column 0, row 1 ($6992 entry 1 minus $0F)
             const auto box = pack.find(0x6992, 12);
             if (box.empty()) return false;
-            if (c.type == 10) hires::boxClear(page, box[2], static_cast<std::uint8_t>(box[3] - 0x0F));
+            if (c.type == 10) hires::boxClear(page, box[2 + 2 * static_cast<std::size_t>(c.p[0])], static_cast<std::uint8_t>(box[3 + 2 * static_cast<std::size_t>(c.p[0])] - 0x0F));
             else hires::boxClear(page, box[static_cast<std::size_t>(c.p[0]) * 2], box[static_cast<std::size_t>(c.p[0]) * 2 + 1]);
             return true;
         }
@@ -370,11 +371,18 @@ std::vector<DrawCall> restartCalls(RestartKind kind, const RestartInputs& in, co
     }
     dotPassCalls(out, after);
     // the screen's labels, score, high score, level icon, lives icons ($550A, $56CF) in the order the original issues them
+    const std::uint32_t stateScore = after.zp(0x52) | (after.zp(0x53) << 8) | (after.zp(0x54) << 16);
+    if (in.players >= 2) {                                                              // player 2 first ($550A counts down)
+        out.push_back(DrawCall{2, {0x55F7, 32, 6, 7, 7}});
+        out.push_back(DrawCall{6, {0x7271, 271, 6, 0, 0}});
+        out.push_back(DrawCall{4, {2, 0, 0, 0, 0}});
+        digitCalls(out, in.current == 2 ? stateScore : in.otherScore, 266, 16, pack);
+    }
     out.push_back(DrawCall{2, {0x55F7, 0, 6, 7, 7}});
     out.push_back(DrawCall{6, {0x7201, 47, 6, 0, 0}});
     out.push_back(DrawCall{4, {1, 0, 0, 0, 0}});
     {
-        std::uint32_t score = after.zp(0x52) | (after.zp(0x53) << 8) | (after.zp(0x54) << 16);
+        std::uint32_t score = in.current == 2 ? in.otherScore : stateScore;
         digitCalls(out, score, 40, 16, pack);
         out.push_back(DrawCall{2, {0x5628, 0, 84, 7, 7}});
         out.push_back(DrawCall{4, {0, 0, 0, 0, 0}});
