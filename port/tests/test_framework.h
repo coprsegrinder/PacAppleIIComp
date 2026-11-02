@@ -26,6 +26,7 @@ inline int& failures() {
 struct Config {
     std::string image;
     std::string reference;
+    std::string demo;   // --demo <ticks_DEMO.bin>: attract-demo recording (tools/record_special.py demo; demo_stream.bin must lie next to it)
     std::string ticks;  // --ticks a.bin,b.bin: per-tick oracle recordings (tools/record_ticks.py, local only)
     std::string script;  // --script <cartoonN_script.bin>: ordered drawing calls of an original cartoon (local only)
     std::string dots;  // --dots <dots_vectors.bin>: dot-pass runs captured from the original (local only)

@@ -140,10 +140,15 @@ TEST(junction_against_the_oracle_recordings) {
         InputPoller poller;
         KeyConfig keys;
         std::size_t mismatches = 0, firstBad = 0;
+        std::multimap<std::uint32_t, TickPoke> pokesAt;
+        for (const auto& p : tr.pokes()) pokesAt.emplace(p.tick, p);
         for (std::size_t k = 0; k + 1 < tr.ticks(); ++k) {
             const auto range = keysAt.equal_range(static_cast<std::uint32_t>(k));
             for (auto it = range.first; it != range.second; ++it) poller.pushKey(static_cast<std::uint8_t>(it->second));
             GameState s = fromOracleLayout(tr.state(k));
+            const auto pr = pokesAt.equal_range(static_cast<std::uint32_t>(k));   // the scenario's zero-page pokes of this tick, applied before the tick runs
+            for (auto it = pr.first; it != pr.second; ++it)
+                if (it->second.address >= 0x52 && it->second.address <= 0x6F) s.zp(static_cast<std::uint16_t>(it->second.address)) = static_cast<std::uint8_t>(it->second.value);
             poller.poll(s, keys, {});
             if (tr.at(k, 0x59) != 1) continue;  // Pac-Man does not act in this tick
             const bool restart = tr.at(k + 1, 0x60) == 0x8B && tr.at(k + 1, 0x61) == 0x8F && !(tr.at(k, 0x60) == 0x8B && tr.at(k, 0x61) == 0x8F);

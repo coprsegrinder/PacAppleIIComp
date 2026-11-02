@@ -118,7 +118,7 @@ TEST(ticktrace_real_golden_recordings_have_the_golden_chain_hash) {
         ++files;
         CHECK(t.chainHash() == t.goldenFinalHash());  // the recording IS the golden run
         CHECK(t.ticks() > 500);
-        CHECK(!t.inputs().empty());
+        CHECK(t.inputs().size() + t.pokes().size() > 0 || path.find("DEMO") != std::string::npos);
         // plausibility from the analysis: three lives at the start ($58 = $83 per PACMAN_RULES.md), level 1, 244+4 items left (or fewer later)
         CHECK(t.at(0, 0x58) == 0x83);
         CHECK(t.at(0, 0x55) == 1);
