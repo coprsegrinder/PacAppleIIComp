@@ -49,6 +49,8 @@ CUSTOM = {
     'K': [[200, 0x84, 0x8B], [200, 0x85, 0x47], [200, 0x95, 1], [200, 0xA0, 1], [200, 0xB4, 1], [200, 0xC8, 1], [200, 0xE1, 0xC0], [200, 0xE2, 0], [200, 0xE4, 1]],   # as J, and ghosts 2-4 frightened (blue image, flag $1E = 1) so that the last draw before the door redraw leaves $1E = 1
     'L': [[5, 0x55, 14], [100, 0x56, 1]],       # level 14 -> 15
     'M': [[5, 0x55, 25], [100, 0x56, 1]],       # level 25 -> 26 (the last table entry)
+    'Q': [[1990, 0x58, 0x81]],                  # two players as P; at tick 1990 (player 2 is playing) player 2 is left with one life: its death ends its game
+    'R': [[1990, 0x58, 0x81], [4230, 0x58, 0x81]],   # as Q, and at tick 4230 (player 1 is playing again) player 1 is left with one life too: both games end
     'P': [],                                    # TWO PLAYERS: A's keys, the players prompt answered with 2
     'J': [[200, 0x84, 0x8B], [200, 0x85, 0x47], [200, 0x95, 1]],      # ghost 1 is put on the door cell with its in-house flag set: it runs the house-exit script and redraws the door with $1E = its own flag 1                            # level 6; at tick 100 one item is left: the next item ends the level (-> level 7: icons)
 }
@@ -65,7 +67,7 @@ elif SC == 'F':
 else:
     stored = json.load(open('tests/golden/gameplay_traces.json'))['scenarios'][SC]
 G.SCENARIOS[SC]['ticks'] = N
-if SC == 'P':
+if SC in ('P', 'Q', 'R'):
     def two_players(mc):
         from play import do_step
         for st in ('key:sp', '3_000_000', 'key:2', '3_000_000', 'key:cr', '1_000_000'):
@@ -80,7 +82,7 @@ def rec(m):
 G.state_bytes = rec
 G.run(SC, stored['inputs'], stored['pokes'])
 G.state_bytes = orig_state
-if SC in ('F', 'G', 'H', 'J', 'K', 'L', 'M', 'P'):
+if SC in ('F', 'G', 'H', 'J', 'K', 'L', 'M', 'P', 'Q', 'R'):
     import struct as _st
     h = b''
     for x in states[:N + 1]:

@@ -64,6 +64,13 @@ std::uint32_t otherScoreAt(const PlayerInfo& pi, const TickTrace& tr, std::size_
     return 0;
 }
 
+// Pac-Man was caught: the lives went down. A poke of the lives byte ($58) in the recording (scenario Q) is not a catch.
+bool livesDropped(const TickTrace& tr, std::size_t k, const GameState& a, const GameState& b) {
+    for (const auto& pk : tr.pokes())
+        if (pk.address == 0x58 && (pk.tick == k || pk.tick == k + 1)) return false;
+    return (b.lives() & 0x7F) < (a.lives() & 0x7F) && a.lives() != 0;
+}
+
 struct Scenario {
     std::string letter, ticksPath, callsPath, pagesPath, extraPath;
 };
@@ -180,7 +187,7 @@ TEST(tickdraw_calls_and_pages_equal_the_oracle) {
         std::size_t ticks = 0, withCalls = 0, calls = 0, badTicks = 0, pagesCompared = 0, badPages = 0, shown = 0, doorCalls = 0, doorLowBit = 0;
         std::uint32_t nextPage = 0;
         // the recorder replays N ticks with the scenario's keys and pokes and runs on a little without them: only the first N ticks are valid (A, B, C: 700; D: 1600)
-        const std::size_t scenarioLimit = sc.letter == "D" ? 1600 : sc.letter == "A" ? 2090 : sc.letter == "G" ? 1399 : sc.letter == "H" ? 499 : sc.letter == "P" ? 2299 : 700;
+        const std::size_t scenarioLimit = sc.letter == "D" ? 1600 : sc.letter == "A" ? 2090 : sc.letter == "G" ? 1399 : sc.letter == "H" ? 499 : sc.letter == "P" ? 2299 : sc.letter == "Q" ? 4699 : sc.letter == "R" ? 6999 : 700;
         const std::size_t limit = std::min<std::size_t>(scenarioLimit, std::min(logged.size(), tr.ticks()) - 1);
         for (std::size_t k = 0; k < limit; ++k) {
             // page comparison at the START of tick k (everything before it has been drawn)
@@ -225,7 +232,7 @@ TEST(tickdraw_calls_and_pages_equal_the_oracle) {
                     doorLowBit += (c.p[4] & 0x7F) != 0;
                 }
             const bool switched = pinfo.current(k + 1) != pinfo.current(k);
-            const bool caughtTick = ((b.lives() & 0x7F) < (a.lives() & 0x7F) && a.lives() != 0) || switched || (b.level() > a.level() && a.dotsLeft() == 1);   // the death animation's own calls are not rebuilt (its result is, below)
+            const bool caughtTick = livesDropped(tr, k, a, b) || switched || (b.level() > a.level() && a.dotsLeft() == 1);   // the death animation's own calls are not rebuilt (its result is, below)
             if (!caughtTick && !(compare == theirs)) {
                 if (badTicks++ < 4) {
                     std::printf("    %s tick %zu: mine", sc.letter.c_str(), k);
@@ -236,7 +243,7 @@ TEST(tickdraw_calls_and_pages_equal_the_oracle) {
                 }
             }
             const bool levelUp = (b.level() > a.level() && a.dotsLeft() == 1);   // the level was completed: the original flashes the maze and builds the next level's first screen
-            if (((b.lives() & 0x7F) < (a.lives() & 0x7F) && a.lives() != 0) || switched || levelUp) {
+            if (livesDropped(tr, k, a, b) || switched || levelUp) {
                 // Pac-Man was caught: the original plays the death animation and then builds the first screen again from the state (walls, door, dots of the CURRENT
                 // map, labels, the score and high score, lives icons, Pac-Man at his start); the ghosts appear with the steps of the next ticks. The animation itself is
                 // inside this tick and not rebuilt, only its result: the page is replaced.
@@ -275,7 +282,7 @@ TEST(tickdraw_death_and_level_end_sequences_equal_the_oracle_log) {
         for (std::size_t k = 0; k < limit; ++k) {
             const GameState a = fromOracleLayout(tr.state(k));
             const GameState b = fromOracleLayout(tr.state(k + 1));
-            const bool death = ((b.lives() & 0x7F) < (a.lives() & 0x7F) && a.lives() != 0) || pinfo.current(k + 1) != pinfo.current(k);
+            const bool death = livesDropped(tr, k, a, b) || pinfo.current(k + 1) != pinfo.current(k);
             const bool levelEnd = (b.level() > a.level() && a.dotsLeft() == 1);
             if (!death && !levelEnd) continue;
             const auto& block = logged[k];
@@ -283,7 +290,7 @@ TEST(tickdraw_death_and_level_end_sequences_equal_the_oracle_log) {
             std::size_t start = 0;
             bool found = false;
             for (std::size_t i = 0; i + 1 < block.size(); ++i)
-                if (block[i].type == 2 && block[i].p[0] == 0x55F7 && block[i + 1].type == 6 && block[i + 1].p[0] == 0x7201 && block[i + 1].p[1] == 47) {
+                if (block[i].type == 2 && block[i].p[0] == 0x55F7 && block[i + 1].type == 6 && ((block[i + 1].p[0] == 0x7201 && block[i + 1].p[1] == 47) || (block[i + 1].p[0] == 0x7271 && block[i + 1].p[1] == 271))) {
                     start = i + 2;
                     found = true;
                     if (death) break;      // the first pair is the blink; for a level end the LAST pair before the dot pass counts (below)

@@ -66,3 +66,5 @@
 - TASK-029g11: two-player play and player switch equal to the oracle (scenario P, 2,299 ticks).
 
 - Door redraw low-bit OR: proven reached (D, K) and proven to matter (mutation check).
+
+- TASK-029g13 (part): scenario Q equal for 4,699 ticks (player 2 death + switch back); R recorded, not yet usable.
