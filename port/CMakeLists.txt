@@ -19,6 +19,7 @@ add_library(pacman_core_verify STATIC
   src/hires/hires.cpp
   src/hires/replay.cpp
   src/core/cycleclock.cpp
+  src/core/ticktrace.cpp
   src/video/colour.cpp)
 target_include_directories(pacman_core_verify PUBLIC src)
 
@@ -48,6 +49,7 @@ add_executable(pacman_tests
   tests/test_script.cpp
   tests/test_gamewindow.cpp
   tests/test_cycleclock.cpp
+  tests/test_ticktrace.cpp
   src/app/gamewindow.cpp
   tests/test_video.cpp
   tests/test_real_image.cpp)

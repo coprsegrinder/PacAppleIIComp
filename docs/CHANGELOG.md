@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2026-10-29
+* TASK-029a: per-tick oracle recordings of the four golden scenarios (34,000 ticks) and a C++ reader; chain hashes equal the golden ones.
 * TASK-029: M4 game core split into 029a-029i with a plan (docs/M4_PLAN.md).
 * TASK-028l: virtual cycle clock (exact, drift-free, 100 ms catch-up cap, suspend/resume) with 9 tests.
 * TASK-028k: game window class (scale, full screen, hotkeys, key codes, page copy from another thread) with 6 tests.

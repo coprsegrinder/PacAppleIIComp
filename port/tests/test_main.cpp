@@ -11,6 +11,8 @@ int main(int argc, char** argv) {
             testfw::config().image = argv[++i];
         } else if (std::strcmp(argv[i], "--vectors") == 0 && i + 1 < argc) {
             testfw::config().vectors = argv[++i];
+        } else if (std::strcmp(argv[i], "--ticks") == 0 && i + 1 < argc) {
+            testfw::config().ticks = argv[++i];
         } else if (std::strcmp(argv[i], "--script") == 0 && i + 1 < argc) {
             testfw::config().script = argv[++i];
         } else if (std::strcmp(argv[i], "--dots") == 0 && i + 1 < argc) {
