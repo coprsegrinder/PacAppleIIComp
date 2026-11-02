@@ -45,9 +45,11 @@ add_executable(pacman_tests
   tests/test_hires_vectors.cpp
   tests/test_dots.cpp
   tests/test_script.cpp
+  tests/test_gamewindow.cpp
+  src/app/gamewindow.cpp
   tests/test_video.cpp
   tests/test_real_image.cpp)
-target_link_libraries(pacman_tests PRIVATE pacman_core_verify)
+target_link_libraries(pacman_tests PRIVATE pacman_core_verify user32 gdi32)
 
 enable_testing()
 add_test(NAME unit COMMAND pacman_tests)
