@@ -1,0 +1,35 @@
+# M4 plan: the game core, split into small checkable pieces (TASK-029, 2026-11-02)
+
+Decision already made (D2 = A, 2026-10-29): **oracle-driven reconstruction**. The C++ code is written by me from the analysis documents, in readable form, and every piece is checked against the original program running on our headless 6502 machine (the "oracle"). Nothing is translated mechanically.
+
+## 1. The unit of work: the tick
+The golden traces (docs/GOLDEN_TRACES.md) already define it: **one tick = one pass of the game's main loop** (counted at `$7861` with `$E8 = 0`). The port needs no cycle timing for the game *logic*; inputs are keyed by tick; the cycle clock (TASK-028l) only decides how fast ticks happen in real time. (Open, to settle in 029h: the original's cost per tick varies from 2,987 to 27,950 cycles, so a faithful *speed* needs each tick's cycle cost too; the analysis so far says the cost comes from what is drawn, so the drawing code will have to report an approximate cost. Until then ticks may be run at the mean, about 7,100 cycles, and this is a known deviation, to be written into KNOWN_ISSUES when 029h is done.)
+
+State = the "logical state" of the golden traces: zero page `$52-$6F`, `$78 $79 $E8 $E9`, the four ghost records `$84-$D3`, the maze map (896 bytes), plus what the pieces below add (per-piece lists). The C++ state is a plain struct with readable names, plus functions `toOracleLayout()` / `fromOracleLayout()` so that the test can hash it exactly like the oracle (the same chain hash as the golden traces).
+
+## 2. How each piece is tested (hybrid testing, because the ghosts come later in M5)
+A new local tool records, **per tick**, the complete logical state and the inputs of the golden scenarios A-D (and extra scenarios when a piece needs them) into `scratch/` (git-ignored; original-derived). A piece is tested by running only the C++ code of that piece for each tick on the oracle's state at the start of the tick, and comparing only the *fields that piece is responsible for* with the oracle's state at the start of the next tick. Everything the piece does not own is copied from the oracle ("fed"). Pieces are joined at the end (029h), when the fed fields shrink to the ghost fields only, and M5 removes those.
+
+## 3. The pieces (each is one ledger row, one "go", 10-20 minutes)
+| Row | Content | Test |
+|---|---|---|
+| 029a | **Per-tick oracle recorder**: tool that stores the full logical state at every tick of scenarios A-D (local, git-ignored), plus a C++ reader. Also settles the exact byte layout and the field names. | Re-recorded chain hashes equal `tests/golden/gameplay_traces.json`; reader round-trips. |
+| 029b | **State struct and initial state**: named fields, the fresh maze map from the pack (`$65BA`), new-game and new-life initialisation (`$5331` copy, start positions from `$6D3F`, counters). | State after game start equals the oracle at tick 0 of each scenario (all fields). |
+| 029c | **Input**: key to requested direction `$63` (A, Z, arrows, customised keys, 4-switch digital stick), pause (Esc), Ctrl-S sound switch, demo move stream (`$1B/$1C`) in attract mode. | Requested direction and flags equal the oracle for every tick of A-D and for the demo stream. |
+| 029d | **Pac-Man movement**: step timer `$59` (rule verified 797/797), junction graph from the pack (64 junctions), turning rules, tunnel, positions `$60/$61/$64/$65`. Ghost-dependent speed term fed from the oracle's ghost state. | Position, direction and junction fields equal the oracle for every tick of A-D. Inferred rules (turning, tunnel) get their own traced experiments first if a mismatch shows. |
+| 029e | **Eating and scoring**: dot and energizer detection, map update (`$7B10`, stride `$20`), dot counter, score BCD (10 / 50), bonus life at 10,000, level-complete detection, fruit counter `$57`. | Score, dot counters, map and lives-from-bonus equal the oracle for every tick of A-D. |
+| 029f | **Death and lives**: collision test with ghosts (fed ghost positions), catch, death sequence timing, life loss, game over, restart of a life (ghost house reset is M5; fed). The collision distances are only Inferred today: trace them on the oracle first. | Lives, states and the death/restart tick numbers equal the oracle in A-D. |
+| 029g | **Drawing the play screen**: each tick's draw calls (Pac-Man and ghost sprites through the dispatcher, dot erasure, score/lives text, energizer blink `$570C`) made with the hires layer from the state. | The hi-res page equals the oracle's page at the golden checkpoints and at sampled ticks (byte exact); ghost sprites from fed ghost state. |
+| 029h | **Integration of the core without ghost logic**: one `GameCore::tick(inputs)` in the order of the original loop (`$7861`, ghosts fed, `$6A7C` fruit timing fed or stubbed, `$570C`), wired to the cycle clock and to `GameWindow` in a small program; a cost-per-tick decision. | Scenarios A-D end-to-end: all non-ghost fields equal the oracle at every tick; the program plays a game on screen (you look at it). |
+| 029i | **Menus and flow**: mode screen (1 = keyboard, 2 = joystick), players prompt, attract sequence, hidden menu (Ctrl-V Ctrl-C), customised keys prompts, two-player alternation. | Screens (hashes) and flags equal the oracle along the golden attract path; the other paths have their own short scenarios. |
+
+M5 (ghosts, ledger 030e) then replaces the fed ghost fields; M6 (levels, fruit, cartoons) the fed fruit/level fields and uses the cartoon replays; M7 sound.
+
+## 4. Risks and known gaps (all from the ledger, not new)
+* Inferred only so far (PACMAN_RULES.md): collision distances, 400/800/1600 chain, dot penalty `$F3`, turning/tunnel rules, fruit counter. Each piece that depends on one starts with a traced experiment (rule 3: nothing is claimed before it is run).
+* The golden scenarios do not cover fruit, the bonus life at 10,000, levels above 3, two players or keyboard customisation; pieces 029c/029e/029i add short scenarios for those.
+* Cost per tick (speed fidelity) is open, see section 1.
+* The forced code bytes (docs/FORCED_CODE.md) belong to 029b (carry pointer walk), 029g (the `$1D = 0` wall mode, already implemented in hires) and 029f (no-lives guard); they are listed there so they are not forgotten.
+
+## 5. Order and size
+029a first (everything depends on the recorder). Then b, c, d, e, f can be done in that order; g needs b and d; h needs all; i is independent after b. Expect 9 rows of 10-20 minutes each; a row that threatens the 20-minute limit is split again before it is started.
