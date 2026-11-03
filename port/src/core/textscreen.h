@@ -20,6 +20,8 @@ public:
     void setCursor(int col, int row) noexcept { col_ = col; row_ = row; }
     void put(std::uint8_t c) noexcept;                    // COUT: $8D = new line, others are stored at the cursor (no inverse set), line wrap
     void puts(std::span<const std::uint8_t> s) noexcept { for (std::uint8_t c : s) put(c); }
+    void clearToEndOfLine() noexcept;                     // the monitor's CLREOL ($FC9C): from the cursor to the end of the line with $A0
+    std::uint8_t atCursor() const noexcept { return byte(rowOffset(row_) + static_cast<std::size_t>(col_)); }
     std::uint8_t byte(std::size_t offset) const noexcept { return offset < mem_.size() ? mem_[offset] : std::uint8_t{0}; }
     const std::array<std::uint8_t, 1024>& memory() const noexcept { return mem_; }
     int col() const noexcept { return col_; }

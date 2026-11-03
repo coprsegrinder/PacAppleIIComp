@@ -194,3 +194,5 @@ Latest: 033-4c done (buildAttractScript = title + chase up to cycle 22,486,410; 
 Latest: 033-4d done (AttractTurn = title + chase + demo set-up + 7,894 demo ticks + death; 790 of 790 pages equal the oracle; suite 133/0; turn length 63,190,772 vs 63,189,736 because of the fitted tick cost). Next: 033-4e (loop, Space -> players prompt, PRESS RETURN with the character ROM, GAME OVER -> attract).
 
 Latest: 033-4e done (AttractFlow in port/src/core/attractflow.*, TextScreen in textscreen.*; 15/15 oracle runs of Space+digit+Space/Return equal; suite 138/0). Open: 033-4e2 hidden menu (Ctrl-V Ctrl-C: rank/cartoon prompts, needs GETLN), 033-4f boot menus (text mode, character ROM), 033-4g wiring into pacman_play.
+
+Latest: 033-4e2 done (hidden menu in AttractFlow; 13 oracle key lists equal; suite 140/0; startLevel() must be used by the game start in 033-4g). Next: 033-4f boot menus.

@@ -36,6 +36,8 @@ int main(int argc, char** argv) {
             testfw::config().endEvents = argv[++i];
         } else if (std::strcmp(argv[i], "--demopages") == 0 && i + 1 < argc) {
             testfw::config().demoPages = argv[++i];
+        } else if (std::strcmp(argv[i], "--hidden") == 0 && i + 1 < argc) {
+            testfw::config().hidden = argv[++i];
         } else if (std::strcmp(argv[i], "--prompts") == 0 && i + 1 < argc) {
             testfw::config().prompts = argv[++i];
         } else if (std::strcmp(argv[i], "--charrom") == 0 && i + 1 < argc) {

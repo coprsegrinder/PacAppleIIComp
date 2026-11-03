@@ -11,8 +11,21 @@ void TextScreen::clear(std::uint8_t fill) noexcept {
     row_ = 0;
 }
 
+void TextScreen::clearToEndOfLine() noexcept {
+    for (int x = col_; x < kCols; ++x) mem_[rowOffset(row_) + static_cast<std::size_t>(x)] = 0xA0;
+}
+
 void TextScreen::put(std::uint8_t c) noexcept {
-    if (c == 0x8D) {                 // carriage return: start of the line, then line feed
+    if (c == 0x88) {                 // backspace: one column left; at the left edge to the end of the line above (the monitor's BS, $FC10)
+        if (--col_ < 0) {
+            col_ = kCols - 1;
+            if (row_ > 0) --row_;
+        }
+        return;
+    }
+    if (c == 0x8A) {                 // line feed
+        ++row_;
+    } else if (c == 0x8D) {                 // carriage return: start of the line, then line feed
         col_ = 0;
         ++row_;
     } else if (c >= 0xA0 || c < 0x80) {

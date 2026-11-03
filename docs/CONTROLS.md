@@ -39,3 +39,5 @@ Poll rate: the key poll runs roughly once per game frame, which takes well over 
 
 ## What is not covered
 After TASK-020, 9,147 of the 10,456 static code bytes (87.5%) have run; 1,309 bytes in 125 runs have not (list in scratch/unexecuted.txt; the biggest runs are only 76, 49, 48, 47 bytes: $951F, $8F64, $9690, $805D). Several of the 48 dispatch-table routines ($8F6C, $8FBE, $8FED, $951F, $954A, $956B, $95EA, $969D) are among them: they need specific game situations (U). All 9,147 executed bytes are inside the static code map (0 contradictions).
+
+**Update 2026-11-03 (033-4e2):** the hidden menu is ported and checked against the oracle: see docs/M8_PLAN.md (033-4e2 result) for the rank rules (one character: low nibble unless 0; two: nibble x 10 + nibble, below 22) and the cartoon numbers (1, 2, anything else = 3).
