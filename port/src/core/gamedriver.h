@@ -20,6 +20,9 @@ public:
 
 // Cycles the original spends on the long sequences (measured with tools/tick_cycles.py on scenario A): the death animation and the pause before the new life.
 inline constexpr std::int64_t kDeathSequenceCycles = 6'043'263;
+// The level end (the pause after the last dot until the next level starts, without a cartoon): the tick-to-tick cost around the level change was 4,334,935 cycles
+// (levels 3 and 12; 4,334,936 on one run) = 4.24 s, minus the cost of one ordinary tick (tools/level_end_cycles.py, TASK-033-1b). V for the gross figure; the ~4,870 deduction is approximate.
+inline constexpr std::int64_t kLevelEndCycles = 4'330'065;
 inline constexpr std::int64_t kTypicalTickCycles = 4'870;   // mean cost of an ordinary tick (scenario A, 3,000 ticks without the death); refined in M8
 
 class GameDriver {

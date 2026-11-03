@@ -79,7 +79,7 @@ TickEvents GameDriver::tickImpl(FrightenAware* fed) {
         if (sc >= (static_cast<std::uint32_t>(display_.high[0]) | (display_.high[1] << 8) | (display_.high[2] << 16))) {
             display_.high = {after.zp(0x52), after.zp(0x53), after.zp(0x54)};
         }
-        extraCycles_ = kDeathSequenceCycles;   // the level end is not measured separately yet (M6)
+        extraCycles_ = ev.levelComplete ? kLevelEndCycles : kDeathSequenceCycles;   // level end: measured in 033-1b
         rebuildScreen();
         prev_ = now;
         return ev;

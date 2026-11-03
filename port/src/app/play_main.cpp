@@ -164,6 +164,10 @@ void gameThread(core::GameDriver& drv, const datapack::Pack& pack, app::GameWind
             break;
         }
         budget += clock.cyclesDue(now);
+        if (cartoon.active() && budget < 0) {   // the level-end pause before the intermission (the original spends kLevelEndCycles there, measured 033-1b)
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            continue;
+        }
         if (cartoon.active()) {   // an intermission: the original does not read the keyboard meanwhile, a latched key is thrown away at the next level's start (docs/CARTOONS.md 7.1)
             while (window.popKey()) {}
             cartoon.advance(budget);
@@ -189,8 +193,9 @@ void gameThread(core::GameDriver& drv, const datapack::Pack& pack, app::GameWind
                 soundFreeze += extraFreeze(id);
             }
             if (!audible) sounds.stop();   // Ctrl-S / F9 during a long sound cuts it
-            if (cartoon.active()) {   // the level ended with a cartoon: leave the tick loop, the cartoon starts at 0 cycles
-                budget = 0;
+            if (cartoon.active()) {   // the level ended with a cartoon: leave the tick loop; the level-end pause comes first, then the cartoon starts
+                budget = -core::kLevelEndCycles;
+                window.setPage(drv.page());
                 break;
             }
             budget -= core::kTypicalTickCycles + drv.extraCycles() + soundFreeze;

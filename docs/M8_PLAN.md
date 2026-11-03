@@ -31,3 +31,10 @@ New sub-tasks (replace the single 033-1):
 |---|---|---|
 | 033-1b | Measure the real length of the level end and of GAME OVER on the oracle and use them instead of the death-sequence figure | live pause = oracle cycles |
 | 033-1c | Per-tick cost model: record the cycles of every tick for more scenarios (B, C, D, levels 2+, frightened), fit a cost from what the tick does, test the model against the recordings | model within a stated error of the oracle per tick and exact in total over each recording |
+
+## 033-1b result (2026-11-03)
+Tool: `tools/level_end_cycles.py` (cycle counter at every tick, same set-up as the level-end recordings).
+* **Level end without a cartoon: 4,334,935 cycles (levels 3 and 12; one run 4,334,936) = 4.24 s** between the last-dot tick and the next (V). Port: `kLevelEndCycles = 4,330,065` (the gross figure minus one ordinary tick, approximate to a few ms). Before this the port used the death-sequence figure (5.91 s).
+* **Level end with a cartoon (level 2): 9,920,929 cycles in total** = the same 4.24 s level end plus about 5,585,994 cycles of cartoon (V). The port previously started the cartoon at once, so **the 4.24 s pause before every cartoon was missing; now added** (the screen stays as the level-end frame, then the cartoon). The in-game cartoon is about 11,300 cycles (11 ms) shorter than the hidden-menu measurement the port uses (5,597,305); not changed (0.2 %).
+* **GAME OVER: NOT measured.** A 2,500-tick random-play run with one life never lost it (no long gap), so the GAME OVER pause is still the death-sequence placeholder (U). Needs a forced catch (next to 033-3, the death animation).
+* Tests: C++ 122 tests, 0 failed (run with --image, --reference, --clicks, --script; no per-tick recordings this time). A 14 s `pacman_play --level 3 --items 2` ran and exited cleanly; I did not watch it.
