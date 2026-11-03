@@ -25,3 +25,10 @@ Order is a recommendation: 031-1 first (without recordings nothing else can be t
 * Level 23 HAL sprite may be a table slip; port it as the original does (faithful default), document in KNOWN_ISSUES.
 * The "near-ghost +1" rule at `$8B34` was never seen on the oracle (029d1b): may need a forced test.
 * Real per-level speeds need the cycle model (M8); in M6 only tick counts are compared.
+
+## 031-3 findings so far (2026-11-03, partial; no code changed)
+Oracle state change across each of the 11 level ends in B, C, E04, E05, E09, E20, H, L, M, U (state bytes before the last-item tick vs the first tick of the new level):
+* zero page: `$55` level+1; `$56` = $F8 (248); `$57` fruit counter = $40; `$5E` = 0 (energizer blink); `$60/$61` Pac-Man to $8B/$8F (only the bytes that differ); `$62`/`$63` = 3 (direction); `$64/$65` = $2C/$2D; `$66` = 0; `$6A` = $0D; `$6C` = 2; `$6B` = $17 where it differed; the score `$52-$54` is the old score plus the last item (not reset).
+* 20-28 ghost bytes differ (start-of-life values), the maze map is the pristine copy (differences = the few cells eaten before).
+* Plan for the test: after `levelComplete`, apply `startNextLevelUnverified()` to the core and compare with the oracle's next state (all bytes except 30/31); print the differing bytes, fix the stand-in until 0 differ, then rename it. The test hook was written but not committed: see the blocker below.
+* BLOCKER (same compile error three times, rule "never a third variation"): an edit of tests/test_gamecore.cpp that inserted a printf kept ending up with a newline inside the string literal ("error C2001", lines 160/161). The edit was reverted (git checkout). Next time insert the hook with the Edit tool (not a Python/sed replace) and check the lines before building.
