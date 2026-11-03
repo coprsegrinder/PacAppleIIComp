@@ -135,7 +135,9 @@ TEST(steptimer_against_the_oracle_recordings) {
             const bool acted = timer.tick(s, tab);
             // an item was eaten in this tick if the counter went down; the LAST item of a level also resets the counter (to 248) and raises the level
             const bool lastItem = tr.at(k, 0x56) == 1 && tr.at(k + 1, 0x55) == tr.at(k, 0x55) + 1;
-            const bool eaten = tr.at(k + 1, 0x56) < tr.at(k, 0x56) || lastItem;
+            bool itemsPoked = false;   // a recording's own poke of $56 (level-end recordings E**) is not an eaten item
+            for (const auto& p : tr.pokes()) itemsPoked = itemsPoked || (p.tick == k && p.address == 0x56);
+            const bool eaten = !itemsPoked && (tr.at(k + 1, 0x56) < tr.at(k, 0x56) || lastItem);
             if (acted && eaten) {
                 timer.itemEaten(s, tab);
                 ++eats;
