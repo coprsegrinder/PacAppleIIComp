@@ -81,6 +81,7 @@ add_executable(pacman_tests
   tests/test_deathtiming.cpp
   tests/test_attract.cpp
   tests/test_flow.cpp
+  tests/test_players.cpp
   tests/test_boot.cpp
   tests/test_monitor.cpp
   tests/test_hidden.cpp

@@ -57,7 +57,7 @@ struct SequenceStep {
 class GameDriver {
 public:
     bool init(const datapack::Pack& pack);
-    bool newGame();                        // new core state and the first screen
+    bool newGame(int players = 1, int rank = 1);   // players 1-5 (TASK-033-6), every player starts at level `rank`                        // new core state and the first screen
     bool newDemo(const hires::Page& screen);   // the attract game: its first tick's state on the given screen (the screen the set-up has drawn)
     TickEvents tick(FrightenAware& ghosts);   // the ghosts are supplied by the caller (tests)
     TickEvents tick();                        // the ghosts of the game core (M5)

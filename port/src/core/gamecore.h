@@ -43,6 +43,7 @@ struct TickEvents {
     bool outsideMap = false;      // a poked position with stale cell counters (the original ate from a copy behind the map; not modelled)
     bool caught = false;          // Pac-Man was caught: the state is the restarted life (or game over: lives == 0)
     bool gameOver = false;        // the last life was lost
+    bool playerSwitched = false;  // Pac-Man was caught and another player's turn begins (his bytes, his maze); gameOver is only set when NO player has a life left
     bool demoOver = false;        // the attract game's Pac-Man was caught: the demo ends (the state is the moment of the catch)
     std::array<bool, 4> ghostEaten{};
     std::vector<SoundId> sounds;  // the sounds the original starts in this tick, in order (none in the demo); each freezes the game for soundFreezeCycles()
@@ -51,7 +52,8 @@ struct TickEvents {
 class GameCore {
 public:
     bool init(const datapack::Pack& pack);                    // loads the tables; false if the pack lacks them
-    bool newGame(int players = 1);                            // state of the first tick of a game (one player)
+    // State of the first tick of a game for `players` (1-5) players, all starting at level `rank` ($54D4: every player's bytes and maze are saved; player 1 plays first). TASK-033-6.
+    bool newGame(int players = 1, int rank = 1);
     bool newDemo();                                           // state of the first tick of the attract game ($E8 = 1, no lives, $79 = 0, the leftovers of the title in the first ghost queue)
     GameState& state() noexcept { return state_; }
     const GameState& state() const noexcept { return state_; }
@@ -59,6 +61,10 @@ public:
     KeyConfig& keys() noexcept { return keys_; }
     PortInput& port() noexcept { return port_; }
     int player() const noexcept { return player_; }
+    int players() const noexcept { return players_; }
+    // The score (BCD, 24 bits) of player `p` as it is kept for him while another player plays (his $52-$54); for the current player the state holds it.
+    std::uint8_t savedLives(int p) const noexcept { return stores_[static_cast<std::size_t>(p)].save.bytes[6]; }   // $58 of the saved player
+    std::uint32_t savedScore(int p) const noexcept { const auto& b = stores_[static_cast<std::size_t>(p)].save.bytes; return b[0] | (b[1] << 8) | (b[2] << 16); }
     std::uint8_t blink1UpCounter() const noexcept { return e5_; }
     std::uint8_t blink1UpPhase() const noexcept { return e6_; }
     std::uint8_t fruitState() const noexcept { return e7_; }      // $E7: 0 none, 1 on the screen, 2 its points are shown
@@ -97,7 +103,13 @@ private:
     StepTables steps_;
     StartTables start_;
     StepTimer timer_;
-    int player_ = 1;
+    int player_ = 1;                     // $50: the player who plays now
+    int players_ = 1;                    // $51
+    struct PlayerStore {
+        PlayerSave save;                 // $0300 + 8 x player ($53BE / $53CF)
+        std::array<std::uint8_t, 896> map{};   // the player's maze ($5394 / $5360)
+    };
+    std::array<PlayerStore, 6> stores_{};
     std::uint8_t e5_ = 0, e6_ = 0;       // $E5 / $E6: the 1UP blink counter and phase (outside the logical state)
     GhostShared ghostShared_;
     GameState caughtState_;

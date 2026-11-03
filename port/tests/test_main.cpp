@@ -36,6 +36,8 @@ int main(int argc, char** argv) {
             testfw::config().endEvents = argv[++i];
         } else if (std::strcmp(argv[i], "--demopages") == 0 && i + 1 < argc) {
             testfw::config().demoPages = argv[++i];
+        } else if (std::strcmp(argv[i], "--playerticks") == 0 && i + 1 < argc) {
+            testfw::config().playerTicks = argv[++i];
         } else if (std::strcmp(argv[i], "--boot") == 0 && i + 1 < argc) {
             testfw::config().boot = argv[++i];
         } else if (std::strcmp(argv[i], "--hidden") == 0 && i + 1 < argc) {

@@ -9,8 +9,8 @@ bool GameDriver::init(const datapack::Pack& pack) {
     return core_.init(pack);
 }
 
-bool GameDriver::newGame() {
-    if (!core_.newGame()) return false;
+bool GameDriver::newGame(int players, int rank) {
+    if (!core_.newGame(players, rank)) return false;
     const auto high = display_.high;   // the high score survives into the next game
     display_ = DisplayState{};
     display_.high = high;

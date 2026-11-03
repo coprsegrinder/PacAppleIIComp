@@ -19,8 +19,8 @@ bool GameCore::init(const datapack::Pack& pack) {
     return true;
 }
 
-bool GameCore::newGame(int players) {
-    (void)players;
+bool GameCore::newGame(int players, int rank) {
+    players_ = players < 1 ? 1 : players > 5 ? 5 : players;
     player_ = 1;
     ghostShared_ = GhostShared{};
     ghostShared_.e2 = 0xFF;                   // $E1/$E2 at the start of a game: $FF00 (recorded at tick 0)
@@ -30,7 +30,13 @@ bool GameCore::newGame(int players) {
     e6_ = e7_ = 0;
     demoPointer_ = DemoStream::kStart;
     timer_ = StepTimer();
-    return pack_ != nullptr && newGameState(*pack_, state_);
+    if (pack_ == nullptr || !newGameState(*pack_, state_)) return false;
+    if (rank > 1) state_.zp(0x55) = static_cast<std::uint8_t>(rank);   // the first level of the game ($54E1)
+    for (int p = 1; p <= players_; ++p) {   // $54F4-$5503: every player's bytes and maze are saved
+        stores_[static_cast<std::size_t>(p)].save = savePlayer(state_);
+        stores_[static_cast<std::size_t>(p)].map = state_.map;
+    }
+    return true;
 }
 
 bool GameCore::newDemo() {
@@ -157,16 +163,37 @@ bool GameCore::contactTest(int g, TickEvents& ev) {
     if (s.demo == 0) {   // the death animation plays its six steps ($0A = 6 ... 1) in this tick
         for (SoundId d : {SoundId::Death6, SoundId::Death5, SoundId::Death4, SoundId::Death3, SoundId::Death2, SoundId::Death1}) ev.sounds.push_back(d);
     }
-    ev.gameOver = s.lives() == 0;
     caughtState_ = s;   // where Pac-Man and the ghosts stood when he was caught (the death animation starts there)
     if (s.demo != 0) {   // the attract game ends here: $8C07 jumps back to the title ($43D2)
-        ev.demoOver = true;
         ev.gameOver = false;
+        ev.demoOver = true;
         return true;
     }
-    if (!ev.gameOver) {
-        const PlayerSave kept = savePlayer(s);            // $8C1A / $8C1D
-        startOfLife(s, start_, kept);
+    // $8C1A-$8C4D: this player's maze and bytes are saved ($5394, $53BE); then the next player (wrapping round) whose lives are not 0 is loaded ($53CF, $5360); when it comes
+    // back to the same player and he has no life left, the game is over ($6EC3)
+    PlayerStore& mine = stores_[static_cast<std::size_t>(player_)];
+    mine.save = savePlayer(s);
+    mine.map = s.map;
+    int p = player_;
+    bool found = false;
+    for (;;) {
+        if (++p > players_) p = 1;
+        loadPlayer(s, stores_[static_cast<std::size_t>(p)].save);
+        if (p == player_) {
+            found = s.lives() != 0;
+            break;
+        }
+        if (s.lives() != 0) {
+            found = true;
+            break;
+        }
+    }
+    ev.gameOver = !found;
+    if (found) {
+        ev.playerSwitched = p != player_;
+        player_ = p;
+        s.map = stores_[static_cast<std::size_t>(p)].map;
+        startOfLife(s, start_, stores_[static_cast<std::size_t>(p)].save);
         e7_ = 0;                                          // $541C: the bonus fruit is gone
         // the ghost side of $53E6: queues ($6E79), corner phase for 160 mode ticks, no frightened period
         initGhostQueues(queues_, ghostData_);
