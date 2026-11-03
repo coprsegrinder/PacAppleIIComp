@@ -128,3 +128,5 @@ Latest: 030e5/e6 done incl. house move. Next 030e7: mode timer $808C + reversal 
 Latest: 030e7 done. Next 030e9: GhostSource inside GameCore (all ghost logic), no fed fields; free-running A-D must equal the oracle incl. eaten ghosts, catches, house.
 
 Latest: M5 DONE (ghosts). Next: M6 (level change, level tables, intermission cartoons), M7 sound, M8 pacing/packaging; small open items: READY pause, death animation, title/attract, two-player core.
+
+Latest: M6 planned (docs/M6_PLAN.md, 031-1..031-8). Next 031-1: recorder across level ends.

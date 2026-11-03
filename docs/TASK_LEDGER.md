@@ -118,7 +118,15 @@ Statuses: Planned / In progress / Implemented / Tested / Verified / Blocked / De
 | TASK-030e7 | Mode timers, flips/reversals, energizer ghost effects | **Done:** 49,679 ticks, 22 flips, 13 energizer ticks, 0 mismatches; queue init equals tick 0 | 030e6 | `$E9 $EA $EB`, directions |
 | TASK-030e8 | Eyes, return, house exit, release timeline | **Done** (house in 030e5, eyes route in 030e4, return to the house in 030e5; verified by the free-running test) | 030e7 | scenario D, house exits |
 | TASK-030e9 | Integration: GhostSource in GameCore, no fed fields | **Done:** 54,428 ticks free-running, 0 differences; pages equal; pacman_play.exe with moving ghosts | 030e8 | free-running A-D equal; pacman_play with moving ghosts |
-| TASK-031 | M6: levels, fruit, intermissions (needs TASK-021) | Planned | 030, 021 | Sequences and cartoons match oracle |
+| TASK-031 | M6: levels, fruit, intermissions (needs TASK-021) | Split 2026-11-03 into 031-1 ... 031-8 (docs/M6_PLAN.md); closes when 031-8 is done | 030, 021 | Sequences and cartoons match oracle |
+| TASK-031-1 | Recorder across level ends (1->2, 4->5, 20->21) | Planned | 030e | recordings replay equal |
+| TASK-031-2 | Level-end detection and flow to the cartoon scheduler | Planned | 031-1 | state equal per tick |
+| TASK-031-3 | Level advance: maze reload, items, counters, queues | Planned | 031-2 | first tick of new level equal |
+| TASK-031-4 | Per-level tables in GameCore | Planned | 031-3 | 30 levels equal |
+| TASK-031-5 | Bonus fruit logic without fed bytes | Planned | 031-3 | fruit recordings equal |
+| TASK-031-6 | Cartoon trigger + cartoon 1 in the flow | Planned | 031-3 | golden page hashes |
+| TASK-031-7 | Cartoons 2 and 3, key discard, per-player level | Planned | 031-6 | golden page hashes |
+| TASK-031-8 | Integration: pacman_play plays multiple levels | Planned | 031-4,5,7 | multi-level free-running equal; full suite |
 | TASK-032a | Sound-data analysis | **Verified (oracle only):** only 2 speaker instructions exist; 2 tone engines + a sweep; 12 sound lists; closed-form click-time model equals the original code on every click of all 12 lists, and in play for 103 of 103 dot/energizer/ghost-eaten sounds; 0 stray clicks in 5,052. Not compared with AppleWin audio (TASK-022); fruit/cartoon triggers Inferred. 5 unit tests | 029 analysis | docs/SOUND.md; tools/sound_model.py, trace_sound.py |
 | TASK-032 | M7 sound (data pack lists, click scheduler, audio output) | Planned | 032a, 027 | Click lists equal oracle cycle-exactly |
 | TASK-033 | M8: faithful pacing, modern options (separate switches), packaging, clean-machine test | Planned | 031, 032 | Per-option tests; clean-machine run |
