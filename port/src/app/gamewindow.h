@@ -9,6 +9,8 @@
 #include <deque>
 #include <mutex>
 #include <optional>
+#include <span>
+#include <vector>
 
 #include "../hires/hires.h"
 
@@ -31,6 +33,7 @@ public:
 
     // --- any thread ---
     void setPage(const hires::Page& page);            // copies the 8 KB page under a lock; the window repaints at the next refresh tick
+    void setImage(std::span<const std::uint32_t> argb);   // 280 x 192 ARGB pixels (the lo-res page, the text page): shown instead of the hi-res page until the next setPage
     std::optional<std::uint8_t> popKey();             // next Apple II key code (7-bit ASCII with bit 7 set) or nothing
 
     // --- window thread ---
@@ -63,6 +66,8 @@ private:
 
     std::mutex mutex_;                  // guards page_, pageVersion_, keys_
     hires::Page page_;
+    std::vector<std::uint32_t> image_;
+    bool useImage_ = false;
     unsigned long pageVersion_ = 1;
     std::deque<std::uint8_t> keys_;
     unsigned long paintedVersion_ = 0;  // window thread only

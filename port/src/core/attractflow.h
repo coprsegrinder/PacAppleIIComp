@@ -58,7 +58,8 @@ public:
     int startLevel() const noexcept { return monitor_.peek(0x54E1); }   // `$54E1`: 1 at the start, set by the rank number of the hidden menu (the first level of the next game)
     int cartoonNumber() const noexcept { return cartoon_; }  // 1-3 while mode() == Cartoon
     std::int64_t cartoonElapsed() const noexcept { return cartoonElapsed_; }
-    bool soundOn() const noexcept { return soundOn_; }       // Ctrl-S in the key poll toggles it ($6F7F: it patches the speaker instructions)
+    bool soundOn() const noexcept { return soundOn_; }
+    void setSoundOn(bool on) noexcept { soundOn_ = on; }       // Ctrl-S in the key poll toggles it ($6F7F: it patches the speaker instructions)
     bool paused() const noexcept { return paused_; }          // Esc in the key poll: waits for the next key
     AttractTurn& turn() noexcept { return turn_; }
     const AttractTurn& turn() const noexcept { return turn_; }

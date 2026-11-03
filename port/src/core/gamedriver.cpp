@@ -114,7 +114,7 @@ void GameDriver::buildDeathSequence(const GameState& caught, bool gameOver) {
         const std::int64_t text = tl.frameClear[5] + kGameOverTextAfterLastClear;
         step(text, 19, 21);
         SequenceStep end;
-        end.at = text + kGameOverTextDraw + kGameOverPause;
+        end.at = text + kGameOverTextDraw + kGameOverToAttractStart;   // the attract loop starts here ($52BB, 033-4a); the caller then returns to AttractFlow
         sequence_.push_back(end);
         return;
     }

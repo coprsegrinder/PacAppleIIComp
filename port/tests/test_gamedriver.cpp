@@ -463,8 +463,9 @@ TEST(gamedriver_death_and_game_over_sequences_have_the_oracles_shape) {
         CHECK(ascending && sounds == 6);
         if (seq.empty()) continue;
         if (lives == 1) {
-            // GAME OVER: the long wait ends the sequence (10,453,613 cycles after the text)
-            CHECK(seq.back().at - seq[seq.size() - 2].at == kGameOverTextDraw + kGameOverPause);
+            // GAME OVER: the wait ends the sequence 4,868,255 cycles after the last letter (the attract loop starts there, TASK-033-4g); the driver reports it
+            CHECK(seq.back().at - seq[seq.size() - 2].at == kGameOverTextDraw + kGameOverToAttractStart);
+            CHECK(drv.gameOverPending());
         } else {
             CHECK(seq.back().at - seq[seq.size() - 2].at > 3'000'000 && seq.back().at > 6'000'000 && seq.back().at < 6'100'000);   // about 6.0 million cycles in all
         }

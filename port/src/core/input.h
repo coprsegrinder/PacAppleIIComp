@@ -38,6 +38,7 @@ public:
     void pushKey(std::uint8_t code);            // a key arrives (code = 7-bit ASCII with bit 7 set)
     PollResult poll(GameState& state, const KeyConfig& keys, const PortInput& port);
     bool soundOn() const noexcept { return soundOn_; }
+    void setSoundOn(bool on) noexcept { soundOn_ = on; }   // the switch of the program (Ctrl-S) goes with the player from the menus into the game and back
     bool paused() const noexcept { return paused_; }
     std::size_t queued() const noexcept { return queue_.size(); }
 

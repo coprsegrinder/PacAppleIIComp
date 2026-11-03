@@ -76,6 +76,7 @@ public:
     const std::vector<DrawCall>& lastCalls() const noexcept { return lastCalls_; }   // the drawing calls of the last ordinary tick
     void setPlayDeath(bool on) noexcept { playDeath_ = on; }   // live game: a catch leaves the page as it was and fills sequence() instead of rebuilding at once
     const std::vector<SequenceStep>& sequence() const noexcept { return sequence_; }
+    bool gameOverPending() const noexcept { return newGamePending_; }   // the last life is lost: after the sequence the program returns to the attract loop (033-4g)
     void applySequenceStep(const SequenceStep& step);
     void showReady();    // the READY text (and Pac-Man again) on the page, as the original draws it after the rebuild
     std::int64_t tickCycles() const noexcept { return tickCycles_; }   // modelled cost of the last tick itself (tickCostCycles; kTypicalTickCycles for a special tick)

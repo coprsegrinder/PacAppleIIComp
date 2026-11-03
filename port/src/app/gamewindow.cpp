@@ -56,6 +56,15 @@ GameWindow::~GameWindow() {
 void GameWindow::setPage(const hires::Page& page) {
     std::lock_guard<std::mutex> lock(mutex_);
     page_ = page;
+    useImage_ = false;
+    ++pageVersion_;
+}
+
+void GameWindow::setImage(std::span<const std::uint32_t> argb) {
+    if (argb.size() < static_cast<std::size_t>(kW) * kH) return;
+    std::lock_guard<std::mutex> lock(mutex_);
+    image_.assign(argb.begin(), argb.begin() + static_cast<std::ptrdiff_t>(kW) * kH);
+    useImage_ = true;
     ++pageVersion_;
 }
 
@@ -142,12 +151,15 @@ void GameWindow::paint() {
     std::array<std::uint32_t, kW * kH> pixels{};
     {
         hires::Page copy;
+        bool image = false;
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            copy = page_;
+            image = useImage_ && image_.size() >= pixels.size();
+            if (image) std::copy(image_.begin(), image_.begin() + static_cast<std::ptrdiff_t>(pixels.size()), pixels.begin());
+            else copy = page_;
             paintedVersion_ = pageVersion_;
         }
-        video::renderArgb(copy, pixels);
+        if (!image) video::renderArgb(copy, pixels);
     }
     RECT rc{};
     GetClientRect(hwnd_, &rc);
