@@ -1,6 +1,8 @@
 #include "cartoon.h"
 
+#include <algorithm>
 #include <cstring>
+#include <utility>
 
 namespace pacman::core {
 
@@ -22,11 +24,14 @@ std::uint16_t word(std::span<const std::uint8_t> t, std::size_t index) { return 
 
 }  // namespace
 
-std::vector<std::uint8_t> cartoon1Script(const datapack::Pack& pack, bool colour) {
+CartoonPlan cartoon1Plan(const datapack::Pack& pack, bool colour) {
     const auto pacFrames = pack.find(0x96E8, 18);    // words 0-8: Pac-Man frame pointers
     const auto ghostFrames = pack.find(0x9E5C, 24);  // words 0-11: ghost frame pointers
     if (pacFrames.empty() || ghostFrames.empty()) return {};
     std::vector<Call> calls;
+    std::vector<std::uint32_t> stamp;
+    std::uint32_t pass = 0;
+    const auto sync = [&] { while (stamp.size() < calls.size()) stamp.push_back(pass); };   // every call added since the last sync belongs to the current pass
     const auto clear = [&](int x, int y) { calls.push_back({3, {0x69CD, x - 4, y - 4, 0, 0, 0, 0, 0}}); };   // masked clear, mask table $69CD
     const auto pac = [&](int c66, int x, int y) {                                                              // $79A4
         const int t = c66 & 3;
@@ -39,6 +44,8 @@ std::vector<std::uint8_t> cartoon1Script(const datapack::Pack& pack, bool colour
     calls.push_back({10, {}});
     int px = 0xC1, py = 0x7A, gx = 0xE5, gy = 0x7A, c66 = 0, c59 = 1, c80 = 1;
     for (;;) {   // phase 1: both walk left
+        sync();
+        ++pass;
         if (--c59 == 0) {
             c59 = 0x20;
             clear(px, py);
@@ -57,11 +64,15 @@ std::vector<std::uint8_t> cartoon1Script(const datapack::Pack& pack, bool colour
     }
     clear(px, py);
     clear(gx, gy);
+    sync();
+    pass += 800;   // the pause: 8 x 100 short delays
     px = 0;
     py -= 0x0E;
     gx = 0x38;
     static const std::uint16_t bigFrames[4] = {0x8330, 0x8380, 0x8330, 0x82E0};   // by the animation counter & 3 (read from the oracle's calls)
     for (;;) {   // phase 2: the giant Pac-Man chases the ghost to the right; $59 and $80 keep counting
+        sync();
+        ++pass;
         if (--c59 == 0) {
             c59 = 6;
             px += 2;
@@ -76,6 +87,7 @@ std::vector<std::uint8_t> cartoon1Script(const datapack::Pack& pack, bool colour
             ghost(gx, gy);
         }
     }
+    sync();
     std::vector<std::uint8_t> out(40 + calls.size() * 33, 0);
     std::memcpy(out.data(), "CSCR", 4);
     const std::uint32_t n = static_cast<std::uint32_t>(calls.size());
@@ -84,7 +96,46 @@ std::vector<std::uint8_t> cartoon1Script(const datapack::Pack& pack, bool colour
         out[40 + i * 33] = calls[i].type;
         std::memcpy(out.data() + 41 + i * 33, calls[i].p, 32);
     }
-    return out;
+    CartoonPlan plan;
+    plan.script = std::move(out);
+    plan.passOfCall = std::move(stamp);
+    plan.passes = pass;
+    plan.cycles = kCartoon1Cycles;
+    return plan;
+}
+
+std::vector<std::uint8_t> cartoon1Script(const datapack::Pack& pack, bool colour) { return cartoon1Plan(pack, colour).script; }
+
+std::size_t cartoonCallsDue(const CartoonPlan& plan, std::int64_t elapsedCycles) noexcept {
+    if (plan.passes == 0 || elapsedCycles < 0) return 0;
+    if (elapsedCycles >= plan.cycles) return plan.passOfCall.size();
+    // the call stamped with pass p is drawn when p passes have run: p * cycles / passes
+    std::size_t n = 0;
+    while (n < plan.passOfCall.size() && static_cast<std::int64_t>(plan.passOfCall[n]) * plan.cycles / plan.passes <= elapsedCycles) ++n;
+    return n;
+}
+
+bool CartoonPlayer::start(const datapack::Pack& pack, int cartoon) {
+    active_ = false;
+    if (cartoon != 1) return false;
+    plan_ = cartoon1Plan(pack);
+    if (plan_.script.empty()) return false;
+    elapsed_ = 0;
+    active_ = true;
+    return true;
+}
+
+void CartoonPlayer::advance(std::int64_t cycles) noexcept {
+    if (!active_) return;
+    elapsed_ += cycles;
+    if (elapsed_ >= plan_.cycles) active_ = false;
+}
+
+void CartoonPlayer::render(const datapack::Pack& pack, hires::Page& page) const {
+    hires::ReplayStats stats;
+    const std::size_t n = std::max<std::size_t>(1, cartoonCallsDue(plan_, elapsed_));
+    page.clear();
+    hires::replayScript(pack, plan_.script, page, stats, static_cast<std::uint32_t>(n));
 }
 
 }  // namespace pacman::core

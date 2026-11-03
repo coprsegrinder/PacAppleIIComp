@@ -1,6 +1,6 @@
 // TASK-029h: the first playable program: Pac-Man, the maze, the dots, the score, lives, the blinks and the bonus fruit run on the C++ game core and are drawn with
 // the verified hi-res routines into a GameWindow, now WITH THE GHOSTS (M5: all four move, are frightened by the energizers, can be eaten and can catch Pac-Man).
-// The level change is an unverified stand-in (level + 1, fresh maze); there is no sound, no READY pause and no death animation yet.
+// The level change equals the oracle (TASK-031-3); cartoon 1 plays after level 2, 15, ... (031-6b); there is no sound, no READY pause and no death animation yet.
 //
 // Usage: pacman_play --pack <data.pack> [--scale N] [--seconds N] [--ticks N --dump <page.bin>]
 //   --scale N      whole-number window scale (default 3)
@@ -22,6 +22,7 @@
 #include <thread>
 #include <vector>
 
+#include "../core/cartoon.h"
 #include "../core/cycleclock.h"
 #include "../core/gamedriver.h"
 #include "../datapack/datapack.h"
@@ -48,13 +49,21 @@ bool loadPackFile(const std::wstring& packPath, datapack::LoadResult& loaded) {
 }
 
 // One tick with the consequences the live program draws: a completed maze starts the (unverified) next level.
-core::TickEvents liveTick(core::GameDriver& drv) {
+// `cartoons`: the live window plays the intermission after the level end; the batch mode (--ticks, no window) goes straight to the next level.
+core::TickEvents liveTick(core::GameDriver& drv, core::CartoonPlayer* cartoons = nullptr, const datapack::Pack* pack = nullptr) {
+    const unsigned levelBefore = drv.core().state().level();
     const core::TickEvents ev = drv.tick();
-    if (ev.levelComplete) drv.nextLevel();
+    if (ev.levelComplete) {
+        // the cartoon (levels with level mod 13 = 2, 5, 9; only cartoon 1 is rebuilt so far) is shown BEFORE the next level starts (docs/CARTOONS.md)
+        const bool playing = cartoons != nullptr && pack != nullptr && cartoons->start(*pack, core::cartoonAfterLevel(levelBefore));
+        if (!playing) drv.nextLevel();
+    }
     return ev;
 }
 
-void gameThread(core::GameDriver& drv, app::GameWindow& window, std::atomic<bool>& quit, int seconds) {
+void gameThread(core::GameDriver& drv, const datapack::Pack& pack, app::GameWindow& window, std::atomic<bool>& quit, int seconds) {
+    core::CartoonPlayer cartoon;
+    hires::Page cartoonPage;
     core::CycleClock clock;
     clock.start(core::nowNanoseconds());
     std::int64_t budget = 0;
@@ -66,11 +75,29 @@ void gameThread(core::GameDriver& drv, app::GameWindow& window, std::atomic<bool
             window.close();
             break;
         }
-        while (const auto key = window.popKey()) drv.core().input().pushKey(*key);
         budget += clock.cyclesDue(now);
+        if (cartoon.active()) {   // an intermission: the original does not read the keyboard meanwhile, a latched key is thrown away at the next level's start (docs/CARTOONS.md 7.1)
+            while (window.popKey()) {}
+            cartoon.advance(budget);
+            budget = 0;
+            if (cartoon.active()) {
+                cartoon.render(pack, cartoonPage);
+                window.setPage(cartoonPage);
+            } else {
+                drv.nextLevel();
+                window.setPage(drv.page());
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            continue;
+        }
+        while (const auto key = window.popKey()) drv.core().input().pushKey(*key);
         bool changed = false;
         while (budget >= core::kTypicalTickCycles) {
-            liveTick(drv);
+            liveTick(drv, &cartoon, &pack);
+            if (cartoon.active()) {   // the level ended with a cartoon: leave the tick loop, the cartoon starts at 0 cycles
+                budget = 0;
+                break;
+            }
             budget -= core::kTypicalTickCycles + drv.extraCycles();
             changed = true;
             if (budget < -core::kDeathSequenceCycles * 2) budget = 0;
@@ -115,7 +142,7 @@ int wmain(int argc, wchar_t** argv) {
     app::GameWindow window(options);
     if (!window.ok()) return 4;
     std::atomic<bool> quit{false};
-    std::thread worker(gameThread, std::ref(drv), std::ref(window), std::ref(quit), seconds);
+    std::thread worker(gameThread, std::ref(drv), std::cref(loaded.pack), std::ref(window), std::ref(quit), seconds);
     const int code = window.run();
     quit = true;
     worker.join();

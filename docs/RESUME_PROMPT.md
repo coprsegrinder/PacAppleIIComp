@@ -144,3 +144,5 @@ Latest: 031-5 done (fruit state equal at levels 1,2,5,9,13,23,24). Open: 031-5b 
 Latest: 031-5b done (V23 was a poke artifact; re-recorded; near-ghost +1 seen at a catch at level 23). Next 031-6: cartoon trigger + cartoon 1 in the game flow.
 
 Latest: 031-6 partly done (cartoon 1 model in C++ equals the golden final page). Next 031-6b: play it in the game flow; then 031-7 (cartoons 2, 3).
+
+Latest: 031-6b done in code (not seen live). Next: 031-7 (cartoons 2 and 3 in C++), optionally a --level N debug start option so the user can see a cartoon without finishing level 2.

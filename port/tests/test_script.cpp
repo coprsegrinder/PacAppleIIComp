@@ -101,3 +101,61 @@ TEST(cartoon1_model_draws_the_original_final_page) {
     for (auto b : digest) { char c[3]; std::snprintf(c, sizeof c, "%02x", b); hex += c; }
     CHECK_MSG(hex == golden, "final page of cartoon 1 differs: " + hex);
 }
+
+TEST(cartoon1_plan_timing_and_player) {
+    if (testfw::config().image.empty() || testfw::config().script.empty()) {
+        std::printf("    SKIPPED (needs --image and --script)\n");
+        return;
+    }
+    const auto built = datapack::buildPack(readAll(testfw::config().image), verify::referenceExpected(), datapack::dataManifest());
+    CHECK_MSG(built.ok, built.reason);
+    if (!built.ok) return;
+    const auto loaded = datapack::loadPack(built.bytes, verify::referenceExpected());
+    CHECK_MSG(loaded.ok, loaded.reason);
+    if (!loaded.ok) return;
+    using namespace pacman::core;
+    const CartoonPlan plan = cartoon1Plan(loaded.pack);
+    CHECK(!plan.script.empty());
+    CHECK(plan.passOfCall.size() == 561);
+    bool monotone = true;
+    for (std::size_t i = 1; i < plan.passOfCall.size(); ++i) monotone = monotone && plan.passOfCall[i] >= plan.passOfCall[i - 1];
+    CHECK(monotone);
+    CHECK(plan.passes > 800 && plan.cycles == kCartoon1Cycles);
+    // nothing but the page clear at the start; everything at the end; in between a steady rise
+    CHECK(cartoonCallsDue(plan, 0) >= 1 && cartoonCallsDue(plan, 0) < 5);
+    CHECK(cartoonCallsDue(plan, kCartoon1Cycles) == 561);
+    CHECK(cartoonCallsDue(plan, -5) == 0);
+    std::size_t last = 0;
+    bool rising = true;
+    for (std::int64_t c = 0; c <= kCartoon1Cycles; c += kCartoon1Cycles / 200) {
+        const std::size_t n = cartoonCallsDue(plan, c);
+        rising = rising && n >= last;
+        last = n;
+    }
+    CHECK(rising);
+    // the player: starts for cartoon 1 only, ends after the duration, and its last picture is the original's final page
+    CartoonPlayer player;
+    CHECK(!player.start(loaded.pack, 0) && !player.active());
+    CHECK(!player.start(loaded.pack, 2) && !player.active());   // cartoons 2 and 3: not rebuilt yet (031-7)
+    CHECK(player.start(loaded.pack, 1) && player.active());
+    player.advance(kCartoon1Cycles - 1);
+    CHECK(player.active());
+    hires::Page page;
+    player.render(loaded.pack, page);
+    player.advance(1);
+    CHECK(!player.active());
+    // after the end, the last render shows the complete picture
+    CartoonPlayer again;
+    CHECK(again.start(loaded.pack, 1));
+    again.advance(kCartoon1Cycles - 1);
+    again.advance(0);
+    hires::Page nearEnd;
+    again.render(loaded.pack, nearEnd);
+    hires::Page whole;
+    hires::ReplayStats stats;
+    CHECK(hires::replayScript(loaded.pack, plan.script, whole, stats));
+    // one cycle before the end only the last call or two may be missing: the pages differ in a few bytes at most
+    std::size_t diff = 0;
+    for (std::size_t k = 0; k < hires::kPageBytes; ++k) diff += nearEnd.byte(k) != whole.byte(k);
+    CHECK_MSG(diff < 200, "page one cycle before the end differs in too many bytes");
+}
