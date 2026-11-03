@@ -32,6 +32,8 @@ inline constexpr std::int64_t kTypicalTickCycles = 4'870;   // mean cost of an o
 // TASK-033-1c: the cost of an ordinary tick from what it draws. Fitted (least squares) to the oracle's per-tick cycle counts of scenarios A, B, C, D (5,231 ticks, the ones
 // with call logs): 3,033 cycles + per call of type 1..6 {1,458; 1,789; 2,026; 3,745; 377; 864}. Fit quality: R2 0.970, residual 566 cycles per tick (a flat 4,870 gives 3,279);
 // held-out scenario totals within 0.6 % (flat: up to 4.5 %). Types 7-12 are not in the fit (0). An approximation, not the original's exact per-tick count (I).
+// The tick in which Pac-Man is caught costs 6,273 to 18,916 cycles up to the end of its drawing (mean 8,917 over 245 deaths of the oracle); the death sequence counts from there.
+inline constexpr std::int64_t kCatchTickCycles = 8'917;
 inline constexpr std::int64_t kTickBaseCycles = 3'033;
 inline constexpr std::int64_t kCallTypeCycles[7] = {0, 1'458, 1'789, 2'026, 3'745, 377, 864};
 inline std::int64_t tickCostCycles(const std::vector<DrawCall>& calls) {
@@ -81,7 +83,7 @@ public:
 private:
     void drawStaticGhosts();
     TickEvents tickImpl(FrightenAware* fed);
-    void buildDeathSequence(const GameState& before);
+    void buildDeathSequence(const GameState& caught, bool gameOver);
     const datapack::Pack* pack_ = nullptr;
     GameCore core_;
     hires::Page page_;

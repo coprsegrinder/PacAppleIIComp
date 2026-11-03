@@ -11,7 +11,7 @@ DRAW=$(ls $S/ticks_[ABCDFGHJKLMPQRSU].bin | tr '\n' ',' | sed 's/,$//')
 cmd //c "port\build.bat" 2>&1 | grep -E "error|warning" | head -5
 out/bat/pacman_tests.exe --image "Pacman (1983)(Atari).dsk" --reference "third_party/AppleWin/DOS 3.3 System Master - 680-0210-A.dsk" \
   --vectors $S/hires_vectors.bin --dots $S/dots_vectors.bin --script $S/cartoon1_script.bin --demo $S/ticks_DEMO.bin \
-  --decide $S/decide_vectors.bin --page0 $S/page_tick0.bin --clicks $S/sound_clicks.bin --ticks "$LOGIC" --drawticks "$DRAW" > $S/full_suite_cpp.log 2>&1
+  --decide $S/decide_vectors.bin --page0 $S/page_tick0.bin --clicks $S/sound_clicks.bin --deaths $S/death_timing.bin --ticks "$LOGIC" --drawticks "$DRAW" > $S/full_suite_cpp.log 2>&1
 grep -E "FAIL|SKIPPED|tests," $S/full_suite_cpp.log | cut -c1-200
 if [ "$1" = "python" ]; then
   # 40 test files, each boots the game in Python (about 2-3 minutes alone): 6 at a time, about 25 minutes in total on 12 cores

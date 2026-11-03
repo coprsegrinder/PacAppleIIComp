@@ -1,5 +1,7 @@
 #include "gamedriver.h"
 
+#include "deathtiming.h"
+
 namespace pacman::core {
 
 bool GameDriver::init(const datapack::Pack& pack) {
@@ -49,53 +51,74 @@ void GameDriver::applySequenceStep(const SequenceStep& step) {
 }
 
 namespace {
-// Oracle offsets (cycles from the start of the catching tick) of the death sequence, scenario A, tick 1976 (tools/ready_timing.py)
-constexpr std::int64_t kOwnDrawing = 14'682;
-constexpr std::int64_t kClearAt[5] = {776'432, 778'312, 780'192, 782'074, 783'615};
-constexpr std::int64_t kLastImageAt = 785'127, kClearAfterImageAt = 1'562'563;
-constexpr std::int64_t kFrameAt[6] = {1'568'093, 1'722'496, 1'877'589, 2'036'066, 2'200'735, 2'368'572};
-constexpr std::int64_t kFrameClearAt[6] = {1'716'944, 1'872'037, 2'030'514, 2'195'183, 2'363'020, 2'505'076};
-constexpr std::int64_t kRebuildAt = 2'821'980, kReadyAt = 2'927'563;
-constexpr std::int64_t kSoundAfterFrame = 1'610;   // the sound of a step starts this long after its frame is drawn
+int bcdDigits(std::uint32_t bcd) {   // the digits the screen shows for a BCD score: at least one
+    int n = 1;
+    for (bcd >>= 4; bcd != 0; bcd >>= 4) ++n;
+    return n;
+}
 }  // namespace
 
-void GameDriver::buildDeathSequence(const GameState& before) {
+// The death sequence (and, for the last life, the GAME OVER sequence) as timed steps. All times come from deathTimeline() (TASK-033-3b, measured on 245 deaths of the oracle);
+// they count from the end of the catching tick's own drawing, which the live loop has already paid for with tickCycles_.
+void GameDriver::buildDeathSequence(const GameState& caught, bool gameOver) {
     sequence_.clear();
     RestartInputs in;
-    in.pacX = before.pacX();
-    in.pacY = before.pacY();
+    in.pacX = caught.pacX();
+    in.pacY = caught.pacY();
     in.pacImage = 0x9BE6;   // $7EC1: LDA #$E6 / LDY #$9B / JSR $6A20 - the death always starts with this one image (frame 6 of the table at $96E8), whatever frame Pac-Man had (oracle: A and L catches)
     for (int g = 0; g < 4; ++g) {
-        in.ghostXY[static_cast<std::size_t>(g) * 2] = before.ghosts[g].x();
-        in.ghostXY[static_cast<std::size_t>(g) * 2 + 1] = before.ghosts[g].y();
+        in.ghostXY[static_cast<std::size_t>(g) * 2] = caught.ghosts[g].x();
+        in.ghostXY[static_cast<std::size_t>(g) * 2 + 1] = caught.ghosts[g].y();
     }
     DisplayState scratchDisplay = display_;
-    const auto calls = restartCalls(RestartKind::Death, in, core_.state(), *pack_, scratchDisplay);
-    if (calls.size() < 19) return;
+    const auto calls = restartCalls(gameOver ? RestartKind::GameOver : RestartKind::Death, in, core_.state(), *pack_, scratchDisplay);
+    if (calls.size() < (gameOver ? 21u : 19u)) return;
+    DeathTimingInput ti;
+    ti.pacX = caught.pacX();
+    for (int col = 0; col < 27; ++col)
+        for (int row = 1; row < 31; ++row) {
+            const std::uint8_t cell = core_.state().map[static_cast<std::size_t>(col) * 32 + static_cast<std::size_t>(row)];
+            if (cell == 0) continue;
+            if (cell & 1) ++ti.dots;
+            else ++ti.energizers;
+        }
+    const std::uint32_t score = core_.state().zp(0x52) | (core_.state().zp(0x53) << 8) | (core_.state().zp(0x54) << 16);
+    ti.scoreDigits = bcdDigits(score);
+    ti.highDigits = bcdDigits(static_cast<std::uint32_t>(display_.high[0]) | (display_.high[1] << 8) | (display_.high[2] << 16));
+    ti.livesBefore = (caught.lives() & 0x7F) + 1;   // GameCore stores the state after "DEC $58"
+    const DeathTimeline tl = deathTimeline(ti);
     auto step = [&](std::int64_t at, std::size_t from, std::size_t to) {
         SequenceStep s;
-        s.at = at - kOwnDrawing;
+        s.at = at;
         s.calls.assign(calls.begin() + static_cast<std::ptrdiff_t>(from), calls.begin() + static_cast<std::ptrdiff_t>(to));
         sequence_.push_back(std::move(s));
     };
-    for (std::size_t i = 0; i < 5; ++i) step(kClearAt[i], i, i + 1);   // ghosts 4, 3, 2, 1 and Pac-Man erased
-    step(kLastImageAt, 5, 6);                                          // Pac-Man's last image
-    step(kClearAfterImageAt, 6, 7);
+    for (std::size_t i = 0; i < 5; ++i) step(tl.clear[i], i, i + 1);   // ghosts 4, 3, 2, 1 and Pac-Man erased
+    step(tl.image, 5, 6);                                              // Pac-Man's last image
+    step(tl.imageClear, 6, 7);
     for (std::size_t k = 0; k < 6; ++k) {
-        step(kFrameAt[k], 7 + 2 * k, 8 + 2 * k);
+        step(tl.frame[k], 7 + 2 * k, 8 + 2 * k);
         sequence_.back().deathSound = 6 - static_cast<int>(k);
-        step(kFrameClearAt[k], 8 + 2 * k, 9 + 2 * k);
+        step(tl.frameClear[k], 8 + 2 * k, 9 + 2 * k);
+    }
+    if (gameOver) {   // the words, then the long wait of the oracle (the attract screens follow; until they exist a new game starts after it)
+        const std::int64_t text = tl.frameClear[5] + kGameOverTextAfterLastClear;
+        step(text, 19, 21);
+        SequenceStep end;
+        end.at = text + kGameOverTextDraw + kGameOverPause;
+        sequence_.push_back(end);
+        return;
     }
     SequenceStep rebuild;
-    rebuild.at = kRebuildAt - kOwnDrawing;
+    rebuild.at = tl.rebuild;
     rebuild.rebuild = true;
     sequence_.push_back(rebuild);
     SequenceStep ready;
-    ready.at = kReadyAt - kOwnDrawing;
+    ready.at = tl.ready;
     ready.ready = true;
     sequence_.push_back(ready);
     SequenceStep end;   // the READY wait is over: the page of the first tick (no READY) and the first tick follows
-    end.at = kDeathSequenceCycles - kOwnDrawing;
+    end.at = tl.total;
     end.rebuild = true;
     sequence_.push_back(end);
 }
@@ -132,6 +155,14 @@ TickEvents GameDriver::tickImpl(FrightenAware* fed) {
     now.e5 = core_.blink1UpCounter();
     now.e6 = core_.blink1UpPhase();
     now.e7 = core_.fruitState();
+    if (ev.gameOver && playDeath_) {   // the live game plays the animation and the words as a timed sequence (sequence()), then a new game
+        buildDeathSequence(core_.caughtState(), true);
+        if (!sequence_.empty()) {
+            tickCycles_ = kCatchTickCycles;
+            newGamePending_ = true;
+            return ev;
+        }
+    }
     if (ev.gameOver) {   // the last life: the words GAME OVER ($811D, $8139) on the playfield, then a new game after a pause (no death animation yet)
         executeCall(page_, DrawCall{2, {0x811D, 15, 105, 4, 7}}, *pack_);
         executeCall(page_, DrawCall{2, {0x8139, 21, 105, 4, 7}}, *pack_);
@@ -146,8 +177,9 @@ TickEvents GameDriver::tickImpl(FrightenAware* fed) {
             display_.high = {after.zp(0x52), after.zp(0x53), after.zp(0x54)};
         }
         if (playDeath_ && ev.caught && !ev.levelComplete) {   // the live game plays the animation (sequence()); the page stays as it was until then
-            buildDeathSequence(core_.caughtState());
+            buildDeathSequence(core_.caughtState(), false);
             if (!sequence_.empty()) {
+                tickCycles_ = kCatchTickCycles;
                 prev_ = now;
                 return ev;
             }

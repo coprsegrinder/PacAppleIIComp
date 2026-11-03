@@ -33,6 +33,7 @@ add_library(pacman_core_verify STATIC
   src/core/cartoon.cpp
   src/core/sound.cpp
   src/core/squarewave.cpp
+  src/core/deathtiming.cpp
   src/core/gamecore.cpp
   src/core/ghosttick.cpp
   src/core/ghostjunction.cpp
@@ -71,6 +72,7 @@ add_executable(pacman_tests
   tests/test_dots.cpp
   tests/test_script.cpp
   tests/test_sound.cpp
+  tests/test_deathtiming.cpp
   tests/test_gamewindow.cpp
   tests/test_cycleclock.cpp
   tests/test_ticktrace.cpp

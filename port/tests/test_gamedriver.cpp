@@ -14,6 +14,7 @@
 #include <string>
 #include <vector>
 
+#include "../src/core/deathtiming.h"
 #include "../src/core/gamedriver.h"
 #include "../src/datapack/datapack.h"
 #include "../src/verify/verify.h"
@@ -429,4 +430,49 @@ TEST(tick_cost_model_adds_base_and_per_type_costs) {
     other.type = 10;   // not in the fit: costs nothing extra
     CHECK(tickCostCycles({a, b, other}) == 3'033 + 2'026 + 3'745);
     CHECK(tickCostCycles({a, a}) == 3'033 + 2 * 2'026);
+}
+
+// TASK-033-3b: the live death and GAME OVER sequences of the driver (structure and total times; the timing model itself is checked against 220 recorded deaths in test_deathtiming)
+TEST(gamedriver_death_and_game_over_sequences_have_the_oracles_shape) {
+    if (testfw::config().image.empty()) {
+        std::printf("    SKIPPED (needs --image)\n");
+        return;
+    }
+    const auto built = datapack::buildPack(readAll(testfw::config().image), verify::referenceExpected(), datapack::dataManifest());
+    CHECK_MSG(built.ok, built.reason);
+    if (!built.ok) return;
+    const auto loaded = datapack::loadPack(built.bytes, verify::referenceExpected());
+    CHECK_MSG(loaded.ok, loaded.reason);
+    if (!loaded.ok) return;
+    for (int lives = 3; lives >= 1; lives -= 2) {   // three lives: an ordinary death; one life: the last one
+        GameDriver drv;
+        CHECK(drv.init(loaded.pack));
+        CHECK(drv.newGame());
+        drv.setPlayDeath(true);
+        for (int i = 0; i < 20; ++i) drv.tick();   // let the ghosts leave the house a little
+        GameState& s = drv.core().state();
+        s.zp(0x58) = static_cast<std::uint8_t>(0x80 | lives);
+        for (auto& g : s.ghosts) {   // all four ghosts on Pac-Man
+            g.b[0] = s.pacX();
+            g.b[1] = s.pacY();
+        }
+        TickEvents ev;
+        for (int i = 0; i < 3 && !ev.caught; ++i) ev = drv.tick();
+        CHECK(ev.caught);
+        CHECK(ev.gameOver == (lives == 1));
+        const auto& seq = drv.sequence();
+        CHECK(seq.size() == (lives == 1 ? 21u : 22u));
+        bool ascending = true;
+        int sounds = 0;
+        for (std::size_t i = 1; i < seq.size(); ++i) ascending = ascending && seq[i].at > seq[i - 1].at;
+        for (const auto& st : seq) sounds += st.deathSound > 0;
+        CHECK(ascending && sounds == 6);
+        if (seq.empty()) continue;
+        if (lives == 1) {
+            // GAME OVER: the long wait ends the sequence (10,453,613 cycles after the text)
+            CHECK(seq.back().at - seq[seq.size() - 2].at == kGameOverTextDraw + kGameOverPause);
+        } else {
+            CHECK(seq.back().at - seq[seq.size() - 2].at > 3'000'000 && seq.back().at > 6'000'000 && seq.back().at < 6'100'000);   // about 6.0 million cycles in all
+        }
+    }
 }
