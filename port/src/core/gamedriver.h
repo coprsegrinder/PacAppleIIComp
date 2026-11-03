@@ -20,6 +20,10 @@ public:
 
 // Cycles the original spends on the long sequences (measured with tools/tick_cycles.py on scenario A): the death animation and the pause before the new life.
 inline constexpr std::int64_t kDeathSequenceCycles = 6'043'263;
+// TASK-033-2: the wait after the last drawing of a restart screen until the first tick, measured on the oracle (tools/ready_timing.py): 3,114,542 cycles = 3.05 s, the SAME
+// at the start of a game (after the 5.15M of the jingle) and after a death. So a death sequence = the animation (2,928,721 cycles until its last drawing) + this wait.
+inline constexpr std::int64_t kReadyPauseCycles = 3'114'542;
+inline constexpr std::int64_t kDeathAnimationCycles = kDeathSequenceCycles - kReadyPauseCycles;   // 2,928,721, matches the oracle's last drawing at 2,928,721
 // The level end (the pause after the last dot until the next level starts, without a cartoon): the tick-to-tick cost around the level change was 4,334,935 cycles
 // (levels 3 and 12; 4,334,936 on one run) = 4.24 s, minus the cost of one ordinary tick (tools/level_end_cycles.py, TASK-033-1b). V for the gross figure; the ~4,870 deduction is approximate.
 inline constexpr std::int64_t kLevelEndCycles = 4'330'065;
