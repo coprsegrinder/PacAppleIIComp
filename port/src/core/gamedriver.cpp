@@ -1,5 +1,6 @@
 #include "gamedriver.h"
 
+#include "attract.h"
 #include "deathtiming.h"
 
 namespace pacman::core {
@@ -42,7 +43,9 @@ void GameDriver::rebuildScreen() {
     const GameState& s = core_.state();
     page_ = hires::Page();
     drawPlayfield(page_, s, *pack_);
-    drawHud(page_, s, *pack_, display_.high);
+    std::array<std::uint32_t, 6> scores{};
+    for (int p = 1; p <= core_.players(); ++p) scores[static_cast<std::size_t>(p)] = core_.savedScore(p);
+    drawHudPlayers(page_, s, *pack_, display_.high, core_.players(), core_.player(), scores);
     drawPacman(page_, s, *pack_, false);
     display_.lastFlag1E = 0;
     if (staticGhosts_) drawStaticGhosts();
@@ -94,7 +97,18 @@ void GameDriver::buildDeathSequence(const GameState& caught, bool gameOver) {
     const std::uint32_t score = core_.state().zp(0x52) | (core_.state().zp(0x53) << 8) | (core_.state().zp(0x54) << 16);
     ti.scoreDigits = bcdDigits(score);
     ti.highDigits = bcdDigits(static_cast<std::uint32_t>(display_.high[0]) | (display_.high[1] << 8) | (display_.high[2] << 16));
-    ti.livesBefore = (caught.lives() & 0x7F) + 1;   // GameCore stores the state after "DEC $58"
+    // the rebuild draws the lives of the player who plays NEXT (the same player when there is only one): GameCore stores the state after "DEC $58" and the switch
+    ti.livesBefore = ((gameOver ? caught.lives() : core_.state().lives()) & 0x7F) + 1;
+    if (core_.players() > 1 && !gameOver) {   // the labels and scores of the other players are drawn too ($550A loops over all players)
+        std::array<std::uint32_t, 6> scores{};
+        std::array<int, 6> lives{};
+        for (int p = 1; p <= core_.players(); ++p) {
+            const bool cur = p == core_.player();
+            scores[static_cast<std::size_t>(p)] = cur ? (core_.state().zp(0x52) | (core_.state().zp(0x53) << 8) | (core_.state().zp(0x54) << 16)) : core_.savedScore(p);
+            lives[static_cast<std::size_t>(p)] = cur ? core_.state().lives() : core_.savedLives(p);
+        }
+        ti.extraHud = hudExtraCycles(*pack_, core_.players(), core_.player(), scores, lives, static_cast<std::uint32_t>(display_.high[0]) | (display_.high[1] << 8) | (display_.high[2] << 16));
+    }
     const DeathTimeline tl = deathTimeline(ti);
     auto step = [&](std::int64_t at, std::size_t from, std::size_t to) {
         SequenceStep s;
@@ -154,6 +168,7 @@ TickEvents GameDriver::tickImpl(FrightenAware* fed) {
     if (ev.paused) return ev;
     const GameState& after = core_.state();
     TickExtras now;
+    now.player = core_.player();
     if (fed != nullptr) {
         fed->frightenState(now.e1, now.e2, now.e4);
     } else {

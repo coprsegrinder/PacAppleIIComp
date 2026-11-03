@@ -46,35 +46,44 @@ bool drawNumber(hires::Page& page, std::uint32_t bcd, int x, int y, const datapa
 }  // namespace
 
 bool drawHud(hires::Page& page, const GameState& s, const datapack::Pack& pack, const std::array<std::uint8_t, 3>& high, int players, std::uint32_t otherScore, int current) {
+    std::array<std::uint32_t, 6> scores{};
+    const int cur = current < 1 ? 1 : current;
+    const std::uint32_t own = s.zp(0x52) | (s.zp(0x53) << 8) | (s.zp(0x54) << 16);
+    for (int p = 1; p <= 5; ++p) scores[static_cast<std::size_t>(p)] = p == cur ? own : otherScore;
+    return drawHudPlayers(page, s, pack, high, players, cur, scores);
+}
+
+// $550A: from the last player down to player 1 every player gets his label (the table at $55C7 + 8 x player: column and row of the label, x and y of the mark, x and y of the dotted line),
+// the mark (his number: the digit images at $717D), his score box ($696A: table $6992) and his score ($70CC: the x and y of the digits are in the table at $7141 + 4 x player); then
+// the high score's label, line and box (entry 0). Verified against the oracle's first screen for 1 and 2 players (tests/test_screen, test_tickdraw) and for 3, 4 and 5 (033-6b).
+bool drawHudPlayers(hires::Page& page, const GameState& s, const datapack::Pack& pack, const std::array<std::uint8_t, 3>& high, int players, int current,
+                    const std::array<std::uint32_t, 6>& scores) {
     const auto label1 = pack.find(0x55F7, 49);
     const auto label2 = pack.find(0x5628, 49);
-    const auto mark = pack.find(0x7201, hires::kTileTableBytes);
+    const auto table = pack.find(0x55C7, 48);
+    const auto scoreTable = pack.find(0x7141, 24);
+    const auto digits = pack.find(0x717D, 20);
     const auto box = pack.find(0x6992, 12);
     const auto fruitTable = pack.find(0x6AFE, 27 * 4);                           // per level 4 bytes: the fruit image address ($5C/$5D) first ($6A80-$6A93)
-    if (fruitTable.empty()) return false;
+    if (fruitTable.empty() || table.empty() || scoreTable.empty() || digits.empty()) return false;
     const std::size_t levelIndex = std::min<std::size_t>(s.level(), 26) * 4;
     const auto fruit = pack.find(static_cast<std::uint16_t>(fruitTable[levelIndex] | (fruitTable[levelIndex + 1] << 8)), 36);
     const auto life = pack.find(0x9CB8, hires::kSevenCopies3x10);
-    if (label1.empty() || label2.empty() || mark.empty() || box.empty() || fruit.empty() || life.empty()) return false;
+    if (label1.empty() || label2.empty() || box.empty() || fruit.empty() || life.empty()) return false;
+    const int n = players < 1 ? 1 : players > 5 ? 5 : players;
     const std::uint32_t stateScore = s.zp(0x52) | (s.zp(0x53) << 8) | (s.zp(0x54) << 16);
-    if (players >= 2) {                                                        // $550A loops from the last player down: player 2 first
-        const auto entry = pack.find(0x55C7 + 16, 8);                          // label column, row, mark x (16 bit), mark y, dotted line x0, y
-        const auto digits = pack.find(0x717D, 20);
-        if (entry.empty() || digits.empty()) return false;
-        const auto mark2 = pack.find(static_cast<std::uint16_t>(digits[4] | (digits[5] << 8)), hires::kTileTableBytes);   // the digit 2
-        if (mark2.empty()) return false;
-        hires::blitOr(page, entry[0], entry[1], 7, 7, label1);
-        hires::tile(page, entry[2] | (entry[3] << 8), entry[4], mark2);
-        hires::hLine(page, entry[5], entry[5] + 0x31, 14, 2, true);
-        hires::boxClear(page, box[4], box[5]);
-        if (!drawNumber(page, current == 2 ? stateScore : otherScore, 266, 16, pack)) return false;
+    for (int p = n; p >= 1; --p) {
+        const std::size_t e = static_cast<std::size_t>(p) * 8;
+        const auto mark = pack.find(static_cast<std::uint16_t>(digits[static_cast<std::size_t>(p) * 2] | (digits[static_cast<std::size_t>(p) * 2 + 1] << 8)), hires::kTileTableBytes);
+        if (mark.empty()) return false;
+        hires::blitOr(page, table[e], table[e + 1], 7, 7, label1);                                // the player's label
+        hires::tile(page, table[e + 2] | (table[e + 3] << 8), table[e + 4], mark);               // the mark: his number
+        hires::hLine(page, table[e + 5], table[e + 5] + 0x31, table[e + 6], 2, true);            // the dotted line under it
+        hires::boxClear(page, box[static_cast<std::size_t>(p) * 2], box[static_cast<std::size_t>(p) * 2 + 1]);   // the score box
+        const std::uint32_t score = p == current ? stateScore : scores[static_cast<std::size_t>(p)];
+        const std::size_t se = static_cast<std::size_t>(p) * 4;
+        if (!drawNumber(page, score, scoreTable[se] | (scoreTable[se + 1] << 8), scoreTable[se + 2], pack)) return false;
     }
-    hires::blitOr(page, 0, 6, 7, 7, label1);                                   // $550A..: the player label
-    hires::tile(page, 47, 6, mark);
-    hires::hLine(page, 4, 0x35, 14, 2, true);                                  // $5CF6 under the player label: dotted line, x $04 to $35 (the oracle's values)
-    hires::boxClear(page, box[2], box[3]);                                     // $696A with $50 = 1: the player's score box
-    const std::uint32_t score = current == 2 ? otherScore : stateScore;
-    if (!drawNumber(page, score, 40, 16, pack)) return false;
     hires::blitOr(page, 0, 84, 7, 7, label2);                                  // the high-score label
     hires::hLine(page, 4, 0x35, 91, 2, true);                                  // the same dotted line under it
     hires::boxClear(page, box[0], box[1]);                                     // $696A with $50 = 0

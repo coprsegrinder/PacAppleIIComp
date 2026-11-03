@@ -73,6 +73,7 @@ struct RestartInputs {
     int pacImage = 0;                           // the image address of his last frame (the step draw of that tick)
     int players = 1, current = 1;               // two-player games: both labels and scores are drawn; `current` = the player whose data `after` holds
     std::uint32_t otherScore = 0;               // the other player's score (BCD)
+    const std::array<std::uint32_t, 6>* scores = nullptr;   // 3-5 players (TASK-033-6b): every player's score (BCD, index = player); otherwise otherScore is used
     std::array<int, 8> ghostXY{};               // ghost 1..4 places (x, y pairs) when the sequence starts (death only)
 };
 

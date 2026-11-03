@@ -27,6 +27,10 @@ bool drawPlayfield(hires::Page& page, const GameState& state, const datapack::Pa
 bool drawHud(hires::Page& page, const GameState& state, const datapack::Pack& pack, const std::array<std::uint8_t, 3>& highScore = {0, 0, 0}, int players = 1,
              std::uint32_t otherScore = 0, int current = 1);
 
+// The same for 1 to 5 players (TASK-033-6b): `current` plays now (his score is the state's), `scores[p]` (BCD, p = 1..5) are the others'.
+bool drawHudPlayers(hires::Page& page, const GameState& state, const datapack::Pack& pack, const std::array<std::uint8_t, 3>& highScore, int players, int current,
+                    const std::array<std::uint32_t, 6>& scores);
+
 // Pac-Man's 3 x 10 image through the dispatcher at his position ($79A4-$79CA: frame table $96E8). orMode = plain OR ($1E = $80, the draw of every tick);
 // the very first draw of a life ($5839: $1E = 0, always frame 0 at the start position) ORs and then clears the palette bit instead.
 bool drawPacman(hires::Page& page, const GameState& state, const datapack::Pack& pack, bool orMode = true);

@@ -22,6 +22,9 @@ struct Builder {
     bool noDraw = false;           // true while the shifted-image routine runs its dispatcher: the type 9 step already draws the image
     int rec[5][20] = {};           // the four ghost records (ghosts 1-4) of the chase, copied to and from the working area $70-$83
     int p69b8 = 0x69CD;            // the mask table operand of the masked clear
+    bool savedPlayers = false;     // hudCycles: $53CF loads each player's own score and lives from the tables below; the bonus-life test of $7124 runs
+    std::array<std::array<int, 3>, 6> savedScore{};
+    std::array<int, 6> savedLives{};
 
     Builder(const datapack::Pack& p, ScreenScript& o, bool tr) : pack(p), out(o), trace(tr) {
         z[0x1D] = 1;
@@ -1056,6 +1059,10 @@ struct Builder {
     }
     void r53cf() {                                  // JSR $53CF: load the player's data
         add(6 + 3 + 4 + cross(0x53E0, z[0x50]) + 2 + 8 * 15 - 1 + 6);
+        if (savedPlayers) {
+            for (int i = 0; i < 3; ++i) z[0x52 + i] = savedScore[static_cast<std::size_t>(z[0x50])][static_cast<std::size_t>(i)];
+            z[0x58] = savedLives[static_cast<std::size_t>(z[0x50])];
+        }
     }
     void r531e() {                                  // JSR $531E
         add(6 + 2 + 3);
@@ -1347,6 +1354,8 @@ struct Builder {
         add(3);
         if (z[0x50] == 0) {
             add(3);
+        } else if (savedPlayers && (z[0x58] & 0x80) != 0) {
+            add(2 + 3 + 2 + 3 + 2 + 3);             // BEQ not taken, BIT $58, BPL not taken (the bonus life is still to come), LDA $54, CMP #1, BCC taken (the score is below 10,000)
         } else {
             add(2 + 3 + 3);                         // BEQ not taken, BIT $58, BPL $7140 (no bonus life in the attract game)
         }
@@ -1867,6 +1876,32 @@ std::int64_t tickCostCycles(const std::vector<DrawCall>& calls, const datapack::
     if (ate) c += 144;
     if (energizer) c += 5'650;
     return c;
+}
+
+std::int64_t hudCycles(const datapack::Pack& pack, int players, const std::array<std::uint32_t, 6>& scores, const std::array<int, 6>& lives, std::uint32_t high) {
+    ScreenScript scratch;
+    Builder b(pack, scratch, false);
+    b.savedPlayers = true;
+    for (int p = 1; p <= 5; ++p) {
+        const std::uint32_t s = scores[static_cast<std::size_t>(p)];
+        b.savedScore[static_cast<std::size_t>(p)] = {static_cast<int>(s & 255), static_cast<int>((s >> 8) & 255), static_cast<int>((s >> 16) & 255)};
+        b.savedLives[static_cast<std::size_t>(p)] = lives[static_cast<std::size_t>(p)];
+    }
+    b.z[0x00] = static_cast<int>(high & 255);
+    b.z[0x01] = static_cast<int>((high >> 8) & 255);
+    b.z[0x02] = static_cast<int>((high >> 16) & 255);
+    b.z[0x51] = players;
+    b.r550a();
+    return b.t;
+}
+
+std::int64_t hudExtraCycles(const datapack::Pack& pack, int players, int current, const std::array<std::uint32_t, 6>& scores, const std::array<int, 6>& lives, std::uint32_t high) {
+    if (players <= 1) return 0;
+    std::array<std::uint32_t, 6> one{};
+    std::array<int, 6> oneLives{};
+    one[1] = scores[static_cast<std::size_t>(current)];
+    oneLives[1] = lives[static_cast<std::size_t>(current)];
+    return hudCycles(pack, players, scores, lives, high) - hudCycles(pack, 1, one, oneLives, high);
 }
 
 bool buildDemoDeathScript(const datapack::Pack& pack, ScreenScript& out, const std::array<std::pair<int, int>, 4>& ghosts, int pacX, int pacY, int caughtGhost, bool withTrace) {

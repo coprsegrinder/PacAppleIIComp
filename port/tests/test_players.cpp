@@ -10,7 +10,9 @@
 #include <string>
 #include <vector>
 
+#include "../src/core/attract.h"
 #include "../src/core/gamecore.h"
+#include "../src/core/gamedriver.h"
 #include "../src/core/ticktrace.h"
 #include "../src/datapack/datapack.h"
 #include "../src/verify/verify.h"
@@ -188,4 +190,116 @@ TEST(players_rotation_equals_the_oracle) {
     CHECK(wrongEvents == 0);
     CHECK(bad == 0);
     CHECK(switches >= 4);
+}
+
+// The first play screen for 1 to 5 players: labels, marks, dotted lines, score boxes and scores of every player at the places of the tables ($55C7, $6992, $7141), as the oracle draws them.
+TEST(players_first_screens_equal_the_oracle) {
+    if (testfw::config().playerPages.empty() || testfw::config().image.empty()) {
+        std::printf("    SKIPPED (needs --playerpages and --image)\n");
+        return;
+    }
+    const auto built = datapack::buildPack(readAllP(testfw::config().image), verify::referenceExpected(), datapack::dataManifest());
+    CHECK_MSG(built.ok, built.reason);
+    if (!built.ok) return;
+    const auto loaded = datapack::loadPack(built.bytes, verify::referenceExpected());
+    CHECK_MSG(loaded.ok, loaded.reason);
+    if (!loaded.ok) return;
+    const auto files = splitP(testfw::config().playerPages);
+    CHECK(files.size() == 5);
+    std::size_t bad = 0;
+    for (std::size_t n = 1; n <= files.size(); ++n) {
+        const auto oracle = readAllP(files[n - 1]);
+        CHECK(oracle.size() == hires::kPageBytes);
+        GameDriver drv;
+        CHECK(drv.init(loaded.pack));
+        CHECK(drv.newGame(static_cast<int>(n)));
+        std::size_t d = 0;
+        for (std::size_t b = 0; b < hires::kPageBytes && b < oracle.size(); ++b) d += drv.page().byte(b) != oracle[b];
+        std::printf("    %zu player%s: the first screen differs from the oracle in %zu of 8,192 bytes\n", n, n == 1 ? "" : "s", d);
+        bad += d != 0;
+    }
+    CHECK(bad == 0);
+}
+
+// With several players the rebuild of the screen after a catch draws more (the labels, marks, lines, boxes and scores of the other players). The oracle's recordings of forced catches
+// (tools/death_timing.py 31 1500 forced <players>: the first death of each run, player 1 with a two-digit score, the others at 0) took 10,629 (2 players), 19,575 (3) and 37,221 (5)
+// cycles longer between the rebuild and READY than the same death with one player. 1,814 of each are not the labels: the new player's fresh maze has one more dot (215) and he has one more spare life (a life icon: 1,599), as the events show; the rest is hudExtraCycles (the cycle count of $550A, summed up from its instructions): 8,815 / 17,761 / 35,407, the time from the HUD's start to the high score's label, which the events measure directly.
+TEST(players_rebuild_costs_what_the_oracle_measured) {
+    if (testfw::config().image.empty()) {
+        std::printf("    SKIPPED (needs --image)\n");
+        return;
+    }
+    const auto built = datapack::buildPack(readAllP(testfw::config().image), verify::referenceExpected(), datapack::dataManifest());
+    CHECK_MSG(built.ok, built.reason);
+    if (!built.ok) return;
+    const auto loaded = datapack::loadPack(built.bytes, verify::referenceExpected());
+    CHECK_MSG(loaded.ok, loaded.reason);
+    if (!loaded.ok) return;
+    struct Row { int players; std::int64_t measured; };
+    for (const Row& r : {Row{2, 10'629 - 1'814}, Row{3, 19'575 - 1'814}, Row{5, 37'221 - 1'814}}) {
+        std::array<std::uint32_t, 6> scores{};
+        std::array<int, 6> lives{};
+        scores[1] = 0x90;                                   // two digits
+        for (int p = 1; p <= 5; ++p) lives[static_cast<std::size_t>(p)] = 0x83;
+        const std::int64_t mine = hudExtraCycles(loaded.pack, r.players, 1, scores, lives, 0x90);
+        std::printf("    %d players: the rebuild takes %lld cycles more than with one (oracle %lld)\n", r.players, static_cast<long long>(mine), static_cast<long long>(r.measured));
+        CHECK(mine == r.measured);
+    }
+}
+
+// The live driver with two players: a catch hands the game to player 2 (his fresh maze and score 0 on the screen, the label of PLAYER #2 blinking, his lives), the death sequence is
+// longer than with one player by what the rebuild of the other player's label and score costs, and when both players are out of lives the game is over.
+TEST(players_driver_switches_players) {
+    if (testfw::config().image.empty()) {
+        std::printf("    SKIPPED (needs --image)\n");
+        return;
+    }
+    const auto built = datapack::buildPack(readAllP(testfw::config().image), verify::referenceExpected(), datapack::dataManifest());
+    CHECK_MSG(built.ok, built.reason);
+    if (!built.ok) return;
+    const auto loaded = datapack::loadPack(built.bytes, verify::referenceExpected());
+    CHECK_MSG(loaded.ok, loaded.reason);
+    if (!loaded.ok) return;
+    std::int64_t total[2] = {0, 0};
+    for (int players = 1; players <= 2; ++players) {
+        GameDriver drv;
+        CHECK(drv.init(loaded.pack));
+        CHECK(drv.newGame(players));
+        drv.setPlayDeath(true);
+        TickEvents ev;
+        for (int i = 0; i < 400 && !ev.caught; ++i) {
+            drv.core().state().zp(0x60) = drv.core().state().ghosts[0].b[0];   // Pac-Man is put on ghost 1: he is caught
+            drv.core().state().zp(0x61) = drv.core().state().ghosts[0].b[1];
+            ev = drv.tick();
+        }
+        CHECK(ev.caught);
+        CHECK(!ev.gameOver);
+        CHECK(ev.playerSwitched == (players == 2));
+        CHECK(drv.core().player() == (players == 2 ? 2 : 1));
+        CHECK(!drv.sequence().empty());
+        total[players - 1] = drv.sequence().back().at;
+        for (const auto& step : drv.sequence()) drv.applySequenceStep(step);
+        // the new player's screen: his lives (3 lives = 2 icons), nothing eaten yet
+        CHECK((drv.core().state().lives() & 0x7F) == (players == 2 ? 3 : 2));
+        if (players == 2) CHECK(drv.core().state().dotsLeft() == 0xF8);
+    }
+    std::printf("    the death sequence with two players ends %lld cycles after the one with one player's\n", static_cast<long long>(total[1] - total[0]));
+    CHECK(total[1] - total[0] > 8'815);
+    // both players out of lives: the game is over
+    GameDriver drv;
+    CHECK(drv.init(loaded.pack));
+    CHECK(drv.newGame(2));
+    drv.setPlayDeath(true);
+    bool over = false;
+    int catches = 0;
+    for (int i = 0; i < 4000 && !over; ++i) {
+        drv.core().state().zp(0x58) = 0x81;                                  // the player who plays has one life left
+        drv.core().state().zp(0x60) = drv.core().state().ghosts[0].b[0];
+        drv.core().state().zp(0x61) = drv.core().state().ghosts[0].b[1];
+        const TickEvents e = drv.tick();
+        if (e.caught) ++catches;
+        if (catches == 1) CHECK(e.playerSwitched || !e.caught);
+        over = e.gameOver;
+    }
+    CHECK(over && catches == 2);
 }

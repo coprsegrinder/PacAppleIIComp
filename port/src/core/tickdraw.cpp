@@ -116,6 +116,29 @@ std::uint32_t addBcd(std::uint32_t v, std::uint32_t add) {   // BCD addition of 
 
 namespace {
 
+// The places of player p (1-5) on the screen, from the tables of the original: $55C7 + 8 p (the label's column and row, the mark's x and y), $717D (the mark's image: the digit p),
+// $7141 + 4 p (the x and y of the score's digits). TASK-033-6b: the tables hold five players; before, only players 1 and 2 were drawn.
+struct PlayerSpot {
+    int labelCol = 0, labelRow = 6, markImage = 0x7201, markX = 47, markY = 6, scoreX = 40, scoreY = 16;
+};
+
+PlayerSpot playerSpot(const datapack::Pack& pack, int p) {
+    PlayerSpot s;
+    const auto table = pack.find(0x55C7, 48);
+    const auto scoreTable = pack.find(0x7141, 24);
+    const auto digits = pack.find(0x717D, 20);
+    if (p < 1 || p > 5 || table.empty() || scoreTable.empty() || digits.empty()) return s;
+    const std::size_t e = static_cast<std::size_t>(p) * 8, d = static_cast<std::size_t>(p) * 2, q = static_cast<std::size_t>(p) * 4;
+    s.labelCol = table[e];
+    s.labelRow = table[e + 1];
+    s.markX = table[e + 2] | (table[e + 3] << 8);
+    s.markY = table[e + 4];
+    s.markImage = digits[d] | (digits[d + 1] << 8);
+    s.scoreX = scoreTable[q] | (scoreTable[q + 1] << 8);
+    s.scoreY = scoreTable[q + 2];
+    return s;
+}
+
 void scoreDisplay(std::vector<DrawCall>& out, std::uint32_t score, DisplayState& display, const datapack::Pack& pack, int player) {
     const std::uint32_t hi = display.high[0] | (display.high[1] << 8) | (display.high[2] << 16);
     if (score >= hi) {                                // $7091: the high score follows the score
@@ -123,8 +146,9 @@ void scoreDisplay(std::vector<DrawCall>& out, std::uint32_t score, DisplayState&
         out.push_back(DrawCall{4, {0, 0, 0, 0, 0}});
         digitCalls(out, score, 40, 94, pack);
     }
-    out.push_back(DrawCall{4, {player == 2 ? 2 : 1, 0, 0, 0, 0}});          // $696A with $50 = the player: its score box; digits from the player's x ($7141)
-    digitCalls(out, score, player == 2 ? 266 : 40, 16, pack);
+    const PlayerSpot spot = playerSpot(pack, player);
+    out.push_back(DrawCall{4, {player < 1 ? 1 : player, 0, 0, 0, 0}});      // $696A with $50 = the player: its score box; digits from the player's x ($7141)
+    digitCalls(out, score, spot.scoreX, spot.scoreY, pack);
 }
 
 }  // namespace
@@ -250,11 +274,11 @@ std::vector<DrawCall> tickCalls(const GameState& before, const GameState& after,
     // $570C at the end of the tick: the 1UP blink, then the energizer blink
     if (exBefore.e6 != exAfter.e6) {
         if (exAfter.e6 == 1) {                                                   // $58FA -> $556E: label and mark
-            const bool two = exAfter.player == 2;                                // the blinking label is the current player's: 1UP (column 0) or 2UP (column 32)
-            out.push_back(DrawCall{2, {0x55F7, two ? 32 : 0, 6, 7, 7}});
-            out.push_back(DrawCall{6, {two ? 0x7271 : 0x7201, two ? 271 : 47, 6, 0, 0}});
+            const PlayerSpot spot = playerSpot(pack, exAfter.player);            // the blinking label is the current player's: PLAYER #1 (column 0) ... #5 (the table $55C7)
+            out.push_back(DrawCall{2, {0x55F7, spot.labelCol, spot.labelRow, 7, 7}});
+            out.push_back(DrawCall{6, {spot.markImage, spot.markX, spot.markY, 0, 0}});
         } else {                                                                 // $58E7 -> $6978: box clear at (column, row - $0F)
-            out.push_back(DrawCall{10, {exAfter.player == 2 ? 1 : 0, 0, 0, 0, 0}});
+            out.push_back(DrawCall{10, {(exAfter.player < 1 ? 1 : exAfter.player) - 1, 0, 0, 0, 0}});
         }
     }
     if (before.zp(0x5F) != after.zp(0x5F)) {
@@ -392,18 +416,15 @@ std::vector<DrawCall> restartCalls(RestartKind kind, const RestartInputs& in, co
     dotPassCalls(out, after);
     // the screen's labels, score, high score, level icon, lives icons ($550A, $56CF) in the order the original issues them
     const std::uint32_t stateScore = after.zp(0x52) | (after.zp(0x53) << 8) | (after.zp(0x54) << 16);
-    if (in.players >= 2) {                                                              // player 2 first ($550A counts down)
-        out.push_back(DrawCall{2, {0x55F7, 32, 6, 7, 7}});
-        out.push_back(DrawCall{6, {0x7271, 271, 6, 0, 0}});
-        out.push_back(DrawCall{4, {2, 0, 0, 0, 0}});
-        digitCalls(out, in.current == 2 ? stateScore : in.otherScore, 266, 16, pack);
+    for (int p = (in.players < 1 ? 1 : in.players > 5 ? 5 : in.players); p >= 1; --p) {   // $550A counts down: the last player first
+        const PlayerSpot spot = playerSpot(pack, p);
+        out.push_back(DrawCall{2, {0x55F7, spot.labelCol, spot.labelRow, 7, 7}});
+        out.push_back(DrawCall{6, {spot.markImage, spot.markX, spot.markY, 0, 0}});
+        out.push_back(DrawCall{4, {p, 0, 0, 0, 0}});
+        std::uint32_t score = p == in.current ? stateScore : (in.scores != nullptr ? (*in.scores)[static_cast<std::size_t>(p)] : in.otherScore);
+        digitCalls(out, score, spot.scoreX, spot.scoreY, pack);
     }
-    out.push_back(DrawCall{2, {0x55F7, 0, 6, 7, 7}});
-    out.push_back(DrawCall{6, {0x7201, 47, 6, 0, 0}});
-    out.push_back(DrawCall{4, {1, 0, 0, 0, 0}});
     {
-        std::uint32_t score = in.current == 2 ? in.otherScore : stateScore;
-        digitCalls(out, score, 40, 16, pack);
         out.push_back(DrawCall{2, {0x5628, 0, 84, 7, 7}});
         out.push_back(DrawCall{4, {0, 0, 0, 0, 0}});
         std::uint32_t hi = display.high[0] | (display.high[1] << 8) | (display.high[2] << 16);

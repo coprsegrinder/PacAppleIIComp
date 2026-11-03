@@ -35,6 +35,7 @@ struct Config {
     std::string setupEvents;  // --setupevents <demosetup_events.bin>: the same for the screen set-up of the attract game (tools/export_title_events.py demosetup)
     std::string endEvents;    // --endevents <demoend_events.bin>: the end of the attract game (its death) and the start of the next turn (tools/export_title_events.py demoend)
     std::string demoPages;    // --demopages <pages_DEMOF.bin>: the hi-res page at the start of every 10th tick of the attract game (tools/record_demo_full.py)
+    std::string playerPages;  // --playerpages <page_players_1.bin,...,page_players_5.bin>: the first play screen for 1-5 players (tools/capture_players_screen.py)
     std::string playerTicks;  // --playerticks <ticks_P.bin,...>: recordings of two-player games (tools/record_ticks.py P Q R S U)
     std::string boot;         // --boot <boot.bin>: the boot-menu runs of the oracle (tools/capture_boot.py, tools/export_boot.py)
     std::string hidden;       // --hidden <hidden.bin>: the hidden-menu runs of the oracle (tools/capture_hidden.py, tools/export_hidden.py)

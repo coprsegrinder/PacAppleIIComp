@@ -68,6 +68,12 @@ bool buildDemoDeathScript(const datapack::Pack& pack, ScreenScript& out, const s
 // 0 for the others). The glue of the call site is not in it.
 std::int64_t drawCallCycles(const DrawCall& call, const datapack::Pack& pack);
 
+// The cycles of the routine $550A (the labels and scores of all players and the high score) for `players` players with the given scores (BCD, index = player 1-5), lives bytes ($58:
+// bit 7 = the bonus life is still to come) and high score, and the extra it costs over the screen of one player showing the current player's score alone (TASK-033-6b: this is what
+// the rebuild of the screen after a catch needs more with several players; the bonus life itself, a score of 10,000 or more with bit 7 still set, is not counted).
+std::int64_t hudCycles(const datapack::Pack& pack, int players, const std::array<std::uint32_t, 6>& scores, const std::array<int, 6>& lives, std::uint32_t high);
+std::int64_t hudExtraCycles(const datapack::Pack& pack, int players, int current, const std::array<std::uint32_t, 6>& scores, const std::array<int, 6>& lives, std::uint32_t high);
+
 // Plays a script. `advance` moves time forward and applies every step that has become due. The hi-res page is exact at every cycle apart from the drawing
 // calls themselves, which take effect at the cycle they start (the original needs up to ~800 cycles to finish a glyph).
 class ScreenPlayer {

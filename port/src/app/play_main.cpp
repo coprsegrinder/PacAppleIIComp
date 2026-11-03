@@ -377,16 +377,15 @@ void programThread(core::GameDriver& drv, const datapack::Pack& pack, app::GameW
         if (!(first && opt.directGame)) {
             if (!runMenus(flow, rom, pack, window, quit, seconds, begin)) return;
         }
-        // Return was pressed: a game starts with the choices of the menus (the number of players is kept but only one player plays: two to five players come with 033-5/6)
-        drv.newGame();
+        // Return was pressed: a game starts with the choices of the menus: the number of players (1-5, they play in turn: TASK-033-6), the first level (the rank of the hidden menu), the keys
+        int level = flow.startLevel();
+        if (first && opt.directGame && opt.startLevel > 0) level = opt.startLevel;
+        drv.newGame(flow.players(), level > 0 ? level : 1);
         drv.core().keys() = core::KeyConfig{flow.keyUp(), flow.keyRight(), flow.keyLeft(), flow.keyDown_()};
         drv.core().port().joystickMode = flow.inputDevice() != 0;
         drv.core().input().setSoundOn(flow.soundOn());
-        int level = flow.startLevel();
-        if (first && opt.directGame && opt.startLevel > 0) level = opt.startLevel;
-        if (level > 1 || (first && opt.directGame && opt.startItems > 0)) {
-            drv.core().state().zp(0x55) = static_cast<std::uint8_t>(level);
-            if (first && opt.directGame && opt.startItems >= 1 && opt.startItems <= 248) drv.core().state().zp(0x56) = static_cast<std::uint8_t>(opt.startItems);
+        if (first && opt.directGame && opt.startItems >= 1 && opt.startItems <= 248) {
+            drv.core().state().zp(0x56) = static_cast<std::uint8_t>(opt.startItems);   // test aid: only a few items left to eat
             drv.rebuildScreen();
         }
         first = false;

@@ -38,7 +38,7 @@ DeathTimeline deathTimeline(const DeathTimingInput& in) {
     }
     t.rebuild = t.frameClear[5] + kLastClearToRebuild;
     t.ready = t.rebuild + kRebuildBase + kRebuildPerDot * in.dots + kRebuildPerEnergizer * in.energizers +
-              kRebuildPerDigit * (in.scoreDigits + in.highDigits) + kRebuildPerLife * in.livesBefore;
+              kRebuildPerDigit * (in.scoreDigits + in.highDigits) + kRebuildPerLife * in.livesBefore + in.extraHud;
     t.lastBlit = t.ready + kReadyToLastBlit;
     t.total = t.lastBlit + kLastBlitToTick;
     return t;

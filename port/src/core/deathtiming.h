@@ -17,6 +17,7 @@ struct DeathTimingInput {
     int scoreDigits = 1;        // digits shown for the player's score and for the high score (at least 1 each)
     int highDigits = 1;
     int livesBefore = 3;        // $58 & $7F as it was before the catch
+    std::int64_t extraHud = 0;  // several players: what the labels and scores of the other players add to the rebuild (attract.h hudExtraCycles)
 };
 
 struct DeathTimeline {
