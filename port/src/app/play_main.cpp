@@ -1,6 +1,6 @@
 // TASK-029h: the first playable program: Pac-Man, the maze, the dots, the score, lives, the blinks and the bonus fruit run on the C++ game core and are drawn with
 // the verified hi-res routines into a GameWindow, now WITH THE GHOSTS (M5: all four move, are frightened by the energizers, can be eaten and can catch Pac-Man).
-// The level change equals the oracle (TASK-031-3); cartoon 1 plays after level 2, 15, ... (031-6b); there is no sound, no READY pause and no death animation yet.
+// The level change equals the oracle (TASK-031-3); cartoons 1-3 play after levels 2, 5, 9, 15, ... (031-6b, 031-7); there is no sound, no READY pause and no death animation yet.
 //
 // Usage: pacman_play --pack <data.pack> [--scale N] [--seconds N] [--ticks N --dump <page.bin>]
 //   --scale N      whole-number window scale (default 3)
@@ -54,7 +54,7 @@ core::TickEvents liveTick(core::GameDriver& drv, core::CartoonPlayer* cartoons =
     const unsigned levelBefore = drv.core().state().level();
     const core::TickEvents ev = drv.tick();
     if (ev.levelComplete) {
-        // the cartoon (levels with level mod 13 = 2, 5, 9; only cartoon 1 is rebuilt so far) is shown BEFORE the next level starts (docs/CARTOONS.md)
+        // the cartoon (levels with level mod 13 = 2, 5, 9: cartoons 1, 2, 3) is shown BEFORE the next level starts (docs/CARTOONS.md)
         const bool playing = cartoons != nullptr && pack != nullptr && cartoons->start(*pack, core::cartoonAfterLevel(levelBefore));
         if (!playing) drv.nextLevel();
     }

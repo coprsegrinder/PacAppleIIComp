@@ -136,7 +136,7 @@ TEST(cartoon1_plan_timing_and_player) {
     // the player: starts for cartoon 1 only, ends after the duration, and its last picture is the original's final page
     CartoonPlayer player;
     CHECK(!player.start(loaded.pack, 0) && !player.active());
-    CHECK(!player.start(loaded.pack, 2) && !player.active());   // cartoons 2 and 3: not rebuilt yet (031-7)
+    CHECK(!player.start(loaded.pack, 4) && !player.active());
     CHECK(player.start(loaded.pack, 1) && player.active());
     player.advance(kCartoon1Cycles - 1);
     CHECK(player.active());
@@ -158,4 +158,53 @@ TEST(cartoon1_plan_timing_and_player) {
     std::size_t diff = 0;
     for (std::size_t k = 0; k < hires::kPageBytes; ++k) diff += nearEnd.byte(k) != whole.byte(k);
     CHECK_MSG(diff < 200, "page one cycle before the end differs in too many bytes");
+}
+
+// ---- TASK-031-7: cartoons 2 and 3 as game logic; golden data tests/golden/cartoon_hashes.json (call counts and final page hashes of the original's own cartoons) ----
+TEST(cartoons_2_and_3_models_draw_the_original_final_pages) {
+    if (testfw::config().image.empty() || testfw::config().script.empty()) {
+        std::printf("    SKIPPED (needs --image and --script)\n");
+        return;
+    }
+    const auto built = datapack::buildPack(readAll(testfw::config().image), verify::referenceExpected(), datapack::dataManifest());
+    CHECK_MSG(built.ok, built.reason);
+    if (!built.ok) return;
+    const auto loaded = datapack::loadPack(built.bytes, verify::referenceExpected());
+    CHECK_MSG(loaded.ok, loaded.reason);
+    if (!loaded.ok) return;
+    struct Golden {
+        int cartoon;
+        std::uint32_t calls, clear, image, maskedClear, shifted, vline;
+        const char* hash;
+    };
+    // cartoon 2: 1 clear, 184 lines, 149 masked clears, 147 images. cartoon 3: 1 clear, 93 lines, 326 masked clears, 323 dispatches of which 70 are the software-shifted ghost (type 9).
+    const Golden golden[] = {
+        {2, 1 + 184 + 149 + 147, 1, 147, 149, 0, 184, "0a0784f9b4642090d009631730d9e8a6aba3c8bc49dc0796d3e5f085ba2e5179"},
+        {3, 1 + 93 + 326 + 323, 1, 323 - 70, 326, 70, 93, "c972b343c97e5db189df6e326891a2349b40f9e1fb40fff58f457fb6110f7944"},
+    };
+    for (const Golden& g : golden) {
+        const auto plan = pacman::core::cartoonPlan(loaded.pack, g.cartoon);
+        CHECK_MSG(!plan.script.empty(), "tables missing from the pack");
+        if (plan.script.empty()) continue;
+        hires::Page page;
+        hires::ReplayStats stats;
+        CHECK(hires::replayScript(loaded.pack, plan.script, page, stats));
+        std::printf("    cartoon %d model: %u calls, unusable %d, clear %d, image %d, masked clear %d, shifted %d, lines %d, passes %u\n", g.cartoon, stats.calls, stats.unusable, stats.used[10],
+                    stats.used[1], stats.used[3], stats.used[9], stats.used[11], plan.passes);
+        CHECK(stats.calls == g.calls && plan.passOfCall.size() == g.calls);
+        CHECK(stats.unusable == 0);
+        CHECK(static_cast<std::uint32_t>(stats.used[10]) == g.clear && static_cast<std::uint32_t>(stats.used[1]) == g.image &&
+              static_cast<std::uint32_t>(stats.used[3]) == g.maskedClear && static_cast<std::uint32_t>(stats.used[9]) == g.shifted &&
+              static_cast<std::uint32_t>(stats.used[11]) == g.vline);
+        const auto digest = verify::sha256(page.bytes());
+        std::string hex;
+        for (auto b : digest) { char c[3]; std::snprintf(c, sizeof c, "%02x", b); hex += c; }
+        CHECK_MSG(hex == g.hash, "final page of cartoon " + std::to_string(g.cartoon) + " differs: " + hex);
+        pacman::core::CartoonPlayer player;
+        CHECK(player.start(loaded.pack, g.cartoon));
+        player.advance(pacman::core::kCartoonCycles[g.cartoon - 1] - 1);
+        CHECK(player.active());
+        player.advance(1);
+        CHECK(!player.active());
+    }
 }

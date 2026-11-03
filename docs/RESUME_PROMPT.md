@@ -146,3 +146,5 @@ Latest: 031-5b done (V23 was a poke artifact; re-recorded; near-ghost +1 seen at
 Latest: 031-6 partly done (cartoon 1 model in C++ equals the golden final page). Next 031-6b: play it in the game flow; then 031-7 (cartoons 2, 3).
 
 Latest: 031-6b done in code (not seen live). Next: 031-7 (cartoons 2 and 3 in C++), optionally a --level N debug start option so the user can see a cartoon without finishing level 2.
+
+Latest: 031-7 done (cartoons 2 and 3 equal the golden final pages). Next 031-8: integration - pacman_play plays several levels; optional --level N debug option; full-suite checkpoint.
