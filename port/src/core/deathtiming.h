@@ -37,6 +37,7 @@ DeathTimeline deathTimeline(const DeathTimingInput& in);
 // The last life: the same animation, then the words GAME OVER, then a long wait (measured on 5 runs, identical every time)
 inline constexpr std::int64_t kGameOverTextAfterLastClear = 18'585;   // from the erase of the last death frame to the first letter
 inline constexpr std::int64_t kGameOverTextDraw = 2'052;               // the text is drawn in this time
-inline constexpr std::int64_t kGameOverPause = 10'453'613;             // from the last letter to the first drawing of the next screen (attract)
+inline constexpr std::int64_t kGameOverPause = 10'453'613;             // from the last letter to the first title text of the attract screen
+inline constexpr std::int64_t kGameOverToAttractStart = 4'868'255;       // from the last letter to $52BB, the start of an attract turn (docs/ATTRACT_FLOW.md; seed 91 run)
 
 }  // namespace pacman::core

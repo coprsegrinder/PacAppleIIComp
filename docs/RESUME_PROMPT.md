@@ -182,3 +182,5 @@ Latest: 033-3 STOPPED at the time limit: death animation coded and timed from th
 Latest: 033-3 checked: death start (positions + constant image $9BE6) equals the oracle in the free-running core at 2 catches; full suite 123/0. Death step times vary with where Pac-Man dies (2 deaths: 6,043,263 vs 6,018,829 total) - port uses the first death constants. Next: 033-3b (death step cost model from more recorded deaths) and GAME OVER pause; then 033-4 new game.
 
 Latest: 033-3b done (death/GAME OVER timeline model, 220 deaths compared, suite 126/0, time limit lifted by the user: print progress updates). Next: 033-4 GAME OVER -> title/attract -> new game flow (the GAME OVER wait is 10,453,613 cycles, then the attract screens; jingle + READY wait again at a new game), then 033-5 title/mode screens.
+
+Latest: 033-4a done (docs/ATTRACT_FLOW.md: attract loop 63,189,736 cycles, demo = 7,894 ticks + death, GAME OVER -> attract start 4,868,255 cycles). Next: user decision on the text-mode prompt font (options a/b/c in that file; recommended c with a as fallback), then 033-4b the title screen, verified by page hashes against the oracle.
