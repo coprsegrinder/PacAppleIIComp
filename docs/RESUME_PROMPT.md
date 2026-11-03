@@ -162,3 +162,5 @@ Latest: 032-3a done (oracle sound starts and freeze lengths recorded). Next 032-
 Latest: 032-3 done (core reports sounds + freeze, equal the oracle on 298 starts). Next 032-4: audio output (waveOut), square wave from click lists, mute.
 
 Latest: 032-4 done in code (square wave + waveOut, pacman_play --sound-test); the user should listen. Next 032-5: sounds in the live game (queue from TickEvents::sounds, freeze via extraCycles, jingle at start, mute Ctrl-S/F9).
+
+Latest: 032-5 done in code (live sounds, jingle at start, Ctrl-S/F9 mute). The user should try the game with sound. Next 032-6: open sound questions (jingle on new games/attract, cartoon sound sites, key in jingle).

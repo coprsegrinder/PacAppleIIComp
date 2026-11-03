@@ -1,6 +1,6 @@
 // TASK-029h: the first playable program: Pac-Man, the maze, the dots, the score, lives, the blinks and the bonus fruit run on the C++ game core and are drawn with
 // the verified hi-res routines into a GameWindow, now WITH THE GHOSTS (M5: all four move, are frightened by the energizers, can be eaten and can catch Pac-Man).
-// The level change equals the oracle (TASK-031-3); cartoons 1-3 play after levels 2, 5, 9, 15, ... (031-6b, 031-7); there is no sound, no READY pause and no death animation yet.
+// The level change equals the oracle (TASK-031-3); cartoons 1-3 play after levels 2, 5, 9, 15, ... (031-6b, 031-7); the sounds play (032-5); there is no READY pause and no death animation yet.
 //
 // Usage: pacman_play --pack <data.pack> [--scale N] [--seconds N] [--ticks N --dump <page.bin>] [--level N] [--items K]
 //   --scale N      whole-number window scale (default 3)
@@ -10,9 +10,10 @@
 //   --items K      test aid: only K dots/energizers left to eat (1-248), so a level end comes quickly
 //   --ticks N      run N ticks at once WITHOUT a window (no keys), write the final hi-res page (8,192 bytes) to --dump and exit
 // Keys: arrow-style keys of the original (A = up, Z = down, Ctrl-H = left, Ctrl-U = right; the arrow keys of the PC keyboard are mapped to them), Esc = pause,
-// Ctrl-S = sound on/off (no sound yet), F11 / Alt+Enter = full screen, Ctrl+Plus/Minus = scale, F9 = mute. Closing the window quits.
+// Ctrl-S = sound on/off, F11 / Alt+Enter = full screen, Ctrl+Plus/Minus = scale, F9 = mute. Closing the window quits.
 #include <windows.h>
 
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cstdint>
@@ -94,7 +95,58 @@ core::TickEvents liveTick(core::GameDriver& drv, core::CartoonPlayer* cartoons =
     return ev;
 }
 
+// TASK-032-5: the game's sounds. Every sound is rendered once (square wave from the original's click times); a sound the core reports is queued behind what is still playing.
+// The audio can be switched off by Ctrl-S (the original's own switch, in the core) or F9 (the window); the game still stands still for the sound (the original's engines
+// busy-wait on the cassette output when Ctrl-S has silenced them).
+struct SoundPlayer {
+    app::AudioOutput audio;
+    std::array<core::Pcm, static_cast<std::size_t>(core::SoundId::Count)> pcm;
+    core::Pcm gapBetweenDeathSteps;   // 137,052 cycles of silence: measured between the six death steps (entry to entry minus the freeze of the earlier step)
+    bool ready = false;
+
+    void init(const datapack::Pack& pack) {
+        core::SoundData data;
+        if (!data.load(pack) || !audio.open(44100)) return;
+        for (std::size_t i = 0; i < pcm.size(); ++i) {
+            const auto id = static_cast<core::SoundId>(i);
+            if (id == core::SoundId::Count) continue;
+            const auto clicks = core::clickTimes(data.list(id));
+            if (!clicks.empty()) pcm[i] = core::renderClicks(clicks, core::soundFreezeCycles(id), 44100);
+        }
+        gapBetweenDeathSteps = core::renderClicks({}, 137'052, 44100);
+        ready = true;
+    }
+    void play(core::SoundId id) {
+        if (!ready || pcm[static_cast<std::size_t>(id)].samples.empty()) return;
+        const bool laterDeathStep = id == core::SoundId::Death5 || id == core::SoundId::Death4 || id == core::SoundId::Death3 || id == core::SoundId::Death2 || id == core::SoundId::Death1;
+        if (laterDeathStep) audio.play(gapBetweenDeathSteps);
+        audio.play(pcm[static_cast<std::size_t>(id)]);
+    }
+    void stop() {
+        if (ready) audio.stop();
+    }
+};
+
+// How many cycles beyond the ordinary tick cost the game stands still for a sound. The dot sound is part of the measured mean tick cost (kTypicalTickCycles) and the six
+// death steps are part of the measured death sequence (kDeathSequenceCycles); all other sounds are added (INFERRED approximation until the pacing step, M8).
+std::int64_t extraFreeze(core::SoundId id) {
+    switch (id) {
+        case core::SoundId::DotEaten:
+        case core::SoundId::Death1:
+        case core::SoundId::Death2:
+        case core::SoundId::Death3:
+        case core::SoundId::Death4:
+        case core::SoundId::Death5:
+        case core::SoundId::Death6:
+            return 0;
+        default:
+            return core::soundFreezeCycles(id);
+    }
+}
+
 void gameThread(core::GameDriver& drv, const datapack::Pack& pack, app::GameWindow& window, std::atomic<bool>& quit, int seconds) {
+    SoundPlayer sounds;
+    sounds.init(pack);
     core::CartoonPlayer cartoon;
     hires::Page cartoonPage;
     core::CycleClock clock;
@@ -102,6 +154,9 @@ void gameThread(core::GameDriver& drv, const datapack::Pack& pack, app::GameWind
     std::int64_t budget = 0;
     const std::int64_t begin = core::nowNanoseconds();
     window.setPage(drv.page());
+    // the intro jingle starts a game (before the first tick, docs/SOUND.md section 6); the game stands still for its 5 s
+    if (drv.core().input().soundOn() && !window.muted()) sounds.play(core::SoundId::Jingle);
+    budget = -core::soundFreezeCycles(core::SoundId::Jingle);
     while (!quit.load() && window.ok()) {
         const std::int64_t now = core::nowNanoseconds();
         if (seconds > 0 && now - begin > static_cast<std::int64_t>(seconds) * 1'000'000'000) {
@@ -126,12 +181,19 @@ void gameThread(core::GameDriver& drv, const datapack::Pack& pack, app::GameWind
         while (const auto key = window.popKey()) drv.core().input().pushKey(*key);
         bool changed = false;
         while (budget >= core::kTypicalTickCycles) {
-            liveTick(drv, &cartoon, &pack);
+            const core::TickEvents ev = liveTick(drv, &cartoon, &pack);
+            std::int64_t soundFreeze = 0;
+            const bool audible = drv.core().input().soundOn() && !window.muted();
+            for (const core::SoundId id : ev.sounds) {
+                if (audible) sounds.play(id);
+                soundFreeze += extraFreeze(id);
+            }
+            if (!audible) sounds.stop();   // Ctrl-S / F9 during a long sound cuts it
             if (cartoon.active()) {   // the level ended with a cartoon: leave the tick loop, the cartoon starts at 0 cycles
                 budget = 0;
                 break;
             }
-            budget -= core::kTypicalTickCycles + drv.extraCycles();
+            budget -= core::kTypicalTickCycles + drv.extraCycles() + soundFreeze;
             changed = true;
             if (budget < -core::kDeathSequenceCycles * 2) budget = 0;
         }
