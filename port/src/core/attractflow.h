@@ -23,6 +23,9 @@ inline constexpr std::uint8_t kKeySpace = 0xA0, kKeyReturn = 0x8D, kKeyEsc = 0x9
 class AttractFlow {
 public:
     enum class Mode : std::uint8_t {
+        BootMode,       // the first menu of the program: "CHOOSE A MODE (1 - 2)" ($48A6)
+        BootKeyboard,   // "NORMAL OR CUSTOMIZED KEYBOARD (N/C)?" ($492F)
+        BootKeys,       // "PRESS KEY USED TO MOVE LEFT / RIGHT / UP / DOWN" ($4955), keyIndex() = 0-3
         Attract,        // an attract turn is running (the title, the chase, the demo game)
         Players,        // text screen: "HOW MANY PLAYERS?"
         PressReturn,    // text screen: "PRESS <RETURN> TO PLAY"
@@ -34,7 +37,16 @@ public:
     };
 
     // `romPath`: the Autostart Monitor ROM dump (341-0020, 2,048 bytes, $F800-$FFFF)
-    bool start(const datapack::Pack& pack, const std::string& romPath);   // the first turn, at its cycle 0 ($52BB)
+    bool start(const datapack::Pack& pack, const std::string& romPath);   // the first turn, at its cycle 0 ($52BB), as after the boot menus with "1" and "N" (the state of the random counter, the default keys)
+    bool startBoot(const datapack::Pack& pack, const std::string& romPath);   // the program from its first instruction ($4027): the two boot menus, then the first turn
+    int inputDevice() const noexcept { return monitor_.peek(0xF5); }          // `$F5`: 0 = keyboard, 1 = joystick (the first menu)
+    // the four key codes of the keyboard mode (`$6FBA`, `$6FB6`, `$6FB2`, `$6FBE`): left, right, up, down; the customised keyboard changes them (defaults $88, $95, $C1, $DA)
+    std::uint8_t keyLeft() const noexcept { return monitor_.peek(0x6FBA); }
+    std::uint8_t keyRight() const noexcept { return monitor_.peek(0x6FB6); }
+    std::uint8_t keyUp() const noexcept { return monitor_.peek(0x6FB2); }
+    std::uint8_t keyDown_() const noexcept { return monitor_.peek(0x6FBE); }
+    int keyIndex() const noexcept { return keyIndex_; }
+    std::int64_t bootT0() const noexcept { return bootT0_; }   // the cycle (counted from $4027) at which the first turn started, after the boot menus
     // A key goes into the keyboard latch (one key; a second key replaces it, as the Apple II keyboard does). `code` is an Apple II key code (kKey...), digits 0xB0-0xB9.
     void keyDown(std::uint8_t code) noexcept { latch_ = code; haveKey_ = true; }
     void advance(std::int64_t cycles);
@@ -51,7 +63,7 @@ public:
     AttractTurn& turn() noexcept { return turn_; }
     const AttractTurn& turn() const noexcept { return turn_; }
     std::size_t turnIndex() const noexcept { return turnIndex_; }   // 0 = the first turn after the boot menus
-    bool prompting() const noexcept { return mode_ == Mode::Players || mode_ == Mode::PressReturn || isLineMode(); }
+    bool prompting() const noexcept { return mode_ == Mode::Players || mode_ == Mode::PressReturn || isLineMode() || isBootMode(); }
     bool textReady() const noexcept { return prompting() && busy_ <= 0; }   // the prompt is complete and waits for a key; only then is the text screen shown (until then the last picture stays)
     bool showsText() const noexcept { return textReady(); }
     std::int64_t busyCycles() const noexcept { return busy_ > 0 ? busy_ : 0; }   // cycles until the prompt is complete (the code that makes it has already run)
@@ -75,6 +87,7 @@ public:
     static constexpr std::int64_t kHiddenCartoonCycles[3] = {5'585'985, 4'335'890, 8'200'636};
 
 private:
+    bool isBootMode() const noexcept { return mode_ == Mode::BootMode || mode_ == Mode::BootKeyboard || mode_ == Mode::BootKeys; }
     bool isLineMode() const noexcept { return mode_ == Mode::RankOrCartoon || mode_ == Mode::CartoonNumber || mode_ == Mode::RankNumber; }
     void takeKeyAtCheck(const KeyCheck& c);
     void enterPlayers(std::int64_t at);
@@ -83,6 +96,11 @@ private:
     void linePrompt(int which);                   // the text of the second line and its input
     void afterKey(std::uint8_t k);                // the key (or the line) is complete: the game's code up to the next wait
     void afterPlayersKey(std::uint8_t k);
+    void bootModeScreen();
+    void bootKeyboardScreen();
+    void bootKeyPrompt(int index);
+    void afterBootKey(std::uint8_t k);
+    void finishBoot();
     void afterLine();
     void rankLine();
     void endTransition(std::int64_t startCycles);
@@ -101,6 +119,8 @@ private:
     int players_ = 1;
     int cartoon_ = 0;
     std::int64_t cartoonElapsed_ = 0, cartoonLength_ = 0;
+    int keyIndex_ = 0;
+    std::int64_t bootT0_ = -1;
     std::int64_t waitClock_ = 0;
     std::array<std::uint8_t, 256> waitZp_{};
     std::int64_t busy_ = 0;       // cycles still to pass before the current prompt is complete (the code up to its key wait has run already)

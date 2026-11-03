@@ -148,6 +148,23 @@ Monitor::Status Monitor::gameCout(std::uint8_t c) {
     return gameVtab();                       // ($485C itself is entered by a JMP: its own JSR $FC22 is counted inside)
 }
 
+Monitor::Status Monitor::gamePrintZ(std::span<const std::uint8_t> s, std::uint16_t tableAddress) {
+    cpu_.cycles += 2;
+    cpu_.x = 0;
+    for (std::size_t i = 0;; ++i) {
+        const int extra = ((tableAddress & 0xFF) + i > 0xFF) ? 1 : 0;
+        if (i >= s.size() || s[i] == 0) {
+            cpu_.cycles += 4 + extra + 3;        // LDA table,X; BEQ (taken)
+            return Status::Done;
+        }
+        cpu_.cycles += 4 + extra + 2 + 6;        // LDA table,X; BEQ (not taken); JSR $4A6A
+        const Status st = gameCout(s[i]);
+        if (st != Status::Done) return st;
+        cpu_.x = static_cast<std::uint8_t>(cpu_.x + 1);
+        cpu_.cycles += 2 + 3;                    // INX; BNE (taken)
+    }
+}
+
 Monitor::Status Monitor::gamePrint(std::span<const std::uint8_t> s, std::uint16_t tableAddress) {
     // LDX #0; loop: LDA table,X (one more cycle when the index crosses a page); JSR $4A6A; INX; CPX #n; BCC/BNE loop
     cpu_.cycles += 2;

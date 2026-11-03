@@ -198,3 +198,5 @@ Latest: 033-4e done (AttractFlow in port/src/core/attractflow.*, TextScreen in t
 Latest: 033-4e2 done (hidden menu in AttractFlow; 13 oracle key lists equal; suite 140/0; startLevel() must be used by the game start in 033-4g). Next: 033-4f boot menus.
 
 Latest: 033-4e3 done (the monitor ROM runs: port/src/core/cpu6502.*, monitor.*; AttractFlow uses it; start(pack, romPath); suite 140/0). USER DECISION: the release includes the ROM dumps (Autostart Monitor + character ROM) as files, never the game image. Next: 033-4f boot menus (same ROM calls: oracle with A2ROM=1), 033-4g wiring.
+
+Latest: 033-4f done (AttractFlow::startBoot; test_boot 46 waits equal; suite 141/0). Next: 033-4g wire AttractFlow into pacman_play: boot menus (text), lo-res/hires attract, prompts, game start (players(), startLevel(), inputDevice(), keyLeft/Right/Up/keyDown_()), GAME OVER -> returnFromGame after 4,868,255 cycles; ROM files next to the exe (release includes them).

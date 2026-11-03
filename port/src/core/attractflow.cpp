@@ -15,6 +15,10 @@ bool AttractFlow::start(const datapack::Pack& pack, const std::string& romPath) 
     if (!monitor_.loadRom(romPath)) return false;
     monitor_.reset();
     monitor_.poke(0x54E1, 1);
+    monitor_.poke(0x6FBA, 0x88);                 // the keyboard mode's keys: left arrow, right arrow, A, Z
+    monitor_.poke(0x6FB6, 0x95);
+    monitor_.poke(0x6FB2, 0xC1);
+    monitor_.poke(0x6FBE, 0xDA);
     mode_ = Mode::Attract;
     turnIndex_ = 0;
     lastCheck_ = -1;
@@ -23,6 +27,20 @@ bool AttractFlow::start(const datapack::Pack& pack, const std::string& romPath) 
     ctrlV_ = false;
     spaceAt_ = endAt_ = -1;
     return turn_.start(pack);
+}
+
+bool AttractFlow::startBoot(const datapack::Pack& pack, const std::string& romPath) {
+    if (!start(pack, romPath)) return false;
+    monitor_.poke(0x4E, 0);                      // the random counter starts at 0: it counts up in the key waits of the menus
+    monitor_.poke(0x4F, 0);
+    monitor_.setCycles(0);
+    // $4027: LDA #1, STA $51, JSR $54D4 (the new-game state: measured 47,555 cycles), the reset vectors and flags, JSR $4821 -> JMP $48A6 (V: the oracle's marks, 47,637 cycles in all)
+    monitor_.addCycles(47'637);
+    monitor_.poke(0x51, 1);
+    bootModeScreen();
+    busy_ = monitor_.cycles();
+    syncText();
+    return true;
 }
 
 void AttractFlow::newTurn() {
@@ -90,6 +108,132 @@ void AttractFlow::linePrompt(int which) {
     monitor_.addCycles(6);
     monitor_.call(kGetln);
     mode_ = which == 1 ? Mode::CartoonNumber : Mode::RankNumber;
+}
+
+// $48A6: JSR $6F3C, JSR $4868, the cursor to the top left, VTAB, the text of $48D9 (ends with a zero byte), JSR $FD0C
+void AttractFlow::bootModeScreen() {
+    monitor_.addCycles(6);
+    monitor_.gameSetTextMode();
+    monitor_.addCycles(6);
+    monitor_.gameClearPage();
+    monitor_.addCycles(2 + 3 + 3);
+    monitor_.poke(0x24, 0);
+    monitor_.poke(0x25, 0);
+    monitor_.addCycles(6);
+    monitor_.gameVtab();
+    const auto s = pack_->find(0x48D9, 86);
+    monitor_.gamePrintZ(s, 0x48D9);
+    monitor_.addCycles(6);
+    monitor_.call(kRdkey);
+    mode_ = Mode::BootMode;
+}
+
+// $492F: JSR $4868, JSR $6F3C, the cursor to the top left, VTAB, the 38 characters of $4A01, JSR $FD0C
+void AttractFlow::bootKeyboardScreen() {
+    monitor_.addCycles(6);
+    monitor_.gameClearPage();
+    monitor_.addCycles(6);
+    monitor_.gameSetTextMode();
+    monitor_.addCycles(2 + 3 + 3);
+    monitor_.poke(0x24, 0);
+    monitor_.poke(0x25, 0);
+    monitor_.addCycles(6);
+    monitor_.gameVtab();
+    const auto s = pack_->find(0x4A01, 105);
+    if (s.size() >= 38) monitor_.gamePrint(s.first(38), 0x4A01);
+    monitor_.addCycles(6);
+    monitor_.call(kRdkey);
+    mode_ = Mode::BootKeyboard;
+}
+
+// the prompt for the key of direction `index` (0 left, 1 right, 2 up, 3 down) at column $16: the text at $4A3A, $4A46, $4A52, $4A5E (12 bytes each), then JSR $FD0C
+void AttractFlow::bootKeyPrompt(int index) {
+    const auto s = pack_->find(0x4A01, 105);
+    const std::uint16_t addr = static_cast<std::uint16_t>(0x4A3A + 12 * index);
+    if (s.size() >= static_cast<std::size_t>(addr - 0x4A01 + 12)) monitor_.gamePrint(s.subspan(addr - 0x4A01, 12), addr);
+    monitor_.addCycles(6);
+    monitor_.call(kRdkey);
+    mode_ = Mode::BootKeys;
+    keyIndex_ = index;
+}
+
+// the RTS of $4821 returns to $4061: JMP $43D2, then $52BB (11 cycles later) starts the first turn
+void AttractFlow::finishBoot() {
+    monitor_.addCycles(3 + 11);
+    bootT0_ = monitor_.cycles();
+    mode_ = Mode::Attract;
+    turn_.start(*pack_);
+    lastCheck_ = -1;
+}
+
+void AttractFlow::afterBootKey(std::uint8_t k) {
+    if (mode_ == Mode::BootMode) {                 // $48C5
+        monitor_.addCycles(2);
+        if (k == 0xB1) {                           // BEQ $48D2: LDA #0, STA $F5, JMP $492F
+            monitor_.addCycles(3 + 2 + 3 + 3);
+            monitor_.poke(0xF5, 0);
+            bootKeyboardScreen();
+            return;
+        }
+        monitor_.addCycles(2 + 2);                 // BEQ (not taken), CMP #$B2
+        if (k != 0xB2) {
+            monitor_.addCycles(3 + 6);             // BNE $48C2, JSR $FD0C
+            monitor_.call(kRdkey);
+            return;
+        }
+        monitor_.addCycles(2 + 2 + 3 + 6);         // BNE (not taken), LDA #1, STA $F5, RTS
+        monitor_.poke(0xF5, 1);
+        finishBoot();
+        return;
+    }
+    if (mode_ == Mode::BootKeyboard) {             // $494E
+        monitor_.addCycles(2);
+        if (k != 0xC3) {                           // BEQ (not taken), JMP $4A00, RTS
+            monitor_.addCycles(2 + 3 + 6);
+            finishBoot();
+            return;
+        }
+        monitor_.addCycles(3 + 6);                 // BEQ $4955, JSR $4A6A: the C is echoed
+        monitor_.gameCout(k);
+        monitor_.addCycles(2 + 3 + 2 + 3);         // LDA #4, STA $25, LDA #0, STA $24
+        monitor_.poke(0x25, 4);
+        monitor_.poke(0x24, 0);
+        monitor_.addCycles(6);
+        monitor_.gameVtab();
+        const auto s = pack_->find(0x4A01, 105);
+        if (s.size() >= 0x4A26 - 0x4A01 + 20) monitor_.gamePrint(s.subspan(0x4A26 - 0x4A01, 20), 0x4A26);
+        monitor_.addCycles(2 + 3 + 2 + 3);         // LDA #$16, STA $24, LDA #6, STA $25
+        monitor_.poke(0x24, 0x16);
+        monitor_.poke(0x25, 6);
+        monitor_.addCycles(6);
+        monitor_.gameVtab();
+        bootKeyPrompt(0);
+        return;
+    }
+    // BootKeys: the key for direction keyIndex_; it must differ from the earlier ones (CMP abs, BEQ back to the key wait)
+    static constexpr std::uint16_t kAddr[4] = {0x6FBA, 0x6FB6, 0x6FB2, 0x6FBE};
+    for (int j = 0; j < keyIndex_; ++j) {
+        monitor_.addCycles(4);
+        if (monitor_.peek(kAddr[j]) == k) {
+            monitor_.addCycles(3 + 6);             // BEQ (taken), JSR $FD0C
+            monitor_.call(kRdkey);
+            return;
+        }
+        monitor_.addCycles(2);
+    }
+    monitor_.addCycles(4);                         // STA $6FBx
+    monitor_.poke(kAddr[keyIndex_], k);
+    if (keyIndex_ == 3) {
+        monitor_.addCycles(6);                     // falls into $4A00: RTS
+        finishBoot();
+        return;
+    }
+    monitor_.addCycles(5 + 2 + 3);                 // INC $25, LDA #$16, STA $24
+    monitor_.poke(0x25, static_cast<std::uint8_t>(monitor_.peek(0x25) + 1));
+    monitor_.poke(0x24, 0x16);
+    monitor_.addCycles(6);
+    monitor_.gameVtab();
+    bootKeyPrompt(keyIndex_ + 1);
 }
 
 void AttractFlow::enterPlayers(std::int64_t at) {
@@ -313,7 +457,8 @@ void AttractFlow::advance(std::int64_t cycles) {
             monitor_.pressKey(latch_);
             const Monitor::Status st = monitor_.resume();
             if (st == Monitor::Status::Done) {
-                if (isLineMode()) afterLine();
+                if (isBootMode()) afterBootKey(monitor_.a());
+                else if (isLineMode()) afterLine();
                 else afterPlayersKey(monitor_.a());
             }
             busy_ = monitor_.cycles() - before;

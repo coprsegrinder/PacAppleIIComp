@@ -53,6 +53,7 @@ public:
     void gameClearPage();                                   // $4868: page 2 filled with $A0, cursor ($24, $25) to 0
     Status gameVtab();                                      // $485C: JSR $FC22 (the ROM computes BASL/BASH), then the high byte of BASH = $08 + page bits
     Status gameCout(std::uint8_t c);                        // $4A6A: Return = new line through VTAB, everything else to COUT1 ($FDF0)
+    Status gamePrintZ(std::span<const std::uint8_t> s, std::uint16_t tableAddress);   // $48B7: LDX #0 / LDA table,X / BEQ end / JSR $4A6A / INX / BNE loop (stops at the first zero byte)
     Status gamePrint(std::span<const std::uint8_t> s, std::uint16_t tableAddress);   // LDX #0 / LDA table,X / JSR $4A6A / INX / CPX / BCC loop (JSR of the caller excluded); the address decides the page crossings of LDA table,X
 
     // Bus
