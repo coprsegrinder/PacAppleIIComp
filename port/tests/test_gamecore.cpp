@@ -101,7 +101,7 @@ TEST(gamecore_against_the_oracle_recordings) {
     if (!loaded.ok) return;
     std::map<std::size_t, std::pair<std::size_t, std::size_t>> diffs;   // offset -> (count, first tick)
     std::map<std::size_t, std::string> firstFile;
-    std::size_t ticksRun = 0, resyncs = 0, wrongEvents = 0, caughtChecked = 0, badRestart = 0;
+    std::size_t ticksRun = 0, resyncs = 0, wrongEvents = 0, caughtChecked = 0, badRestart = 0, levelChangesChecked = 0, badLevelChange = 0;
     std::vector<std::string> files = split(testfw::config().ticks);
     if (!testfw::config().demo.empty()) files.push_back(testfw::config().demo);   // the attract demo: Pac-Man steered by the original's own move stream
     for (const auto& path : files) {
@@ -149,6 +149,22 @@ TEST(gamecore_against_the_oracle_recordings) {
                 ++caughtChecked;
                 if (d != 0) { ++badRestart; if (badRestart <= 3) std::printf("    %s tick %zu: restarted life differs in %zu bytes\n", path.c_str(), k, d); }
             }
+            if (ev.levelComplete && !pokedLevel) {   // TASK-031-3: the level change must equal the oracle's first state of the new level
+                core.startNextLevel();
+                const auto m2 = toOracleLayout(core.state()), o2 = toOracleLayout(b);
+                std::string list;
+                std::size_t d = 0;
+                for (std::size_t i = 0; i < m2.size(); ++i) {
+                    if (i == 30 || i == 31 || m2[i] == o2[i]) continue;
+                    ++d;
+                    if (list.size() < 400) list += " [" + std::to_string(i) + "] " + std::to_string(m2[i]) + ">" + std::to_string(o2[i]);
+                }
+                ++levelChangesChecked;
+                if (d != 0) {
+                    ++badLevelChange;
+                    std::printf("    %s tick %zu: level change differs in %zu bytes (mine>oracle, decimal):%s\n", path.c_str(), k, d, list.c_str());
+                }
+            }
             const bool restart = ev.caught || ev.levelComplete || ev.outsideMap || b.level() != a.level() || (b.lives() & 0x7F) < (a.lives() & 0x7F);
             if (restart) {
                 const bool outside = ev.outsideMap && b.dotsLeft() < a.dotsLeft();
@@ -180,6 +196,8 @@ TEST(gamecore_against_the_oracle_recordings) {
     for (const auto& [off, d] : diffs) std::printf("    %-12s differs in %zu ticks (first: tick %zu of %s)\n", offsetName(off).c_str(), d.first, d.second, firstFile[off].c_str());
     std::printf("    %zu catches compared with the oracle's restarted life, %zu differ; %zu catch / level-end events disagree\n", caughtChecked, badRestart, wrongEvents);
     CHECK(diffs.empty());
+    std::printf("    %zu level changes compared with the oracle, %zu differ\n", levelChangesChecked, badLevelChange);
     CHECK(wrongEvents == 0 && badRestart == 0 && caughtChecked >= 8);
+    CHECK(badLevelChange == 0 && levelChangesChecked >= 7);
     CHECK(ticksRun > 10000);
 }

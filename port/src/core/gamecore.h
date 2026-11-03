@@ -65,9 +65,10 @@ public:
     TickEvents tick();
     GhostShared& ghostShared() noexcept { return ghostShared_; }
     GhostQueues& ghostQueues() noexcept { return queues_; }
-    // UNVERIFIED STAND-IN for the level change (the real one, $6CF4 and the level tables, is M6): level + 1, the pristine maze, the counters of a fresh level, the
-    // score and the lives kept, then the start of a life. Only used by the playable program.
-    void startNextLevelUnverified();
+    // The level change (TASK-031-3): level + 1, the pristine maze, the counters of a fresh level, the score and the lives kept, then the start of a life.
+    // VERIFIED against the oracle: the resulting logical state equals the first tick of the new level on 7 level ends (levels 1, 2, 4, 5, 9, 20; test_gamecore).
+    // Not covered: the ghost move queues and the fruit/blink bytes outside the logical state, the cartoon, the flash and the screen rebuild (drawing is in tickdraw).
+    void startNextLevel();
     // For recordings whose position was poked without the cell counters: the original ate an item from a copy of the map; the delay it causes is applied here.
     // Only the delay counter F3 is set (the caller already holds the oracle's $59).
     void itemEatenOutsideTheMap() {

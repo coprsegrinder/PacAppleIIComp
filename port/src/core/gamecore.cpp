@@ -100,7 +100,7 @@ void GameCore::fruit() {
     if ((sum & 0xFF) == 0 && sum < 0x100) e7_ = 0;                      // $6AC0: BCC after a zero sum: the lifetime has run out
 }
 
-void GameCore::startNextLevelUnverified() {
+void GameCore::startNextLevel() {
     GameState& s = state_;
     PlayerSave save = savePlayer(s);   // $52-$59
     save.bytes[3] = static_cast<std::uint8_t>(s.level() + 1);

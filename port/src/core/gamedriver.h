@@ -33,7 +33,7 @@ public:
         prev_.e2 = core_.ghostShared().e2;
         prev_.e4 = core_.ghostShared().e4;
     }
-    void nextLevelUnverified() { core_.startNextLevelUnverified(); rebuildScreen(); }   // see GameCore::startNextLevelUnverified
+    void nextLevel() { core_.startNextLevel(); rebuildScreen(); }   // see GameCore::startNextLevel
     void rebuildScreen();                  // the page from the state: walls, door, dots, labels, score, high score, icons, Pac-Man (no ghosts)
     GameCore& core() noexcept { return core_; }
     const hires::Page& page() const noexcept { return page_; }

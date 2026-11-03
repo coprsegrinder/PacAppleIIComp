@@ -50,7 +50,7 @@ bool loadPackFile(const std::wstring& packPath, datapack::LoadResult& loaded) {
 // One tick with the consequences the live program draws: a completed maze starts the (unverified) next level.
 core::TickEvents liveTick(core::GameDriver& drv) {
     const core::TickEvents ev = drv.tick();
-    if (ev.levelComplete) drv.nextLevelUnverified();
+    if (ev.levelComplete) drv.nextLevel();
     return ev;
 }
 
