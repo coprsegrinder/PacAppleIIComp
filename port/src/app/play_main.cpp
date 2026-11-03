@@ -2,9 +2,11 @@
 // the verified hi-res routines into a GameWindow, now WITH THE GHOSTS (M5: all four move, are frightened by the energizers, can be eaten and can catch Pac-Man).
 // The level change equals the oracle (TASK-031-3); cartoons 1-3 play after levels 2, 5, 9, 15, ... (031-6b, 031-7); there is no sound, no READY pause and no death animation yet.
 //
-// Usage: pacman_play --pack <data.pack> [--scale N] [--seconds N] [--ticks N --dump <page.bin>]
+// Usage: pacman_play --pack <data.pack> [--scale N] [--seconds N] [--ticks N --dump <page.bin>] [--level N] [--items K]
 //   --scale N      whole-number window scale (default 3)
 //   --seconds N    close the window by itself after N seconds (for tests)
+//   --level N      test aid: start at level N (1-255)
+//   --items K      test aid: only K dots/energizers left to eat (1-248), so a level end comes quickly
 //   --ticks N      run N ticks at once WITHOUT a window (no keys), write the final hi-res page (8,192 bytes) to --dump and exit
 // Keys: arrow-style keys of the original (A = up, Z = down, Ctrl-H = left, Ctrl-U = right; the arrow keys of the PC keyboard are mapped to them), Esc = pause,
 // Ctrl-S = sound on/off (no sound yet), F11 / Alt+Enter = full screen, Ctrl+Plus/Minus = scale, F9 = mute. Closing the window quits.
@@ -111,7 +113,7 @@ void gameThread(core::GameDriver& drv, const datapack::Pack& pack, app::GameWind
 
 int wmain(int argc, wchar_t** argv) {
     std::wstring pack, dump;
-    int scale = 3, seconds = 0;
+    int scale = 3, seconds = 0, startLevel = 0, startItems = 0;
     long ticks = -1;
     for (int i = 1; i < argc; ++i) {
         const std::wstring a = argv[i];
@@ -120,6 +122,8 @@ int wmain(int argc, wchar_t** argv) {
         else if (a == L"--seconds" && i + 1 < argc) seconds = _wtoi(argv[++i]);
         else if (a == L"--ticks" && i + 1 < argc) ticks = _wtol(argv[++i]);
         else if (a == L"--dump" && i + 1 < argc) dump = argv[++i];
+        else if (a == L"--level" && i + 1 < argc) startLevel = _wtoi(argv[++i]);
+        else if (a == L"--items" && i + 1 < argc) startItems = _wtoi(argv[++i]);
         else return 64;
     }
     datapack::LoadResult loaded;
@@ -129,6 +133,10 @@ int wmain(int argc, wchar_t** argv) {
         std::puts("the data pack lacks tables the game core needs");
         return 3;
     }
+    // Test aids, NOT part of the faithful game: start at a chosen level, and/or with only a few dots left to eat so that a level end (and the cartoon after level 2, 5, 9, ...) is quick to reach.
+    if (startLevel >= 1 && startLevel <= 255) drv.core().state().zp(0x55) = static_cast<std::uint8_t>(startLevel);
+    if (startItems >= 1 && startItems <= 248) drv.core().state().zp(0x56) = static_cast<std::uint8_t>(startItems);
+    if (startLevel > 0 || startItems > 0) drv.rebuildScreen();
     if (ticks >= 0) {   // headless: run N ticks, write the page
         for (long t = 0; t < ticks; ++t) liveTick(drv);
         if (!dump.empty()) {

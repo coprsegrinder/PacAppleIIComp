@@ -111,6 +111,11 @@ void GameCore::startNextLevel() {
     if (!map.empty()) std::copy(map.begin(), map.end(), s.map.begin());
     startOfLife(s, start_, save);
     e7_ = 0;
+    // the ghost side of $53E6, as after a catch: queues ($6E79), corner phase for 160 mode ticks, no frightened period
+    initGhostQueues(queues_, ghostData_);
+    ghostShared_.ea = 0xA0;
+    ghostShared_.eb = 0;
+    ghostShared_.e4 = 0;
 }
 
 bool GameCore::contactTest(int g, TickEvents& ev) {

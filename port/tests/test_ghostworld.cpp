@@ -75,7 +75,7 @@ TEST(ghostworld_free_running_against_the_oracle_recordings) {
     if (!loaded.ok) return;
     std::map<std::size_t, std::pair<std::size_t, std::size_t>> diffs;   // offset -> (count, first tick)
     std::map<std::size_t, std::string> firstWhere;
-    std::size_t ticks = 0, resyncs = 0, sharedBad = 0, queueBad = 0, fruitBad = 0, fruitTicks = 0, pointsTicks = 0, fileCount = 0, caught = 0, eaten = 0, shown = 0;
+    std::size_t ticks = 0, resyncs = 0, sharedBad = 0, queueBad = 0, levelChanges = 0, levelChangeBad = 0, fruitBad = 0, fruitTicks = 0, pointsTicks = 0, fileCount = 0, caught = 0, eaten = 0, shown = 0;
     std::vector<std::string> files = split(testfw::config().ticks);
     for (const auto& extra : split(testfw::config().drawticks))   // the poked and custom scenarios of --drawticks are free-running tests too (one-player ones with ghostram_X.bin)
         if (std::find(files.begin(), files.end(), extra) == files.end()) files.push_back(extra);
@@ -183,6 +183,29 @@ TEST(ghostworld_free_running_against_the_oracle_recordings) {
                     ++resyncs;
                 }
             } else {
+                if (ev.levelComplete && !ev.caught) {   // TASK-031-8: the core's OWN level change must give the oracle's first state of the new level, queues and shared bytes included
+                    core.startNextLevel();
+                    ++levelChanges;
+                    const auto m2 = toOracleLayout(core.state()), o2 = toOracleLayout(b);
+                    std::size_t d = 0;
+                    for (std::size_t i = 0; i < m2.size(); ++i) d += i != 30 && i != 31 && m2[i] != o2[i];
+                    const GhostShared& sh = core.ghostShared();
+                    const bool sharedSame = sh.e1 == zb[0xE1] && sh.e2 == zb[0xE2] && sh.e4 == zb[0xE4] && sh.ea == zb[0xEA] && sh.eb == zb[0xEB];
+                    bool queuesSame = true;
+                    for (std::size_t g = 0; g < 4; ++g) {
+                        std::size_t stop = std::min<std::size_t>(255, b.ghosts[g].b[7]);
+                        const std::uint8_t* oq = zb + 256 + 256 * g;
+                        while (stop < 255 && oq[stop] != 0xFF) ++stop;
+                        for (std::size_t i = 0; i <= stop; ++i) queuesSame = queuesSame && core.ghostQueues()[g][i] == oq[i];
+                    }
+                    const bool extraSame = core.fruitState() == zb[0xE7] && core.blink1UpCounter() == zb[0xE5] && core.blink1UpPhase() == zb[0xE6];
+                    if (d != 0 || !sharedSame || !queuesSame || !extraSame) {
+                        ++levelChangeBad;
+                        if (shown++ < 8)
+                            std::printf("    %s tick %zu: level change: state bytes differ %zu, shared %d, queues %d, E5/E6/E7 %d (mine %02X %02X %02X, oracle %02X %02X %02X)\n", path.c_str(), k, d, sharedSame, queuesSame,
+                                        extraSame, core.fruitState(), core.blink1UpCounter(), core.blink1UpPhase(), zb[0xE7], zb[0xE5], zb[0xE6]);
+                    }
+                }
                 core.state() = b;
                 loadShared(core, zb);
                 if (ev.outsideMap && b.dotsLeft() < a.dotsLeft()) core.itemEatenOutsideTheMap();
@@ -193,6 +216,8 @@ TEST(ghostworld_free_running_against_the_oracle_recordings) {
     std::printf("    %zu files, %zu ticks run free (nothing fed): %zu catches and %zu ghosts eaten by the core; shared variables wrong in %zu ticks, queues wrong in %zu\n", fileCount, ticks, caught, eaten, sharedBad, queueBad);
     for (const auto& [off, d] : diffs) std::printf("    %-12s differs in %zu ticks (first: tick %zu of %s)\n", offsetName(off).c_str(), d.first, d.second, firstWhere[off].c_str());
     std::printf("    bonus fruit: %zu ticks with the fruit shown, %zu with its points shown; $E5/$E6/$E7 wrong in %zu ticks\n", fruitTicks, pointsTicks, fruitBad);
+    std::printf("    %zu natural level changes by the core's own startNextLevel, %zu differ from the oracle (state, shared bytes, move queues, E5-E7)\n", levelChanges, levelChangeBad);
+    CHECK(levelChangeBad == 0 && levelChanges >= 5);
     CHECK(fruitBad == 0);
     CHECK(fileCount >= 1 && ticks > 10000);
     CHECK(diffs.empty() && sharedBad == 0 && queueBad == 0);

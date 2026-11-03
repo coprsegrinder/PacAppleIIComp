@@ -148,3 +148,5 @@ Latest: 031-6 partly done (cartoon 1 model in C++ equals the golden final page).
 Latest: 031-6b done in code (not seen live). Next: 031-7 (cartoons 2 and 3 in C++), optionally a --level N debug start option so the user can see a cartoon without finishing level 2.
 
 Latest: 031-7 done (cartoons 2 and 3 equal the golden final pages). Next 031-8: integration - pacman_play plays several levels; optional --level N debug option; full-suite checkpoint.
+
+Latest: M6 DONE (levels, fruit, cartoons in C++; 10 natural level changes equal the oracle). pacman_play --level N --items K shows a cartoon quickly. Next: M7 sound (TASK-032), M8 pacing/packaging; small open items: READY pause, death animation, title/attract, two-player core; run the Python suite (bash tools/full_suite.sh python, ~25 min).
