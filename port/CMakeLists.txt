@@ -30,6 +30,7 @@ add_library(pacman_core_verify STATIC
   src/core/lifestart.cpp
   src/core/screen.cpp
   src/core/tickdraw.cpp
+  src/core/cartoon.cpp
   src/core/gamecore.cpp
   src/core/ghosttick.cpp
   src/core/ghostjunction.cpp
