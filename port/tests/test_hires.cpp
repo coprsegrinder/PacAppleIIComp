@@ -90,20 +90,23 @@ TEST(hires_plot_and_lines) {
     hires::vLine(v, 10, 2, 4);  // column 1, bit 3, rows 2..4
     for (int y = 0; y < 8; ++y) CHECK(v.byte(hires::rowOffset(y) + 1) == ((y >= 2 && y <= 4) ? 0x88 : 0x80));
     Page none;
-    hires::hLine(none, 5, 3, 0, 2, true);  // x0 > x1 draws nothing
-    CHECK(countNot(none, 0x80) == 0);
+    hires::hLine(none, 5, 3, 0, 2, true);  // x0 > x1 draws ONE pixel, like $5CF0 (the logo of the title screen has such lines; its page equals the oracle's: tests/test_attract.cpp)
+    CHECK(countNot(none, 0x80) == 1 && none.byte(hires::rowOffset(0)) == 0xA0);
+    Page offscreen;
+    hires::hLine(offscreen, 5, 3, 200, 2, true);   // a row outside the page is skipped
+    CHECK(countNot(offscreen, 0x80) == 0);
 }
 
 TEST(hires_walls_from_a_synthetic_table) {
     std::vector<std::uint8_t> table(hires::kWallTableBytes);
-    for (std::size_t i = 0; i < 72; ++i) {  // horizontal triples (x0, x1, y): x0 = 1 > x1 = 0 draws nothing
+    for (std::size_t i = 0; i < 72; ++i) {  // horizontal triples (x0, x1, y): the row 200 is outside the page, so nothing is drawn
         table[3 * i] = 1;
         table[3 * i + 1] = 0;
-        table[3 * i + 2] = 0;
+        table[3 * i + 2] = 200;
     }
-    for (std::size_t i = 72; i < 142; ++i) {  // vertical triples (x, y0, y1): y0 = 1 > y1 = 0 draws nothing
+    for (std::size_t i = 72; i < 142; ++i) {  // vertical triples (x, y0, y1): y0 = 250 is outside the page, so nothing is drawn
         table[3 * i] = 0;
-        table[3 * i + 1] = 1;
+        table[3 * i + 1] = 250;
         table[3 * i + 2] = 0;
     }
     Page empty;

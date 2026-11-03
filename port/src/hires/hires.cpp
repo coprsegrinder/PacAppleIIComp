@@ -16,16 +16,23 @@ void plotPixel(Page& page, int x, int y) noexcept {
 
 void hLine(Page& page, int x0, int x1, int y, int step, bool palette) noexcept {
     if (x0 < 0 || !rowOk(y) || step < 1) return;
-    for (int x = x0; x <= x1; x += step) {
+    // like $5CF0: the first pixel is always drawn (a line with x1 < x0 is a single dot), then every `step`-th pixel while x <= x1
+    int x = x0;
+    do {
         plotPixel(page, x, y);
         const std::size_t off = rowOffset(y) + static_cast<std::size_t>(pixelCell(x).column);
         const std::uint8_t b = page.byte(off);
         page.set(off, palette ? static_cast<std::uint8_t>(b | 0x80) : static_cast<std::uint8_t>(b & 0x7F));
-    }
+        x += step;
+    } while (x <= x1);
 }
 
 void vLine(Page& page, int x, int y0, int y1) noexcept {
-    for (int y = y0; y <= y1; ++y) plotPixel(page, x, y);
+    int y = y0;   // like $5D3D: the first pixel is always drawn, then the next rows while y <= y1 (a line with y1 < y0 is a single dot; code reading, not met in the data)
+    do {
+        plotPixel(page, x, y);
+        ++y;
+    } while (y <= y1);
 }
 
 bool drawWalls(Page& page, std::span<const std::uint8_t> table, bool colourMode) noexcept {

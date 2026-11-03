@@ -30,6 +30,8 @@ struct Config {
     std::string tickcalls;  // --tickcalls <tick_calls_A.txt>: per-tick drawing calls of the oracle (tools/record_tick_calls.py, local only)
     std::string page0;  // --page0 <page_tick0.bin>: the oracle hi-res page at the first tick of a game (tools/record_page0.py, local only)
     std::string demo;   // --demo <ticks_DEMO.bin>: attract-demo recording (tools/record_special.py demo; demo_stream.bin must lie next to it)
+    std::string titleEvents;  // --titleevents <title_events.bin>: the oracle's routine entries of one attract title turn (tools/export_title_events.py, local only)
+    std::string titleSnaps;   // --titlesnaps <title_snaps.bin>: screen memory of the oracle every 50,000 cycles of that turn (tools/capture_title_snaps.py, local only)
     std::string deaths;  // --deaths <death_timing.bin>: measured landmarks of 220 deaths (tools/export_deaths.py, local only)
     std::string clicks;  // --clicks <sound_clicks.bin>: the original's speaker click times of the 12 sounds (tools/export_clicks.py, local only)
     std::string decide;  // --decide <decide_vectors.bin>: ghost decision routine vectors (tools/record_decide_vectors.py, local only)
