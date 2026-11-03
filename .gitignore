@@ -5,6 +5,7 @@
 *.nib
 *.woz
 *.bin
+!Apple II roms/*.bin
 build/
 out/
 scratch/

@@ -184,3 +184,5 @@ Latest: 033-3 checked: death start (positions + constant image $9BE6) equals the
 Latest: 033-3b done (death/GAME OVER timeline model, 220 deaths compared, suite 126/0, time limit lifted by the user: print progress updates). Next: 033-4 GAME OVER -> title/attract -> new game flow (the GAME OVER wait is 10,453,613 cycles, then the attract screens; jingle + READY wait again at a new game), then 033-5 title/mode screens.
 
 Latest: 033-4a done (docs/ATTRACT_FLOW.md: attract loop 63,189,736 cycles, demo = 7,894 ticks + death, GAME OVER -> attract start 4,868,255 cycles). Next: user decision on the text-mode prompt font (options a/b/c in that file; recommended c with a as fallback), then 033-4b the title screen, verified by page hashes against the oracle.
+
+Latest: the user supplied "Apple II roms/" (open-source ROMs incl. character ROM 341-0036, 2048 bytes, 8 bytes per glyph, bit 6 = leftmost pixel; 56 distinct byte values) and allowed committing it: so the text-mode prompts can use the REAL character ROM (option c of docs/ATTRACT_FLOW.md section 4, now also shippable). Next: 033-4b the title screen.
