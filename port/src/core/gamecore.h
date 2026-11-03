@@ -66,6 +66,7 @@ public:
     // ... and one tick with the ghost logic of this class (M5): the mode timer, the energizer's effect, the ghosts' turns, their contact with Pac-Man.
     TickEvents tick();
     GhostShared& ghostShared() noexcept { return ghostShared_; }
+    const GameState& caughtState() const noexcept { return caughtState_; }   // the state at the moment of the last catch (before the new life was set up)
     GhostQueues& ghostQueues() noexcept { return queues_; }
     // The level change (TASK-031-3): level + 1, the pristine maze, the counters of a fresh level, the score and the lives kept, then the start of a life.
     // VERIFIED against the oracle: the resulting logical state equals the first tick of the new level on 7 level ends (levels 1, 2, 4, 5, 9, 20; test_gamecore).
@@ -97,6 +98,7 @@ private:
     int player_ = 1;
     std::uint8_t e5_ = 0, e6_ = 0;       // $E5 / $E6: the 1UP blink counter and phase (outside the logical state)
     GhostShared ghostShared_;
+    GameState caughtState_;
     GhostQueues queues_{};
     GhostTables ghostTables_;
     GhostDecisionData ghostData_;

@@ -22,6 +22,8 @@ def factory():
         pc = mc.cpu.pc
         if pc == 0x55A6:
             ev.append((mc.cpu.cycles, 'blit', mc.cpu.a, mc.cpu.y, mc.m[0x0E] | mc.m[0x0F] << 8, mc.m[0x14] | mc.m[0x15] << 8))
+        elif pc in (0x69A1, 0x6A20, 0x7C82, 0x693A, 0x696A, 0x6EE2, 0x8259, 0x6172):
+            ev.append((mc.cpu.cycles, {0x69A1: 'mclear', 0x6A20: 'dispatch', 0x7C82: 'deathsound', 0x693A: 'tile', 0x696A: 'boxclear', 0x6EE2: 'img12x3', 0x8259: 'bigsprite', 0x6172: 'dot'}[pc], mc.cpu.a, mc.cpu.y, mc.m[0x0A], mc.m[0x0C] | mc.m[0x0D] << 8))
         elif pc == 0x7861 and mc.m[0xE8] == 0:
             ev.append((mc.cpu.cycles, 'tick', 0, 0, 0, 0))
         return step()

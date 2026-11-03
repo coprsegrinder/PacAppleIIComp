@@ -148,6 +148,7 @@ bool GameCore::contactTest(int g, TickEvents& ev) {
         for (SoundId d : {SoundId::Death6, SoundId::Death5, SoundId::Death4, SoundId::Death3, SoundId::Death2, SoundId::Death1}) ev.sounds.push_back(d);
     }
     ev.gameOver = s.lives() == 0;
+    caughtState_ = s;   // where Pac-Man and the ghosts stood when he was caught (the death animation starts there)
     if (!ev.gameOver) {
         const PlayerSave kept = savePlayer(s);            // $8C1A / $8C1D
         startOfLife(s, start_, kept);

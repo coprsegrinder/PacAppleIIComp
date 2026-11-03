@@ -122,6 +122,9 @@ struct SoundPlayer {
         if (laterDeathStep) audio.play(gapBetweenDeathSteps);
         audio.play(pcm[static_cast<std::size_t>(id)]);
     }
+    void playNow(core::SoundId id) {   // no gap: the death animation schedules its steps itself
+        if (ready && !pcm[static_cast<std::size_t>(id)].samples.empty()) audio.play(pcm[static_cast<std::size_t>(id)]);
+    }
     void stop() {
         if (ready) audio.stop();
     }
@@ -153,6 +156,11 @@ void gameThread(core::GameDriver& drv, const datapack::Pack& pack, app::GameWind
     clock.start(core::nowNanoseconds());
     std::int64_t budget = 0;
     const std::int64_t begin = core::nowNanoseconds();
+    drv.setPlayDeath(true);
+    bool startWait = true, readyShown = false;
+    std::size_t seqNext = 0;
+    std::int64_t seqTime = 0;
+    bool seqActive = false;
     window.setPage(drv.page());
     // the intro jingle starts a game (before the first tick, docs/SOUND.md section 6); the game stands still for its 5 s
     if (drv.core().input().soundOn() && !window.muted()) sounds.play(core::SoundId::Jingle);
@@ -164,6 +172,32 @@ void gameThread(core::GameDriver& drv, const datapack::Pack& pack, app::GameWind
             break;
         }
         budget += clock.cyclesDue(now);
+        if (startWait) {   // the jingle, then READY on the screen for 3.05 s (033-2, ready_timing.py: READY is drawn after the jingle)
+            if (!readyShown && budget >= -core::kReadyPauseCycles) {
+                readyShown = true;
+                drv.showReady();
+                window.setPage(drv.page());
+            }
+            if (budget >= 0) {
+                startWait = false;
+                drv.rebuildScreen();
+                window.setPage(drv.page());
+            }
+        }
+        if (seqActive) {   // the death animation (033-3): steps at oracle times; keys stay queued, the original does not read them meanwhile
+            seqTime += budget;
+            budget = 0;
+            while (seqNext < drv.sequence().size() && drv.sequence()[seqNext].at <= seqTime) {
+                const core::SequenceStep& st = drv.sequence()[seqNext++];
+                drv.applySequenceStep(st);
+                if (st.deathSound > 0 && drv.core().input().soundOn() && !window.muted())
+                    sounds.playNow(static_cast<core::SoundId>(static_cast<int>(core::SoundId::Death1) + st.deathSound - 1));
+                window.setPage(drv.page());
+            }
+            if (seqNext >= drv.sequence().size()) seqActive = false;
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            continue;
+        }
         if (cartoon.active() && budget < 0) {   // the level-end pause before the intermission (the original spends kLevelEndCycles there, measured 033-1b)
             std::this_thread::sleep_for(std::chrono::milliseconds(2));
             continue;
@@ -188,11 +222,21 @@ void gameThread(core::GameDriver& drv, const datapack::Pack& pack, app::GameWind
             const core::TickEvents ev = liveTick(drv, &cartoon, &pack);
             std::int64_t soundFreeze = 0;
             const bool audible = drv.core().input().soundOn() && !window.muted();
+            const bool dying = !drv.sequence().empty();   // the animation schedules the six death sounds itself
             for (const core::SoundId id : ev.sounds) {
+                const bool deathStep = id >= core::SoundId::Death1 && id <= core::SoundId::Death6;
+                if (dying && deathStep) continue;
                 if (audible) sounds.play(id);
                 soundFreeze += extraFreeze(id);
             }
             if (!audible) sounds.stop();   // Ctrl-S / F9 during a long sound cuts it
+            if (dying) {   // the pacman was caught: play the animation, then the next life starts
+                seqActive = true;
+                seqNext = 0;
+                seqTime = 0;
+                budget = 0;
+                break;
+            }
             if (cartoon.active()) {   // the level ended with a cartoon: leave the tick loop; the level-end pause comes first, then the cartoon starts
                 budget = -core::kLevelEndCycles;
                 window.setPage(drv.page());

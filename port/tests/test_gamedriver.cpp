@@ -156,6 +156,7 @@ TEST(gamedriver_pages_equal_the_oracle_end_to_end) {
         const std::size_t limit = std::min<std::size_t>({tr.ticks() - 1, extras.size() / 6 - 1, logged.empty() ? tr.ticks() : logged.size() - 1, recorded});
         FedGhosts feed;
         std::size_t badCalls = 0;
+        std::size_t deathSeqChecked = 0, deathSeqBad = 0;
         std::size_t nextPage = 0, compared = 0, badPages = 0, resyncs = 0, shown = 0;
         for (std::size_t k = 0; k < limit; ++k) {
             // the page at the START of tick k
@@ -201,6 +202,35 @@ TEST(gamedriver_pages_equal_the_oracle_end_to_end) {
             feed.f1 = extras[6 * (k + 1)];
             feed.f2 = extras[6 * (k + 1) + 1];
             feed.f4 = extras[6 * (k + 1) + 5];
+            if (feed.caughtTick && (feed.next->lives() & 0x7F) > 0 && !logged.empty() && k < logged.size()) {   // TASK-033-3: the death animation's calls (from the state BEFORE the catch) equal the oracle's log
+                GameDriver copy = drv;
+                copy.setPlayDeath(true);
+                copy.tick(feed);
+                const auto& block = logged[k];
+                std::size_t start = 0;
+                for (std::size_t i = 0; i + 1 < block.size() && start == 0; ++i)
+                    if (block[i].type == 2 && block[i].p[0] == 0x55F7 && block[i + 1].type == 6 && block[i + 1].p[0] == 0x7201 && block[i + 1].p[1] == 47) start = i + 2;
+                std::vector<DrawCall> mine;
+                std::int64_t last = -1;
+                bool ascending = true;
+                for (const auto& st : copy.sequence()) {
+                    for (const auto& c : st.calls) mine.push_back(c);
+                    ascending = ascending && st.at > last;
+                    last = st.at;
+                }
+                ++deathSeqChecked;
+                if (start == 0 || mine.size() != 19 || !ascending || copy.sequence().size() != 22) {
+                    ++deathSeqBad;
+                    std::printf("    %s tick %zu: death sequence has %zu calls in %zu steps (ascending %d), tail found %d\n", letter.c_str(), k, mine.size(), copy.sequence().size(), ascending ? 1 : 0, start != 0 ? 1 : 0);
+                } else {
+                    std::size_t diff = 0;
+                    for (std::size_t i = 0; i < 19; ++i)
+                        if (!(mine[i] == block[start + i])) {
+                            if (diff++ == 0) std::printf("    %s tick %zu: death call %zu mine [%d %d %d %d] oracle [%d %d %d %d]\n", letter.c_str(), k, i, mine[i].type, mine[i].p[0], mine[i].p[1], mine[i].p[2], block[start + i].type, block[start + i].p[0], block[start + i].p[1], block[start + i].p[2]);
+                        }
+                    deathSeqBad += diff != 0;
+                }
+            }
             const TickEvents ev = drv.tick(feed);
             if (!logged.empty() && k < logged.size() && !ev.caught && !ev.levelComplete) {   // the call lists, as in the drawing test (types the collector does not log are left out)
                 std::vector<DrawCall> mine;
@@ -233,6 +263,8 @@ TEST(gamedriver_pages_equal_the_oracle_end_to_end) {
         std::printf("    scenario %s: %zu ticks, %zu pages compared, %zu differ (%zu catches / level ends / poke artefacts resynchronised)\n", letter.c_str(), limit, compared, badPages, resyncs);
         CHECK(compared >= 20);
         CHECK(badPages == 0);
+        std::printf("    death animation calls checked at %zu catches, %zu differ\n", deathSeqChecked, deathSeqBad);
+        CHECK(deathSeqBad == 0);
         ++scenarios;
     }
     CHECK(scenarios >= 1);

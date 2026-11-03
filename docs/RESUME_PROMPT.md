@@ -176,3 +176,5 @@ Latest: 033-1b done (level end = 4.24 s measured and used, also before cartoons;
 Latest: 033-1c done (tick cost model in gamedriver.h; live game uses it). Next: 033-2 READY pause, 033-3 death animation (also measure GAME OVER pause), 033-4 new game. 033-1 pacing is closed.
 
 Latest: 033-2 done (READY wait 3,114,542 cycles measured, added at game start; death total split into animation 2,928,721 + READY). Next: 033-3 death animation (also measure GAME OVER).
+
+Latest: 033-3 STOPPED at the time limit: death animation coded and timed from the oracle (sequence in GameDriver, live loop plays it with the six sounds), but the new draw-call check is RED (ghost clear y 79 vs 81 in the fed-ghost test); free-running path unchecked; nothing watched. Next turn: fix/verify in test_ghostworld, then watch live; READY also shows at game start.

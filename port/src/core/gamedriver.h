@@ -41,6 +41,17 @@ inline std::int64_t tickCostCycles(const std::vector<DrawCall>& calls) {
     return c;
 }
 
+// TASK-033-3: the death animation as a timed list of steps (opt-in, setPlayDeath). Times are cycles after the end of the catching tick (the oracle's offsets from the tick
+// start minus the 14,682 cycles of that tick's own drawing; tools/ready_timing.py). The calls are the first 19 of restartCalls(Death): 4 ghost clears, Pac-Man clear, Pac-Man's
+// last image, clear, then six death frames each followed by a clear. After the frames the screen is rebuilt and READY is shown; the last step ends the sequence.
+struct SequenceStep {
+    std::int64_t at = 0;
+    std::vector<DrawCall> calls;
+    bool rebuild = false;   // replace the page by the rebuilt screen of the new life (no READY)
+    bool ready = false;     // draw the READY text
+    int deathSound = 0;     // 6..1: the death sound step that starts with this step (0 = none)
+};
+
 class GameDriver {
 public:
     bool init(const datapack::Pack& pack);
@@ -60,12 +71,17 @@ public:
     void setStaticGhosts(bool on) noexcept { staticGhosts_ = on; }    // live program without ghost logic: draw the four ghosts once at their start places
     void setPreviousFrighten(std::uint8_t e1, std::uint8_t e2, std::uint8_t e4) noexcept { prev_.e1 = e1; prev_.e2 = e2; prev_.e4 = e4; }
     const std::vector<DrawCall>& lastCalls() const noexcept { return lastCalls_; }   // the drawing calls of the last ordinary tick
+    void setPlayDeath(bool on) noexcept { playDeath_ = on; }   // live game: a catch leaves the page as it was and fills sequence() instead of rebuilding at once
+    const std::vector<SequenceStep>& sequence() const noexcept { return sequence_; }
+    void applySequenceStep(const SequenceStep& step);
+    void showReady();    // the READY text (and Pac-Man again) on the page, as the original draws it after the rebuild
     std::int64_t tickCycles() const noexcept { return tickCycles_; }   // modelled cost of the last tick itself (tickCostCycles; kTypicalTickCycles for a special tick)
     std::int64_t extraCycles() const noexcept { return extraCycles_; }   // cycles of the long sequence of the last tick (0 for an ordinary tick)
 
 private:
     void drawStaticGhosts();
     TickEvents tickImpl(FrightenAware* fed);
+    void buildDeathSequence(const GameState& before);
     const datapack::Pack* pack_ = nullptr;
     GameCore core_;
     hires::Page page_;
@@ -74,6 +90,8 @@ private:
     bool staticGhosts_ = false;
     std::int64_t extraCycles_ = 0;
     std::int64_t tickCycles_ = kTypicalTickCycles;
+    bool playDeath_ = false;
+    std::vector<SequenceStep> sequence_;
     bool newGamePending_ = false;   // after GAME OVER the next tick starts a new game
     std::vector<DrawCall> lastCalls_;
 };
