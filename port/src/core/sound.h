@@ -44,6 +44,10 @@ struct SoundList {
 //   engine C: 80 tones of period 32, 4 clicks each 299 apart; between tones 288 + 37
 std::vector<std::uint32_t> clickTimes(const SoundList& list);
 
+// How long the original's game stands still while the sound plays: the whole wrapper call (the engines busy-wait), measured on the oracle (docs/SOUND.md section 6).
+// GhostEaten: see the table in sound.cpp. The intermission sound ($7CF0) is not measured (never seen firing).
+std::int64_t soundFreezeCycles(SoundId id) noexcept;
+
 class SoundData {
 public:
     // False if the pack lacks a list or a list has no terminator inside its range, or the death pointer table disagrees with the lists.

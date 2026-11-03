@@ -61,7 +61,7 @@ void GameCore::blinks() {
 }
 
 // $79CD-$79FA: Pac-Man on the fruit's place (y $6B, x $8A-$8D) while it is shown: it is eaten (points by level, $6CB2).
-void GameCore::fruitEatenCheck() {
+void GameCore::fruitEatenCheck(TickEvents& ev) {
     GameState& s = state_;
     if (s.pacY() != 0x6B || s.pacX() < 0x8A || s.pacX() >= 0x8E || e7_ != 1) return;
     s.zp(0x5A) = 0x30;
@@ -78,7 +78,10 @@ void GameCore::fruitEatenCheck() {
     unsigned top = (s.zp(0x54) & 0x0Fu) + (carry ? 1u : 0u), topHi = s.zp(0x54) >> 4;
     if (top > 9) { top -= 10; ++topHi; }
     s.zp(0x54) = static_cast<std::uint8_t>(((topHi > 9 ? topHi - 10 : topHi) << 4) | top);
+    const std::uint8_t livesBefore = s.lives() & 0x7F;
     awardBonusLife(s, player_);                                        // $7091 contains the extra-life test
+    if ((s.lives() & 0x7F) > livesBefore) ev.sounds.push_back(SoundId::BonusLife);   // $6CB2: the score first (and with it the bonus life), the fruit sound is its last call
+    ev.sounds.push_back(SoundId::Fruit);
 }
 
 // $6A7C: the bonus fruit. $57 = 0 starts it; while it is shown its lifetime ($5A/$5B) counts down in the tick before Pac-Man acts.
@@ -127,7 +130,12 @@ bool GameCore::contactTest(int g, TickEvents& ev) {
     StepTimer::applyNearGhostDelay(s, gh);                // $8B4A-$8B65 (level 5 and up)
     if (c != Contact::Touch) return false;
     if (gh.b[8] != 0) {                                   // frightened: eaten
+        const std::uint8_t livesBefore = s.lives() & 0x7F;
         ghostEaten(s, static_cast<std::size_t>(g), player_);
+        if (s.demo == 0) {   // the score (with the bonus-life test) first, then the freeze routine plays the ghost sound ($7DFC)
+            if ((s.lives() & 0x7F) > livesBefore) ev.sounds.push_back(SoundId::BonusLife);
+            ev.sounds.push_back(SoundId::GhostEaten);
+        }
         ghostEatenTimer(s, ghostShared_, ghostModes_);    // $8BA4-$8BB5
         s.mode78 = 0;
         s.mode79 = 1;
@@ -136,6 +144,9 @@ bool GameCore::contactTest(int g, TickEvents& ev) {
     }
     pacmanCaught(s);                                      // $8C0E: DEC $58
     ev.caught = true;
+    if (s.demo == 0) {   // the death animation plays its six steps ($0A = 6 ... 1) in this tick
+        for (SoundId d : {SoundId::Death6, SoundId::Death5, SoundId::Death4, SoundId::Death3, SoundId::Death2, SoundId::Death1}) ev.sounds.push_back(d);
+    }
     ev.gameOver = s.lives() == 0;
     if (!ev.gameOver) {
         const PlayerSave kept = savePlayer(s);            // $8C1A / $8C1D
@@ -174,12 +185,18 @@ TickEvents GameCore::tickImpl(GhostSource* fed) {
             return b.empty() ? std::uint8_t{0xFF} : b[0];
         }));
         const auto test = stepPacman(s, outcome);
-        fruitEatenCheck();
+        fruitEatenCheck(ev);
         if (test) {
+            const std::uint8_t livesBefore = s.lives() & 0x7F;
             const EatResult r = eatAt(s, *test, timer_, steps_, player_);
             ev.ate = r.ate;
             ev.energizer = r.energizer;
             ev.outsideMap = r.outsideMap;
+            // (outside the map the original reads a master copy behind it and may eat a dot there - with its sound; not modelled, as for the score)
+            if (r.ate && s.demo == 0) {   // $7B09 / $7AC7: the sound first, then the score ($7B12) with the bonus-life test
+                ev.sounds.push_back(r.energizer ? SoundId::Energizer : SoundId::DotEaten);
+                if ((s.lives() & 0x7F) > livesBefore) ev.sounds.push_back(SoundId::BonusLife);
+            }
             if (r.energizer) {
                 if (fed == nullptr) {
                     energizerGhostEffects(s, ghostShared_, queues_, ghostModes_);   // $6D60 (levels below 21)

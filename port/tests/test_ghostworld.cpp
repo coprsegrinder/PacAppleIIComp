@@ -75,7 +75,7 @@ TEST(ghostworld_free_running_against_the_oracle_recordings) {
     if (!loaded.ok) return;
     std::map<std::size_t, std::pair<std::size_t, std::size_t>> diffs;   // offset -> (count, first tick)
     std::map<std::size_t, std::string> firstWhere;
-    std::size_t ticks = 0, resyncs = 0, sharedBad = 0, queueBad = 0, levelChanges = 0, levelChangeBad = 0, fruitBad = 0, fruitTicks = 0, pointsTicks = 0, fileCount = 0, caught = 0, eaten = 0, shown = 0;
+    std::size_t ticks = 0, resyncs = 0, sharedBad = 0, queueBad = 0, levelChanges = 0, levelChangeBad = 0, soundTicks = 0, soundSkipped = 0, soundStarts = 0, soundBad = 0, fruitBad = 0, fruitTicks = 0, pointsTicks = 0, fileCount = 0, caught = 0, eaten = 0, shown = 0;
     std::vector<std::string> files = split(testfw::config().ticks);
     for (const auto& extra : split(testfw::config().drawticks))   // the poked and custom scenarios of --drawticks are free-running tests too (one-player ones with ghostram_X.bin)
         if (std::find(files.begin(), files.end(), extra) == files.end()) files.push_back(extra);
@@ -103,6 +103,30 @@ TEST(ghostworld_free_running_against_the_oracle_recordings) {
         std::multimap<std::uint32_t, TickPoke> pokesAt;
         for (const auto& p : tr.pokes()) pokesAt.emplace(p.tick, p);
         const std::size_t n = std::min<std::size_t>(count, tr.ticks());
+        // TASK-032-3b: the oracle's sound starts of this recording (sounds_X.bin next to ticks_X.bin, tools/record_sounds.py): per tick the list of (code, freeze cycles)
+        std::vector<std::vector<std::pair<std::uint32_t, std::uint32_t>>> oracleSounds(n + 1);
+        bool haveSounds = false;
+        {
+            std::string sp = path;
+            const auto tickAt = sp.rfind("ticks_");
+            if (tickAt != std::string::npos) {
+                sp.replace(tickAt, 6, "sounds_");
+                const auto sf = readAll(sp);
+                if (sf.size() >= 8 && std::memcmp(sf.data(), "SNDE", 4) == 0) {
+                    haveSounds = true;
+                    std::uint32_t cnt = 0;
+                    std::memcpy(&cnt, sf.data() + 4, 4);
+                    for (std::uint32_t i = 0; i < cnt && 8 + 16 * (i + 1) <= sf.size(); ++i) {
+                        std::int32_t tick = 0;
+                        std::uint32_t code = 0, freeze = 0;
+                        std::memcpy(&tick, sf.data() + 8 + 16 * i, 4);
+                        std::memcpy(&code, sf.data() + 12 + 16 * i, 4);
+                        std::memcpy(&freeze, sf.data() + 16 + 16 * i, 4);
+                        if (tick >= 0 && static_cast<std::size_t>(tick) <= n) oracleSounds[static_cast<std::size_t>(tick)].emplace_back(code, freeze);
+                    }
+                }
+            }
+        }
         for (std::size_t k = 0; k + 1 < n; ++k) {
             const auto kr = keysAt.equal_range(static_cast<std::uint32_t>(k));
             for (auto it = kr.first; it != kr.second; ++it) core.input().pushKey(static_cast<std::uint8_t>(it->second));
@@ -128,6 +152,24 @@ TEST(ghostworld_free_running_against_the_oracle_recordings) {
             const std::uint8_t* zb = ram.data() + 12 + (k + 1) * kRecord;
             const TickEvents ev = core.tick();
             ++ticks;
+            if (haveSounds) {   // the sounds of this tick, with their freeze, in the oracle's order
+                std::vector<std::pair<std::uint32_t, std::uint32_t>> mineSounds;
+                for (const SoundId id : ev.sounds) {
+                    const auto idx = static_cast<std::uint32_t>(id);   // SoundId order = oracle codes for dot, ghost, energizer, fruit, death 1-6 (4-9)
+                    const std::uint32_t code = id == SoundId::BonusLife ? 10u : id == SoundId::Jingle ? 11u : idx;
+                    mineSounds.emplace_back(code, static_cast<std::uint32_t>(soundFreezeCycles(id)));
+                }
+                if (ev.outsideMap) {
+                    ++soundSkipped;   // Pac-Man outside the map (scenario D): the original eats from a copy behind the map, with its dot sound; not modelled
+                } else {
+                ++soundTicks;
+                soundStarts += oracleSounds[k].size();
+                if (mineSounds != oracleSounds[k]) {
+                    ++soundBad;
+                    if (shown++ < 8) std::printf("    %s tick %zu: sounds differ (mine %zu, oracle %zu starts)\n", path.c_str(), k, mineSounds.size(), oracleSounds[k].size());
+                }
+                }
+            }
             caught += ev.caught;
             for (bool e : ev.ghostEaten) eaten += e;
             const bool resync = ev.levelComplete || ev.outsideMap || ev.gameOver || (b.lives() & 0x7F) == 0;
@@ -217,6 +259,8 @@ TEST(ghostworld_free_running_against_the_oracle_recordings) {
     for (const auto& [off, d] : diffs) std::printf("    %-12s differs in %zu ticks (first: tick %zu of %s)\n", offsetName(off).c_str(), d.first, d.second, firstWhere[off].c_str());
     std::printf("    bonus fruit: %zu ticks with the fruit shown, %zu with its points shown; $E5/$E6/$E7 wrong in %zu ticks\n", fruitTicks, pointsTicks, fruitBad);
     std::printf("    %zu natural level changes by the core's own startNextLevel, %zu differ from the oracle (state, shared bytes, move queues, E5-E7)\n", levelChanges, levelChangeBad);
+    std::printf("    sounds: %zu ticks compared with the oracle's sound starts (%zu starts), %zu ticks differ (sound, order and freeze cycles)\n", soundTicks, soundStarts, soundBad);
+    CHECK(soundBad == 0);
     CHECK(levelChangeBad == 0 && levelChanges >= 5);
     CHECK(fruitBad == 0);
     CHECK(fileCount >= 1 && ticks > 10000);

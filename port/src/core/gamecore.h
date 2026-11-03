@@ -17,6 +17,7 @@
 #include "lifestart.h"
 #include "ghostmode.h"
 #include "lives.h"
+#include "sound.h"
 #include "steptimer.h"
 
 namespace pacman::core {
@@ -43,6 +44,7 @@ struct TickEvents {
     bool caught = false;          // Pac-Man was caught: the state is the restarted life (or game over: lives == 0)
     bool gameOver = false;        // the last life was lost
     std::array<bool, 4> ghostEaten{};
+    std::vector<SoundId> sounds;  // the sounds the original starts in this tick, in order (none in the demo); each freezes the game for soundFreezeCycles()
 };
 
 class GameCore {
@@ -81,7 +83,7 @@ private:
     TickEvents tickImpl(GhostSource* fed);
     bool contactTest(int ghostIndex, TickEvents& ev);   // $8B34 and what follows for one ghost; true if Pac-Man was caught (the tick ends)
     void blinks();
-    void fruitEatenCheck();
+    void fruitEatenCheck(TickEvents& ev);
     void fruit();
     const datapack::Pack* pack_ = nullptr;
     GameState state_;

@@ -26,6 +26,8 @@ constexpr Entry kEntries[] = {
     {SoundId::Jingle, SoundEngine::B, 0x7D3F, 60},
 };
 
+constexpr std::int64_t kGhostEatenFreeze = 179'070;   // measured on scenario D (3 ghosts eaten, one value): the clicks span 178,263
+
 }  // namespace
 
 bool SoundData::load(const datapack::Pack& pack) {
@@ -59,6 +61,24 @@ bool SoundData::load(const datapack::Pack& pack) {
         if (w != list(static_cast<SoundId>(static_cast<std::size_t>(SoundId::Death1) + k - 1)).address) return false;
     }
     return true;
+}
+
+std::int64_t soundFreezeCycles(SoundId id) noexcept {
+    switch (id) {
+        case SoundId::DotEaten: return 2'932;
+        case SoundId::GhostEaten: return kGhostEatenFreeze;
+        case SoundId::Energizer: return 8'990;
+        case SoundId::Fruit: return 89'807;
+        case SoundId::Death1: return 5'004;
+        case SoundId::Death2: return 30'785;
+        case SoundId::Death3: return 27'617;
+        case SoundId::Death4: return 21'425;
+        case SoundId::Death5: return 18'041;
+        case SoundId::Death6: return 17'351;
+        case SoundId::BonusLife: return 97'770;
+        case SoundId::Jingle: return 5'153'446;
+        default: return 0;
+    }
 }
 
 std::vector<std::uint32_t> clickTimes(const SoundList& list) {
