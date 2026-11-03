@@ -166,3 +166,5 @@ Latest: 032-4 done in code (square wave + waveOut, pacman_play --sound-test); th
 Latest: 032-5 done in code (live sounds, jingle at start, Ctrl-S/F9 mute). The user should try the game with sound. Next 032-6: open sound questions (jingle on new games/attract, cartoon sound sites, key in jingle).
 
 Latest: 032-6 done, M7 DONE (sound). Jingle = once per real game start (not demo); cartoons have no sound (V); key during jingle = read and consumed (I). Next: M8 (pacing/packaging, READY pause, death animation, title/attract flow TASK-029i, clean-machine test). Ask the user to confirm the plan first.
+
+Latest: M8 plan written (docs/M8_PLAN.md, 033-1..10), waiting for the user's OK. Suggested first: 033-1 pacing audit, then READY pause, death animation, GAME OVER/new game.
