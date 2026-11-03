@@ -23,6 +23,8 @@ int main(int argc, char** argv) {
             testfw::config().ticks = argv[++i];
         } else if (std::strcmp(argv[i], "--drawticks") == 0 && i + 1 < argc) {
             testfw::config().drawticks = argv[++i];
+        } else if (std::strcmp(argv[i], "--clicks") == 0 && i + 1 < argc) {
+            testfw::config().clicks = argv[++i];
         } else if (std::strcmp(argv[i], "--decide") == 0 && i + 1 < argc) {
             testfw::config().decide = argv[++i];
         } else if (std::strcmp(argv[i], "--script") == 0 && i + 1 < argc) {

@@ -61,6 +61,39 @@ bool SoundData::load(const datapack::Pack& pack) {
     return true;
 }
 
+std::vector<std::uint32_t> clickTimes(const SoundList& list) {
+    std::vector<std::uint32_t> out;
+    std::uint32_t t = 0;
+    if (list.engine == SoundEngine::C) {
+        for (std::uint32_t k = 0; k < 80; ++k) {
+            if (k != 0) t += 9 * 32 + 37;
+            for (int i = 0; i < 4; ++i) {
+                if (i != 0) t += 9 * 32 + 11;
+                out.push_back(t);
+            }
+        }
+    } else if (list.engine == SoundEngine::A) {
+        for (std::uint32_t k = 0; k < list.bytes.size(); ++k) {
+            const std::uint32_t p = list.bytes[k];
+            if (k != 0) t += 9 * p + 44 + (((list.address & 255u) + k > 255u) ? 1u : 0u);
+            for (int i = 0; i < 4; ++i) {
+                if (i != 0) t += 9 * p + 11;
+                out.push_back(t);
+            }
+        }
+    } else {
+        for (std::uint32_t k = 0; 2 * k + 1 < list.bytes.size(); ++k) {
+            const std::uint32_t p = list.bytes[2 * k], n = list.bytes[2 * k + 1];
+            if (k != 0) t += 31 * p + 30'624;
+            for (std::uint32_t i = 0; i < n; ++i) {
+                if (i != 0) t += 31 * p + 11;
+                out.push_back(t);
+            }
+        }
+    }
+    return out;
+}
+
 std::vector<std::uint8_t> SoundData::allBytes() const {
     std::vector<std::uint8_t> out;
     for (const SoundList& l : lists_) out.insert(out.end(), l.bytes.begin(), l.bytes.end());

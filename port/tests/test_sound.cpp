@@ -53,3 +53,46 @@ TEST(sound_lists_come_from_the_pack_unchanged) {
     }
     CHECK_MSG(hex == "088424d9dc45f022041478870c0569852724b174ddacb0f77b8d58dbda282c61", "sound lists differ from the original: " + hex);
 }
+
+// TASK-032-2: the click times of all 12 sounds, generated from the pack's lists and the engine formulas, equal the original's (measured on the oracle, cycle for cycle).
+TEST(sound_click_times_equal_the_originals_for_all_12_sounds) {
+    if (testfw::config().image.empty() || testfw::config().clicks.empty()) {
+        std::printf("    SKIPPED (needs --image and --clicks)\n");
+        return;
+    }
+    const auto built = datapack::buildPack(readFile(testfw::config().image), verify::referenceExpected(), datapack::dataManifest());
+    CHECK_MSG(built.ok, built.reason);
+    if (!built.ok) return;
+    const auto loaded = datapack::loadPack(built.bytes, verify::referenceExpected());
+    CHECK_MSG(loaded.ok, loaded.reason);
+    if (!loaded.ok) return;
+    core::SoundData sd;
+    CHECK(sd.load(loaded.pack));
+    const auto f = readFile(testfw::config().clicks);
+    CHECK(f.size() > 8 && f[0] == 'C' && f[1] == 'L' && f[2] == 'K' && f[3] == '1');
+    if (f.size() <= 8) return;
+    auto u32 = [&](std::size_t pos) { return static_cast<std::uint32_t>(f[pos] | f[pos + 1] << 8 | f[pos + 2] << 16 | static_cast<std::uint32_t>(f[pos + 3]) << 24); };
+    CHECK(u32(4) == 12);
+    // file order (tools/sound_model.SOUNDS): dot, ghost, energizer, fruit, death 6..1, bonus life, jingle
+    const core::SoundId order[12] = {core::SoundId::DotEaten, core::SoundId::GhostEaten, core::SoundId::Energizer, core::SoundId::Fruit, core::SoundId::Death6, core::SoundId::Death5,
+                                     core::SoundId::Death4, core::SoundId::Death3, core::SoundId::Death2, core::SoundId::Death1, core::SoundId::BonusLife, core::SoundId::Jingle};
+    std::size_t pos = 8, totalClicks = 0, wrong = 0;
+    for (int s = 0; s < 12; ++s) {
+        const std::uint32_t n = u32(pos);
+        pos += 4;
+        const auto mine = core::clickTimes(sd.list(order[s]));
+        bool same = mine.size() == n;
+        for (std::uint32_t i = 0; i < n && same; ++i) same = mine[i] == u32(pos + 4 * i);
+        if (!same) {
+            ++wrong;
+            std::size_t firstBad = 0;
+            while (firstBad < mine.size() && firstBad < n && mine[firstBad] == u32(pos + 4 * firstBad)) ++firstBad;
+            std::printf("    sound %d: %zu clicks (oracle %u), first difference at click %zu (mine %u, oracle %u)\n", s, mine.size(), n, firstBad,
+                        firstBad < mine.size() ? mine[firstBad] : 0u, firstBad < n ? u32(pos + 4 * firstBad) : 0u);
+        }
+        totalClicks += n;
+        pos += 4 * n;
+    }
+    std::printf("    12 sounds, %zu clicks compared, %zu sounds differ\n", totalClicks, wrong);
+    CHECK(wrong == 0 && totalClicks == 3312);   // 8 + 348 + 16 + 100 + (72 + 4 x 48 + 44) + 320 + 2212, the counts of tools/export_clicks.py
+}

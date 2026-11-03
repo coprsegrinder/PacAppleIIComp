@@ -154,3 +154,5 @@ Latest: M6 DONE (levels, fruit, cartoons in C++; 10 natural level changes equal 
 Latest: M7 planned (docs/M7_PLAN.md, 032-1..032-6). Next 032-1: sound data audit in the pack.
 
 Latest: 032-1 done (sound lists in the pack, SoundData reader). Next 032-2: click-list generator in C++ for all 12 sounds vs the oracle.
+
+Latest: 032-2 done (click times of all 12 sounds equal the oracle). Next 032-3: sound events in the core (which tick starts which sound, freeze lengths).

@@ -37,6 +37,13 @@ struct SoundList {
     std::size_t notes() const noexcept { return engine == SoundEngine::B ? bytes.size() / 2 : bytes.size(); }
 };
 
+// The cycle count of every speaker click of a sound, counted from its first click (docs/SOUND.md section 2; CPU clock 1,022,727 Hz):
+//   engine A: 4 clicks per note, 9P + 11 apart; from the last click of a note to the first of the next 9P_next + 44, plus 1 if the list read crosses a page
+//             (low byte of the list address + note index > 255)
+//   engine B: n clicks per note, 31P + 11 apart; between notes 31P_next + 30,624 (key poll + fixed pause)
+//   engine C: 80 tones of period 32, 4 clicks each 299 apart; between tones 288 + 37
+std::vector<std::uint32_t> clickTimes(const SoundList& list);
+
 class SoundData {
 public:
     // False if the pack lacks a list or a list has no terminator inside its range, or the death pointer table disagrees with the lists.
