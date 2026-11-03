@@ -172,3 +172,5 @@ Latest: M8 plan written (docs/M8_PLAN.md, 033-1..10), waiting for the user's OK.
 Latest: 033-1 done (audit, findings only): tick cost varies 2,987-19,518 (mean 4,843), port charges a flat 4,870; level end/GAME OVER pauses are placeholders. Next: 033-1b (measure level end/GAME OVER cycles), then 033-1c (per-tick cost model), then READY, death animation, new game.
 
 Latest: 033-1b done (level end = 4.24 s measured and used, also before cartoons; GAME OVER pause still a placeholder). Next: 033-1c (per-tick cost model) or the user may prefer READY/death animation first.
+
+Latest: 033-1c done (tick cost model in gamedriver.h; live game uses it). Next: 033-2 READY pause, 033-3 death animation (also measure GAME OVER pause), 033-4 new game. 033-1 pacing is closed.

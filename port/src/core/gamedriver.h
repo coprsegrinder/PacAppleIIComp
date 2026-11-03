@@ -25,6 +25,18 @@ inline constexpr std::int64_t kDeathSequenceCycles = 6'043'263;
 inline constexpr std::int64_t kLevelEndCycles = 4'330'065;
 inline constexpr std::int64_t kTypicalTickCycles = 4'870;   // mean cost of an ordinary tick (scenario A, 3,000 ticks without the death); refined in M8
 
+// TASK-033-1c: the cost of an ordinary tick from what it draws. Fitted (least squares) to the oracle's per-tick cycle counts of scenarios A, B, C, D (5,231 ticks, the ones
+// with call logs): 3,033 cycles + per call of type 1..6 {1,458; 1,789; 2,026; 3,745; 377; 864}. Fit quality: R2 0.970, residual 566 cycles per tick (a flat 4,870 gives 3,279);
+// held-out scenario totals within 0.6 % (flat: up to 4.5 %). Types 7-12 are not in the fit (0). An approximation, not the original's exact per-tick count (I).
+inline constexpr std::int64_t kTickBaseCycles = 3'033;
+inline constexpr std::int64_t kCallTypeCycles[7] = {0, 1'458, 1'789, 2'026, 3'745, 377, 864};
+inline std::int64_t tickCostCycles(const std::vector<DrawCall>& calls) {
+    std::int64_t c = kTickBaseCycles;
+    for (const auto& d : calls)
+        if (d.type >= 1 && d.type <= 6) c += kCallTypeCycles[d.type];
+    return c;
+}
+
 class GameDriver {
 public:
     bool init(const datapack::Pack& pack);
@@ -44,6 +56,7 @@ public:
     void setStaticGhosts(bool on) noexcept { staticGhosts_ = on; }    // live program without ghost logic: draw the four ghosts once at their start places
     void setPreviousFrighten(std::uint8_t e1, std::uint8_t e2, std::uint8_t e4) noexcept { prev_.e1 = e1; prev_.e2 = e2; prev_.e4 = e4; }
     const std::vector<DrawCall>& lastCalls() const noexcept { return lastCalls_; }   // the drawing calls of the last ordinary tick
+    std::int64_t tickCycles() const noexcept { return tickCycles_; }   // modelled cost of the last tick itself (tickCostCycles; kTypicalTickCycles for a special tick)
     std::int64_t extraCycles() const noexcept { return extraCycles_; }   // cycles of the long sequence of the last tick (0 for an ordinary tick)
 
 private:
@@ -56,6 +69,7 @@ private:
     TickExtras prev_;
     bool staticGhosts_ = false;
     std::int64_t extraCycles_ = 0;
+    std::int64_t tickCycles_ = kTypicalTickCycles;
     bool newGamePending_ = false;   // after GAME OVER the next tick starts a new game
     std::vector<DrawCall> lastCalls_;
 };

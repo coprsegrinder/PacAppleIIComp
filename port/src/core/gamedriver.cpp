@@ -46,12 +46,14 @@ TickEvents GameDriver::tickImpl(FrightenAware* fed) {
         newGamePending_ = false;
         newGame();
         extraCycles_ = 0;
+        tickCycles_ = kTypicalTickCycles;
         return TickEvents{};
     }
     const GameState before = core_.state();
     const bool acting = before.zp(0x59) == 1;
     TickEvents ev = fed != nullptr ? core_.tick(*fed) : core_.tick();
     extraCycles_ = 0;
+    tickCycles_ = kTypicalTickCycles;
     lastCalls_.clear();
     if (ev.paused) return ev;
     const GameState& after = core_.state();
@@ -86,6 +88,7 @@ TickEvents GameDriver::tickImpl(FrightenAware* fed) {
     }
     const auto calls = tickCalls(before, after, *pack_, acting && ev.acted, display_, prev_, now);
     lastCalls_ = calls;
+    tickCycles_ = tickCostCycles(calls);
     for (const auto& c : calls) executeCall(page_, c, *pack_);
     prev_ = now;
     return ev;

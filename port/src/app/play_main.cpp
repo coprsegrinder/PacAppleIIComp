@@ -198,7 +198,7 @@ void gameThread(core::GameDriver& drv, const datapack::Pack& pack, app::GameWind
                 window.setPage(drv.page());
                 break;
             }
-            budget -= core::kTypicalTickCycles + drv.extraCycles() + soundFreeze;
+            budget -= drv.tickCycles() + drv.extraCycles() + soundFreeze;   // the tick's modelled cost (033-1c), not a flat mean
             changed = true;
             if (budget < -core::kDeathSequenceCycles * 2) budget = 0;
         }
