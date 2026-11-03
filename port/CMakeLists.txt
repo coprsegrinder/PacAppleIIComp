@@ -32,6 +32,7 @@ add_library(pacman_core_verify STATIC
   src/core/tickdraw.cpp
   src/core/cartoon.cpp
   src/core/sound.cpp
+  src/core/squarewave.cpp
   src/core/gamecore.cpp
   src/core/ghosttick.cpp
   src/core/ghostjunction.cpp
@@ -54,8 +55,8 @@ if(WIN32)
   target_link_libraries(pacman_view PRIVATE pacman_core_verify user32 gdi32)
   target_link_options(pacman_view PRIVATE /ENTRY:wmainCRTStartup /SUBSYSTEM:WINDOWS)
 
-  add_executable(pacman_play src/app/play_main.cpp src/app/gamewindow.cpp)
-  target_link_libraries(pacman_play PRIVATE pacman_core_verify user32 gdi32)
+  add_executable(pacman_play src/app/play_main.cpp src/app/gamewindow.cpp src/app/audio.cpp)
+  target_link_libraries(pacman_play PRIVATE pacman_core_verify user32 gdi32 winmm)
   target_link_options(pacman_play PRIVATE /ENTRY:wmainCRTStartup /SUBSYSTEM:WINDOWS)
 endif()
 

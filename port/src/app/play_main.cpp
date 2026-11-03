@@ -5,6 +5,7 @@
 // Usage: pacman_play --pack <data.pack> [--scale N] [--seconds N] [--ticks N --dump <page.bin>] [--level N] [--items K]
 //   --scale N      whole-number window scale (default 3)
 //   --seconds N    close the window by itself after N seconds (for tests)
+//   --sound-test   play every sound once (to listen to the speaker model) and exit
 //   --level N      test aid: start at level N (1-255)
 //   --items K      test aid: only K dots/energizers left to eat (1-248), so a level end comes quickly
 //   --ticks N      run N ticks at once WITHOUT a window (no keys), write the final hi-res page (8,192 bytes) to --dump and exit
@@ -24,7 +25,10 @@
 #include <thread>
 #include <vector>
 
+#include "audio.h"
 #include "../core/cartoon.h"
+#include "../core/sound.h"
+#include "../core/squarewave.h"
 #include "../core/cycleclock.h"
 #include "../core/gamedriver.h"
 #include "../datapack/datapack.h"
@@ -51,6 +55,33 @@ bool loadPackFile(const std::wstring& packPath, datapack::LoadResult& loaded) {
 }
 
 // One tick with the consequences the live program draws: a completed maze starts the (unverified) next level.
+// --sound-test: plays every sound of the game once through the speaker model (the way it will sound in the game), with a short pause between them, and exits.
+int playSoundTest(const datapack::Pack& pack) {
+    core::SoundData sounds;
+    if (!sounds.load(pack)) {
+        std::puts("the data pack lacks the sound lists");
+        return 3;
+    }
+    app::AudioOutput audio;
+    if (!audio.open(44100)) {
+        std::puts("no audio device");
+        return 5;
+    }
+    struct Item { core::SoundId id; const char* name; };
+    const Item items[] = {{core::SoundId::DotEaten, "dot"}, {core::SoundId::Energizer, "energizer"}, {core::SoundId::Fruit, "fruit"}, {core::SoundId::GhostEaten, "ghost eaten"},
+                          {core::SoundId::Death6, "death step 6"}, {core::SoundId::Death5, "death step 5"}, {core::SoundId::Death4, "death step 4"}, {core::SoundId::Death3, "death step 3"},
+                          {core::SoundId::Death2, "death step 2"}, {core::SoundId::Death1, "death step 1"}, {core::SoundId::BonusLife, "bonus life"}, {core::SoundId::Jingle, "intro jingle (5 s)"}};
+    for (const Item& it : items) {
+        std::printf("playing: %s\n", it.name);
+        std::fflush(stdout);
+        const auto clicks = core::clickTimes(sounds.list(it.id));
+        audio.play(core::renderClicks(clicks, core::soundFreezeCycles(it.id), 44100));
+        while (audio.busy()) std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        std::this_thread::sleep_for(std::chrono::milliseconds(450));
+    }
+    return 0;
+}
+
 // `cartoons`: the live window plays the intermission after the level end; the batch mode (--ticks, no window) goes straight to the next level.
 core::TickEvents liveTick(core::GameDriver& drv, core::CartoonPlayer* cartoons = nullptr, const datapack::Pack* pack = nullptr) {
     const unsigned levelBefore = drv.core().state().level();
@@ -114,6 +145,7 @@ void gameThread(core::GameDriver& drv, const datapack::Pack& pack, app::GameWind
 int wmain(int argc, wchar_t** argv) {
     std::wstring pack, dump;
     int scale = 3, seconds = 0, startLevel = 0, startItems = 0;
+    bool soundTest = false;
     long ticks = -1;
     for (int i = 1; i < argc; ++i) {
         const std::wstring a = argv[i];
@@ -122,12 +154,14 @@ int wmain(int argc, wchar_t** argv) {
         else if (a == L"--seconds" && i + 1 < argc) seconds = _wtoi(argv[++i]);
         else if (a == L"--ticks" && i + 1 < argc) ticks = _wtol(argv[++i]);
         else if (a == L"--dump" && i + 1 < argc) dump = argv[++i];
+        else if (a == L"--sound-test") soundTest = true;
         else if (a == L"--level" && i + 1 < argc) startLevel = _wtoi(argv[++i]);
         else if (a == L"--items" && i + 1 < argc) startItems = _wtoi(argv[++i]);
         else return 64;
     }
     datapack::LoadResult loaded;
     if (pack.empty() || !loadPackFile(pack, loaded)) return 3;
+    if (soundTest) return playSoundTest(loaded.pack);
     core::GameDriver drv;
     if (!drv.init(loaded.pack) || !drv.newGame()) {
         std::puts("the data pack lacks tables the game core needs");

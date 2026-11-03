@@ -24,14 +24,14 @@ if not exist "%OUT%\obj_cli" mkdir "%OUT%\obj_cli"
 if not exist "%OUT%\obj_pack" mkdir "%OUT%\obj_pack"
 if not exist "%OUT%\obj_tests" mkdir "%OUT%\obj_tests"
 set "FLAGS=/nologo /std:c++20 /W4 /WX /permissive- /utf-8 /EHsc /O2"
-set "CORE=src\verify\sha256.cpp src\verify\dos33.cpp src\verify\verify.cpp src\datapack\datapack.cpp src\datapack\manifest.cpp src\hires\hires.cpp src\hires\replay.cpp src\core\cycleclock.cpp src\core\ticktrace.cpp src\core\gamestate.cpp src\core\input.cpp src\core\steptimer.cpp src\core\junction.cpp src\core\pacstep.cpp src\core\eating.cpp src\core\lives.cpp src\core\lifestart.cpp src\core\screen.cpp src\core\tickdraw.cpp src\core\cartoon.cpp src\core\sound.cpp src\core\gamecore.cpp src\core\ghosttick.cpp src\core\ghostjunction.cpp src\core\ghostmode.cpp src\core\ghostdecide_gen.cpp src\core\gamedriver.cpp src\video\colour.cpp"
+set "CORE=src\verify\sha256.cpp src\verify\dos33.cpp src\verify\verify.cpp src\datapack\datapack.cpp src\datapack\manifest.cpp src\hires\hires.cpp src\hires\replay.cpp src\core\cycleclock.cpp src\core\ticktrace.cpp src\core\gamestate.cpp src\core\input.cpp src\core\steptimer.cpp src\core\junction.cpp src\core\pacstep.cpp src\core\eating.cpp src\core\lives.cpp src\core\lifestart.cpp src\core\screen.cpp src\core\tickdraw.cpp src\core\cartoon.cpp src\core\sound.cpp src\core\squarewave.cpp src\core\gamecore.cpp src\core\ghosttick.cpp src\core\ghostjunction.cpp src\core\ghostmode.cpp src\core\ghostdecide_gen.cpp src\core\gamedriver.cpp src\video\colour.cpp"
 
 pushd "%ROOT%"
 if not exist "%OUT%\obj_view" mkdir "%OUT%\obj_view"
 cl %FLAGS% /Fo"%OUT%\obj_view\\" /Fe"%OUT%\pacman_view.exe" src\app\view_main.cpp src\app\pagewindow.cpp %CORE% user32.lib gdi32.lib /link /ENTRY:wmainCRTStartup /SUBSYSTEM:WINDOWS
 if errorlevel 1 (popd & exit /b 1)
 if not exist "%OUT%\obj_play" mkdir "%OUT%\obj_play"
-cl %FLAGS% /Fo"%OUT%\obj_play\\" /Fe"%OUT%\pacman_play.exe" src\app\play_main.cpp src\app\gamewindow.cpp %CORE% user32.lib gdi32.lib /link /ENTRY:wmainCRTStartup /SUBSYSTEM:WINDOWS
+cl %FLAGS% /Fo"%OUT%\obj_play\\" /Fe"%OUT%\pacman_play.exe" src\app\play_main.cpp src\app\gamewindow.cpp src\app\audio.cpp %CORE% winmm.lib user32.lib gdi32.lib /link /ENTRY:wmainCRTStartup /SUBSYSTEM:WINDOWS
 if errorlevel 1 (popd & exit /b 1)
 cl %FLAGS% /Fo"%OUT%\obj_cli\\" /Fe"%OUT%\pacman_verify.exe" src\app\verify_main.cpp %CORE%
 if errorlevel 1 (popd & exit /b 1)

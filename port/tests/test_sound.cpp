@@ -96,3 +96,53 @@ TEST(sound_click_times_equal_the_originals_for_all_12_sounds) {
     std::printf("    12 sounds, %zu clicks compared, %zu sounds differ\n", totalClicks, wrong);
     CHECK(wrong == 0 && totalClicks == 3312);   // 8 + 348 + 16 + 100 + (72 + 4 x 48 + 44) + 320 + 2212, the counts of tools/export_clicks.py
 }
+
+// ---- TASK-032-4: the speaker as a square wave (pure renderer; the Windows device is only a smoke test by ear) ----
+#include "../src/core/squarewave.h"
+
+TEST(squarewave_edges_sit_at_the_click_times) {
+    // clicks at 0, 1000 and 2000 cycles at 44,100 Hz: edges at samples 0, floor(1000 x 44100 / 1022727) = 43 and 86
+    const std::vector<std::uint32_t> clicks = {0, 1000, 2000};
+    const core::Pcm p = core::renderClicks(clicks, 5000, 44100, 5000);
+    CHECK(p.sampleRate == 44100);
+    CHECK(p.samples.size() == static_cast<std::size_t>(5000LL * 44100 / core::kCpuHz) + 1);
+    CHECK(p.samples[0] == 5000 && p.samples[42] == 5000);
+    CHECK(p.samples[43] == -5000 && p.samples[85] == -5000);
+    CHECK(p.samples[86] == 5000);
+    // the level is held for 1 ms (44 samples) after the last edge, then released to silence
+    CHECK(p.samples[86 + 44] == 5000 && p.samples[86 + 45] == 0 && p.samples.back() == 0);
+    // no clicks: silence of the requested length; a delayed first click: silence before it
+    const core::Pcm quiet = core::renderClicks({}, 1000, 44100);
+    CHECK(!quiet.samples.empty() && quiet.samples[0] == 0 && quiet.samples.back() == 0);
+    const core::Pcm late = core::renderClicks({10000, 11000}, 20000, 44100, 3000);
+    CHECK(late.samples[0] == 0 && late.samples[429] == 0 && late.samples[431] == 3000);   // 10000 x 44100 / 1022727 = 431.2
+}
+
+TEST(sound_all_sounds_render_with_the_right_length) {
+    if (testfw::config().image.empty()) {
+        std::printf("    SKIPPED (needs --image)\n");
+        return;
+    }
+    const auto built = datapack::buildPack(readFile(testfw::config().image), verify::referenceExpected(), datapack::dataManifest());
+    CHECK_MSG(built.ok, built.reason);
+    if (!built.ok) return;
+    const auto loaded = datapack::loadPack(built.bytes, verify::referenceExpected());
+    CHECK_MSG(loaded.ok, loaded.reason);
+    if (!loaded.ok) return;
+    core::SoundData sd;
+    CHECK(sd.load(loaded.pack));
+    for (int i = 0; i < static_cast<int>(core::SoundId::Count); ++i) {
+        const auto id = static_cast<core::SoundId>(i);
+        const auto clicks = core::clickTimes(sd.list(id));
+        const std::int64_t freeze = core::soundFreezeCycles(id);
+        CHECK(!clicks.empty() && freeze >= static_cast<std::int64_t>(clicks.back()));   // the game stands still at least as long as the clicks last
+        const core::Pcm p = core::renderClicks(clicks, freeze, 44100);
+        CHECK(p.samples.size() == static_cast<std::size_t>(freeze * 44100 / core::kCpuHz) + 1);
+        std::size_t loud = 0;
+        for (auto v : p.samples) loud += v != 0;
+        CHECK(loud > 10);
+    }
+    // the jingle lasts 5.04 s of audio
+    const core::Pcm jingle = core::renderClicks(core::clickTimes(sd.list(core::SoundId::Jingle)), core::soundFreezeCycles(core::SoundId::Jingle), 44100);
+    CHECK(jingle.samples.size() > 5.0 * 44100 && jingle.samples.size() < 5.1 * 44100);
+}

@@ -160,3 +160,5 @@ Latest: 032-2 done (click times of all 12 sounds equal the oracle). Next 032-3: 
 Latest: 032-3a done (oracle sound starts and freeze lengths recorded). Next 032-3b: GameCore TickEvents::sounds + test against scratch/sounds_X.bin (python -I tools/record_sounds.py A B C G H BL, ~4 min; add D for ghost eaten).
 
 Latest: 032-3 done (core reports sounds + freeze, equal the oracle on 298 starts). Next 032-4: audio output (waveOut), square wave from click lists, mute.
+
+Latest: 032-4 done in code (square wave + waveOut, pacman_play --sound-test); the user should listen. Next 032-5: sounds in the live game (queue from TickEvents::sounds, freeze via extraCycles, jingle at start, mute Ctrl-S/F9).
