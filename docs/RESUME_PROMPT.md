@@ -138,3 +138,5 @@ Latest: 031-2 done (level-end detection equals the oracle incl. E04/E05/E09/E20;
 Latest: 031-3 done (startNextLevel equals the oracle on 7 level changes; stand-in renamed). Next 031-4: per-level tables in GameCore (check what is already table-driven first; much may be done).
 
 Latest: 031-4 done (tables audited, L22/L23/L30 recorded and equal). Next 031-5: bonus fruit logic without fed bytes.
+
+Latest: 031-5 done (fruit state equal at levels 1,2,5,9,13,23,24). Open: 031-5b (V23 Pac-Man X mismatch at tick 544, excluded from the logic list). Next: 031-5b or 031-6 (cartoon 1 in the flow).

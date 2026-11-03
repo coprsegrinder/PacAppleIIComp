@@ -75,7 +75,7 @@ TEST(ghostworld_free_running_against_the_oracle_recordings) {
     if (!loaded.ok) return;
     std::map<std::size_t, std::pair<std::size_t, std::size_t>> diffs;   // offset -> (count, first tick)
     std::map<std::size_t, std::string> firstWhere;
-    std::size_t ticks = 0, resyncs = 0, sharedBad = 0, queueBad = 0, fileCount = 0, caught = 0, eaten = 0, shown = 0;
+    std::size_t ticks = 0, resyncs = 0, sharedBad = 0, queueBad = 0, fruitBad = 0, fruitTicks = 0, pointsTicks = 0, fileCount = 0, caught = 0, eaten = 0, shown = 0;
     std::vector<std::string> files = split(testfw::config().ticks);
     for (const auto& extra : split(testfw::config().drawticks))   // the poked and custom scenarios of --drawticks are free-running tests too (one-player ones with ghostram_X.bin)
         if (std::find(files.begin(), files.end(), extra) == files.end()) files.push_back(extra);
@@ -155,6 +155,13 @@ TEST(ghostworld_free_running_against_the_oracle_recordings) {
                         std::printf("    %s tick %zu: shared mine E1/2 %02X%02X E4 %u EA/B %02X%02X | oracle %02X%02X %u %02X%02X (energizer %d, eaten %d%d%d%d, caught %d)\n", path.c_str(), k, sh.e2, sh.e1, sh.e4, sh.eb, sh.ea,
                                     zb[0xE2], zb[0xE1], zb[0xE4], zb[0xEB], zb[0xEA], ev.energizer, ev.ghostEaten[0], ev.ghostEaten[1], ev.ghostEaten[2], ev.ghostEaten[3], ev.caught);
                 }
+                // TASK-031-5: the bonus fruit state $E7 (0 none, 1 shown, 2 its points shown) and the blink bytes $E5/$E6, never fed
+                if (zb[0xE7] == 1) ++fruitTicks;
+                if (zb[0xE7] == 2) ++pointsTicks;
+                if (core.fruitState() != zb[0xE7] || core.blink1UpCounter() != zb[0xE5] || core.blink1UpPhase() != zb[0xE6]) {
+                    ++fruitBad;
+                    if (shown++ < 6) std::printf("    %s tick %zu: E7/E5/E6 mine %02X %02X %02X oracle %02X %02X %02X\n", path.c_str(), k, core.fruitState(), core.blink1UpCounter(), core.blink1UpPhase(), zb[0xE7], zb[0xE5], zb[0xE6]);
+                }
                 bool queuesOk = true;
                 for (std::size_t g = 0; g < 4; ++g) {
                     const std::uint8_t* oq = zb + 256 + 256 * g;
@@ -185,6 +192,8 @@ TEST(ghostworld_free_running_against_the_oracle_recordings) {
     }
     std::printf("    %zu files, %zu ticks run free (nothing fed): %zu catches and %zu ghosts eaten by the core; shared variables wrong in %zu ticks, queues wrong in %zu\n", fileCount, ticks, caught, eaten, sharedBad, queueBad);
     for (const auto& [off, d] : diffs) std::printf("    %-12s differs in %zu ticks (first: tick %zu of %s)\n", offsetName(off).c_str(), d.first, d.second, firstWhere[off].c_str());
+    std::printf("    bonus fruit: %zu ticks with the fruit shown, %zu with its points shown; $E5/$E6/$E7 wrong in %zu ticks\n", fruitTicks, pointsTicks, fruitBad);
+    CHECK(fruitBad == 0);
     CHECK(fileCount >= 1 && ticks > 10000);
     CHECK(diffs.empty() && sharedBad == 0 && queueBad == 0);
 }
