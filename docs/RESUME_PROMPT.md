@@ -152,3 +152,5 @@ Latest: 031-7 done (cartoons 2 and 3 equal the golden final pages). Next 031-8: 
 Latest: M6 DONE (levels, fruit, cartoons in C++; 10 natural level changes equal the oracle). pacman_play --level N --items K shows a cartoon quickly. Next: M7 sound (TASK-032), M8 pacing/packaging; small open items: READY pause, death animation, title/attract, two-player core; run the Python suite (bash tools/full_suite.sh python, ~25 min).
 
 Latest: M7 planned (docs/M7_PLAN.md, 032-1..032-6). Next 032-1: sound data audit in the pack.
+
+Latest: 032-1 done (sound lists in the pack, SoundData reader). Next 032-2: click-list generator in C++ for all 12 sounds vs the oracle.
