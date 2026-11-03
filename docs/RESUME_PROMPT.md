@@ -168,3 +168,5 @@ Latest: 032-5 done in code (live sounds, jingle at start, Ctrl-S/F9 mute). The u
 Latest: 032-6 done, M7 DONE (sound). Jingle = once per real game start (not demo); cartoons have no sound (V); key during jingle = read and consumed (I). Next: M8 (pacing/packaging, READY pause, death animation, title/attract flow TASK-029i, clean-machine test). Ask the user to confirm the plan first.
 
 Latest: M8 plan written (docs/M8_PLAN.md, 033-1..10), waiting for the user's OK. Suggested first: 033-1 pacing audit, then READY pause, death animation, GAME OVER/new game.
+
+Latest: 033-1 done (audit, findings only): tick cost varies 2,987-19,518 (mean 4,843), port charges a flat 4,870; level end/GAME OVER pauses are placeholders. Next: 033-1b (measure level end/GAME OVER cycles), then 033-1c (per-tick cost model), then READY, death animation, new game.

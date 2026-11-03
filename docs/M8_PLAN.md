@@ -18,3 +18,16 @@ Each step is one ledger task, one turn, one checkpoint.
 | 033-10 | Release notes; publishing only with the user's explicit approval | n/a |
 
 Suggested order: 033-1, 033-2, 033-3, 033-4 first (they make the game playable start to finish), the rest after.
+
+## 033-1 result (2026-11-03): pacing audit, findings only (no code changed)
+Measured from `scratch/tick_cycles_A.bin` (cycle cost of each of 3,000 ticks of scenario A on the oracle):
+* Ordinary ticks (2,990) cost **4,843 cycles on average, but between 2,987 and 19,518** (standard deviation 2,779). About half cost 2,500-3,000, the rest 6,000, 9,500, 13,000 and more depending on what the tick draws. The port charges the same flat 4,870 cycles for every tick (`kTypicalTickCycles`). **Over a long stretch of play of the scenario-A kind the speed is right; in busier scenes (more moving ghosts, other levels) the original is slower than the port, and the original's short slowdowns/stutters are missing.** (V for the numbers, I for the effect on the feel; scenario A only, level 1.)
+* Long pauses: the death sequence costs 6,043,263 cycles (5.91 s, V). The port uses that same figure for the **level end** and for **GAME OVER** as placeholders; neither was measured (the level-end note in gamedriver.cpp says so). A level end without a cartoon probably pauses a different length. (U)
+* Cartoons: lengths are exact (5,597,305 / 4,347,216 / 8,211,963 cycles, V on the oracle); the live player uses them directly.
+* Not checked: the first-start jingle freeze (5,153,446 cycles, V from the sound task), the real PC clock accuracy (`CycleClock` is exact integer arithmetic and tested with a fake clock).
+
+New sub-tasks (replace the single 033-1):
+| Task | What | Done when |
+|---|---|---|
+| 033-1b | Measure the real length of the level end and of GAME OVER on the oracle and use them instead of the death-sequence figure | live pause = oracle cycles |
+| 033-1c | Per-tick cost model: record the cycles of every tick for more scenarios (B, C, D, levels 2+, frightened), fit a cost from what the tick does, test the model against the recordings | model within a stated error of the oracle per tick and exact in total over each recording |
