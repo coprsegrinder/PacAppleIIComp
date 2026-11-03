@@ -130,3 +130,5 @@ Latest: 030e7 done. Next 030e9: GhostSource inside GameCore (all ghost logic), n
 Latest: M5 DONE (ghosts). Next: M6 (level change, level tables, intermission cartoons), M7 sound, M8 pacing/packaging; small open items: READY pause, death animation, title/attract, two-player core.
 
 Latest: M6 planned (docs/M6_PLAN.md, 031-1..031-8). Next 031-1: recorder across level ends.
+
+Latest: 031-1 done (level-end recordings E04/E05/E09/E20 + B/C/H/L/M/U). Next 031-2: level-end detection and flow.

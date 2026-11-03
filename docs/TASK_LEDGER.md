@@ -119,7 +119,7 @@ Statuses: Planned / In progress / Implemented / Tested / Verified / Blocked / De
 | TASK-030e8 | Eyes, return, house exit, release timeline | **Done** (house in 030e5, eyes route in 030e4, return to the house in 030e5; verified by the free-running test) | 030e7 | scenario D, house exits |
 | TASK-030e9 | Integration: GhostSource in GameCore, no fed fields | **Done:** 54,428 ticks free-running, 0 differences; pages equal; pacman_play.exe with moving ghosts | 030e8 | free-running A-D equal; pacman_play with moving ghosts |
 | TASK-031 | M6: levels, fruit, intermissions (needs TASK-021) | Split 2026-11-03 into 031-1 ... 031-8 (docs/M6_PLAN.md); closes when 031-8 is done | 030, 021 | Sequences and cartoons match oracle |
-| TASK-031-1 | Recorder across level ends (1->2, 4->5, 20->21) | Planned | 030e | recordings replay equal |
+| TASK-031-1 | Recorder across level ends (1->2, 4->5, 20->21) | **Done 2026-11-03:** tools/record_levelend.py, tools/level_changes.py; new local recordings E04 (4->5 at tick 242), E05 (5->6, cartoon 2, tick 115), E09 (9->10, cartoon 3, tick 132), E20 (20->21, tick 114), 501 ticks each; E05 and E09 re-recorded: identical chain hashes. Existing: B/C/U (1->2, 2->3 with cartoon 1), H, L, M (6->7, 14->15, 25->26). Zero-page/queue side files (ghostram) for the E files not recorded yet | 030e | recordings replay equal (checked for E05, E09) |
 | TASK-031-2 | Level-end detection and flow to the cartoon scheduler | Planned | 031-1 | state equal per tick |
 | TASK-031-3 | Level advance: maze reload, items, counters, queues | Planned | 031-2 | first tick of new level equal |
 | TASK-031-4 | Per-level tables in GameCore | Planned | 031-3 | 30 levels equal |
