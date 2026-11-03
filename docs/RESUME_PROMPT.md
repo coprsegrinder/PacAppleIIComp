@@ -190,3 +190,5 @@ Latest: the user supplied "Apple II roms/" (open-source ROMs incl. character ROM
 Latest: 033-4b done (attract title screen: ScreenScript/ScreenPlayer in port/src/core/attract.*, cycle-exact against 11,549 oracle events and 242 screen snapshots; suite 128/0). Method for the next screens: capture_events.py + capture_title_snaps.py windows, Python model (tools/title_model.py style) until 0 mismatches, then port. Next: 033-4c chase loops A/B + ghost-eaten animations (from 12,250,257 on).
 
 Latest: 033-4c done (buildAttractScript = title + chase up to cycle 22,486,410; suite 129/0). Next: 033-4d the demo game (set-up $531E/$5659/$53E6, 7,894 ticks of GameCore in demo mode with the recorded keys, ends with Pac-Man being caught: death animation without sound, then the next turn at +63,189,736).
+
+Latest: 033-4d done (AttractTurn = title + chase + demo set-up + 7,894 demo ticks + death; 790 of 790 pages equal the oracle; suite 133/0; turn length 63,190,772 vs 63,189,736 because of the fitted tick cost). Next: 033-4e (loop, Space -> players prompt, PRESS RETURN with the character ROM, GAME OVER -> attract).

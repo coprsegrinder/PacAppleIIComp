@@ -20,6 +20,15 @@ bool GameDriver::newGame() {
     return true;
 }
 
+bool GameDriver::newDemo(const hires::Page& screen) {
+    if (!core_.newDemo()) return false;
+    display_ = DisplayState{};
+    prev_ = TickExtras{};
+    syncExtras();
+    page_ = screen;
+    return true;
+}
+
 void GameDriver::drawStaticGhosts() {
     const GameState& s = core_.state();
     for (std::size_t g = 0; g < 4; ++g) {
@@ -170,6 +179,14 @@ TickEvents GameDriver::tickImpl(FrightenAware* fed) {
         newGamePending_ = true;
         return ev;
     }
+    if (ev.demoOver) {   // the attract game ends: this tick's drawings up to the contact, from the state at the catch (the death script follows)
+        const auto calls = tickCalls(before, core_.caughtState(), *pack_, acting && ev.acted, display_, prev_, now);
+        lastCalls_ = calls;
+        tickCycles_ = tickCostCycles(calls, *pack_, before.demo != 0, ev.ate, ev.energizer);
+        for (const auto& c : calls) executeCall(page_, c, *pack_);
+        prev_ = now;
+        return ev;
+    }
     if (ev.caught || ev.levelComplete) {
         // the high score follows the score as the score routine ($7091) would have done; the screen is rebuilt from the state
         const std::uint32_t sc = after.zp(0x52) | (after.zp(0x53) << 8) | (after.zp(0x54) << 16);
@@ -191,7 +208,7 @@ TickEvents GameDriver::tickImpl(FrightenAware* fed) {
     }
     const auto calls = tickCalls(before, after, *pack_, acting && ev.acted, display_, prev_, now);
     lastCalls_ = calls;
-    tickCycles_ = tickCostCycles(calls);
+    tickCycles_ = tickCostCycles(calls, *pack_, before.demo != 0, ev.ate, ev.energizer);
     for (const auto& c : calls) executeCall(page_, c, *pack_);
     prev_ = now;
     return ev;

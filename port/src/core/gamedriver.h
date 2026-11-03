@@ -29,19 +29,19 @@ inline constexpr std::int64_t kDeathAnimationCycles = kDeathSequenceCycles - kRe
 inline constexpr std::int64_t kLevelEndCycles = 4'330'065;
 inline constexpr std::int64_t kTypicalTickCycles = 4'870;   // mean cost of an ordinary tick (scenario A, 3,000 ticks without the death); refined in M8
 
-// TASK-033-1c: the cost of an ordinary tick from what it draws. Fitted (least squares) to the oracle's per-tick cycle counts of scenarios A, B, C, D (5,231 ticks, the ones
-// with call logs): 3,033 cycles + per call of type 1..6 {1,458; 1,789; 2,026; 3,745; 377; 864}. Fit quality: R2 0.970, residual 566 cycles per tick (a flat 4,870 gives 3,279);
-// held-out scenario totals within 0.6 % (flat: up to 4.5 %). Types 7-12 are not in the fit (0). An approximation, not the original's exact per-tick count (I).
+// TASK-033-4d: the cost of a tick = the idle tick + what the drawing routines spend (exact: attract.h drawCallCycles, summed up from the original's instructions) + a fitted
+// "glue" per call and a few logic extras. Found on the 7,893 ticks of the attract game, measured against the oracle (tools/record_demo_full.py, tests/test_attract.cpp):
+//  * a tick without any drawing costs EXACTLY 2,927 cycles (4,757 of 4,757 ticks);
+//  * for a tick with drawing the remaining difference is 2,939 + per call {type 1: -106, 2: 66, 3: 609, 5: 134, 6: 92, 10: 40, 11: 59} + 144 when a dot is eaten + 5,650 when an
+//    energizer is eaten; standard deviation 111 cycles per tick; over the whole demo the model is off by 1,094 cycles of 36.6 million (0.003 %). Not exact per tick: the logic of
+//    the ghosts and of Pac-Man takes a few different paths (I). The real game's keyboard poll is dearer by 60 cycles (scenario A's cheapest tick is 2,987) (I, not fitted).
+inline constexpr std::int64_t kIdleTickCyclesDemo = 2'927;
+inline constexpr std::int64_t kIdleTickCyclesGame = 2'987;
 // The tick in which Pac-Man is caught costs 6,273 to 18,916 cycles up to the end of its drawing (mean 8,917 over 245 deaths of the oracle); the death sequence counts from there.
 inline constexpr std::int64_t kCatchTickCycles = 8'917;
-inline constexpr std::int64_t kTickBaseCycles = 3'033;
-inline constexpr std::int64_t kCallTypeCycles[7] = {0, 1'458, 1'789, 2'026, 3'745, 377, 864};
-inline std::int64_t tickCostCycles(const std::vector<DrawCall>& calls) {
-    std::int64_t c = kTickBaseCycles;
-    for (const auto& d : calls)
-        if (d.type >= 1 && d.type <= 6) c += kCallTypeCycles[d.type];
-    return c;
-}
+inline constexpr std::int64_t kDemoCatchTickCycles = 3'996;      // the attract game's last tick up to the start of the death routine at $8BDD (that tick is always the same)
+inline constexpr std::int64_t kDemoGhostEatenTickCycles = 277'633;   // the attract game's one ghost-eaten tick (always the same: the animation with its delay instead of the sound)
+std::int64_t tickCostCycles(const std::vector<DrawCall>& calls, const datapack::Pack& pack, bool demo, bool ate, bool energizer);
 
 // TASK-033-3: the death animation as a timed list of steps (opt-in, setPlayDeath). Times are cycles after the end of the catching tick (the oracle's offsets from the tick
 // start minus the 14,682 cycles of that tick's own drawing; tools/ready_timing.py). The calls are the first 19 of restartCalls(Death): 4 ghost clears, Pac-Man clear, Pac-Man's
@@ -58,6 +58,7 @@ class GameDriver {
 public:
     bool init(const datapack::Pack& pack);
     bool newGame();                        // new core state and the first screen
+    bool newDemo(const hires::Page& screen);   // the attract game: its first tick's state on the given screen (the screen the set-up has drawn)
     TickEvents tick(FrightenAware& ghosts);   // the ghosts are supplied by the caller (tests)
     TickEvents tick();                        // the ghosts of the game core (M5)
     void syncExtras() noexcept {              // after the shared ghost variables were replaced from outside

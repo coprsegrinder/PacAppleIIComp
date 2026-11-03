@@ -43,6 +43,7 @@ struct TickEvents {
     bool outsideMap = false;      // a poked position with stale cell counters (the original ate from a copy behind the map; not modelled)
     bool caught = false;          // Pac-Man was caught: the state is the restarted life (or game over: lives == 0)
     bool gameOver = false;        // the last life was lost
+    bool demoOver = false;        // the attract game's Pac-Man was caught: the demo ends (the state is the moment of the catch)
     std::array<bool, 4> ghostEaten{};
     std::vector<SoundId> sounds;  // the sounds the original starts in this tick, in order (none in the demo); each freezes the game for soundFreezeCycles()
 };
@@ -51,6 +52,7 @@ class GameCore {
 public:
     bool init(const datapack::Pack& pack);                    // loads the tables; false if the pack lacks them
     bool newGame(int players = 1);                            // state of the first tick of a game (one player)
+    bool newDemo();                                           // state of the first tick of the attract game ($E8 = 1, no lives, $79 = 0, the leftovers of the title in the first ghost queue)
     GameState& state() noexcept { return state_; }
     const GameState& state() const noexcept { return state_; }
     InputPoller& input() noexcept { return poller_; }

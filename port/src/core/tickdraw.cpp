@@ -39,7 +39,7 @@ namespace {
 GameState drawnState(const GameState& before, const GameState& after, std::size_t g) {
     GameState s = after;
     s.ghosts[g].b[9] = before.ghosts[g].b[9] && after.ghosts[g].b[9];                 // eyes: set after the draw (eaten) or cleared before it (back in the house)
-    s.ghosts[g].b[8] = before.ghosts[g].b[8] || after.ghosts[g].b[8];                 // frightened: set early in the tick (energizer) or cleared after the draw (eaten)
+    s.ghosts[g].b[8] = after.ghosts[g].b[8] || (before.ghosts[g].b[8] && after.ghosts[g].b[9] != 0 && before.ghosts[g].b[9] == 0);   // cleared by the end of the period (before the draw) -> drawn normal; cleared by being eaten (after the draw) -> still blue                 // frightened: set early in the tick (energizer) or cleared after the draw (eaten)
     return s;
 }
 }  // namespace
@@ -70,7 +70,13 @@ std::vector<DrawCall> spriteCalls(const GameState& before, const GameState& afte
         const GhostRecord& b = after.ghosts[static_cast<std::size_t>(g)];
         if (!ghostStepped(a, b)) continue;
         int flag = 0;
-        const std::uint16_t base = ghostImageBase(drawnState(before, after, static_cast<std::size_t>(g)), static_cast<std::size_t>(g), timer, pack, flag);
+        // the frightened timer ($E1/$E2) is counted down once for every ghost that steps, before that ghost's own draw, and the ghosts are processed from 4 to 1: the ghost g is
+        // drawn with the timer of the end of the tick plus one for each lower-numbered ghost that steps after it (found at the attract game's tick 7140: blue and white flash
+        // frames within one tick)
+        std::uint16_t drawTimer = timer;
+        for (int h = 0; h < g; ++h)
+            if (ghostStepped(before.ghosts[static_cast<std::size_t>(h)], after.ghosts[static_cast<std::size_t>(h)])) ++drawTimer;
+        const std::uint16_t base = ghostImageBase(drawnState(before, after, static_cast<std::size_t>(g)), static_cast<std::size_t>(g), drawTimer, pack, flag);
         out.push_back(DrawCall{3, {kMaskTable, a.x() - 4, a.y() - 4, 0, 0}});
         out.push_back(DrawCall{1, {base, b.x(), b.y(), 1, flag}});
     }
@@ -194,7 +200,7 @@ std::vector<DrawCall> tickCalls(const GameState& before, const GameState& after,
             default: break;
         }
         // $8B9D: a frightened ghost that Pac-Man touches is eaten: the ghost's flags turn to eyes (record byte 9 = 1) and $7DB8 draws the score image
-        if (a.b[9] == 0 && b.b[9] == 1 && a.b[8] != 0 && before.demo == 0) {
+        if (a.b[9] == 0 && b.b[9] == 1 && a.b[8] != 0) {
             const unsigned step = after.zp(0x68);                    // already doubled: the image shown is for the value before the doubling
             const unsigned used = step == 0x04 ? 0x02 : step == 0x08 ? 0x04 : step == 0x16 ? 0x08 : step == 0x32 ? 0x16 : 0x02;
             const int image = used == 0x02 ? 0x7FC7 : used == 0x04 ? 0x7FE5 : used == 0x08 ? 0x8003 : 0x8021;
@@ -235,6 +241,11 @@ std::vector<DrawCall> tickCalls(const GameState& before, const GameState& after,
                 if (!points.empty()) digitCalls(out, static_cast<std::uint32_t>(points[std::min<std::size_t>(after.level(), 15)]) << 8, 145, 104, pack);
             }
         }
+    }
+    // $570C -> $58B3: in the attract game the words GAME OVER are drawn again ($80E3, an OR blit: it restores what a ghost has wiped out) in every tick in which $59 = 1
+    if (after.demo != 0 && after.zp(0x59) == 1) {
+        out.push_back(DrawCall{2, {0x811D, 15, 105, 4, 7}});
+        out.push_back(DrawCall{2, {0x8139, 21, 105, 4, 7}});
     }
     // $570C at the end of the tick: the 1UP blink, then the energizer blink
     if (exBefore.e6 != exAfter.e6) {
@@ -296,6 +307,10 @@ bool executeCall(hires::Page& page, const DrawCall& c, const datapack::Pack& pac
             const auto tile = pack.find(static_cast<std::uint16_t>(c.p[0]), hires::kTileTableBytes);
             if (tile.empty()) return false;
             hires::tile(page, c.p[1], c.p[2], tile);
+            return true;
+        }
+        case 13: {                                                              // $5D3D: a vertical line, one pixel per row from y0 to y1 (p0 = x, p1 = y0, p2 = y1)
+            hires::vLine(page, c.p[0], c.p[1], c.p[2]);
             return true;
         }
         case 8: {                                                               // $5CF0: every touched byte becomes (byte & $7F) | $1E

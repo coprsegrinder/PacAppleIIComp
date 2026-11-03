@@ -4,7 +4,7 @@ Format: 'TEV1', u32 count, then per event 7 x i32: time (cycles after T0), kind,
 import json, struct, sys
 NAME = sys.argv[1] if len(sys.argv) > 1 else 'title'
 D = json.load(open('scratch/events_%s.json' % NAME))
-KIND = {'clear': 1, 'hline': 2, 'blit': 3, 'poll': 4, 'delay': 5, 'dispatch': 6, 'dot': 7, 'tile': 8, 'mclear': 9, 'shifted': 10}
+KIND = {'clear': 1, 'hline': 2, 'blit': 3, 'poll': 4, 'delay': 5, 'dispatch': 6, 'dot': 7, 'tile': 8, 'mclear': 9, 'shifted': 10, 'vline': 11, 'box': 12, 'img12x3': 13}
 rows = []
 first_clear_seen = False
 for e in D['events']:

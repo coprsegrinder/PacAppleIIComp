@@ -418,18 +418,12 @@ TEST(gamedriver_free_running_pages_equal_the_oracle_with_its_own_ghosts) {
     CHECK(scenarios >= 1);
 }
 
-// TASK-033-1c: the tick cost model (fitted on the oracle's per-tick cycles; the fit itself is documented in docs/M8_PLAN.md, here only its arithmetic)
-TEST(tick_cost_model_adds_base_and_per_type_costs) {
+// TASK-033-4d: a tick without any drawing costs exactly what the attract game's 4,757 idle ticks cost (the model for ticks with drawing is checked in test_attract)
+TEST(tick_cost_model_idle_tick) {
     using namespace pacman::core;
-    CHECK(tickCostCycles({}) == 3'033);
-    DrawCall a{};
-    a.type = 3;
-    DrawCall b{};
-    b.type = 4;
-    DrawCall other{};
-    other.type = 10;   // not in the fit: costs nothing extra
-    CHECK(tickCostCycles({a, b, other}) == 3'033 + 2'026 + 3'745);
-    CHECK(tickCostCycles({a, a}) == 3'033 + 2 * 2'026);
+    datapack::Pack none;
+    CHECK(tickCostCycles({}, none, true, false, false) == 2'927);
+    CHECK(tickCostCycles({}, none, false, false, false) == 2'987);
 }
 
 // TASK-033-3b: the live death and GAME OVER sequences of the driver (structure and total times; the timing model itself is checked against 220 recorded deaths in test_deathtiming)

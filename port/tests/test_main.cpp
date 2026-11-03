@@ -6,6 +6,7 @@
 #include "test_framework.h"
 
 int main(int argc, char** argv) {
+    const char* only = nullptr;   // --only <text>: run just the tests whose name contains <text>
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--image") == 0 && i + 1 < argc) {
             testfw::config().image = argv[++i];
@@ -23,10 +24,20 @@ int main(int argc, char** argv) {
             testfw::config().ticks = argv[++i];
         } else if (std::strcmp(argv[i], "--drawticks") == 0 && i + 1 < argc) {
             testfw::config().drawticks = argv[++i];
+        } else if (std::strcmp(argv[i], "--only") == 0 && i + 1 < argc) {
+            only = argv[++i];
         } else if (std::strcmp(argv[i], "--titleevents") == 0 && i + 1 < argc) {
             testfw::config().titleEvents = argv[++i];
         } else if (std::strcmp(argv[i], "--chaseevents") == 0 && i + 1 < argc) {
             testfw::config().chaseEvents = argv[++i];
+        } else if (std::strcmp(argv[i], "--setupevents") == 0 && i + 1 < argc) {
+            testfw::config().setupEvents = argv[++i];
+        } else if (std::strcmp(argv[i], "--endevents") == 0 && i + 1 < argc) {
+            testfw::config().endEvents = argv[++i];
+        } else if (std::strcmp(argv[i], "--demopages") == 0 && i + 1 < argc) {
+            testfw::config().demoPages = argv[++i];
+        } else if (std::strcmp(argv[i], "--democycles") == 0 && i + 1 < argc) {
+            testfw::config().demoCycles = argv[++i];
         } else if (std::strcmp(argv[i], "--titlesnaps") == 0 && i + 1 < argc) {
             testfw::config().titleSnaps = argv[++i];
         } else if (std::strcmp(argv[i], "--deaths") == 0 && i + 1 < argc) {
@@ -47,7 +58,10 @@ int main(int argc, char** argv) {
         }
     }
     int failedTests = 0;
+    std::size_t ran = 0;
     for (const auto& test : testfw::registry()) {
+        if (only != nullptr && std::strstr(test.name, only) == nullptr) continue;
+        ++ran;
         const int before = testfw::failures();
         std::printf("[ RUN  ] %s\n", test.name);
         test.run();

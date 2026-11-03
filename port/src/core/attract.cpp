@@ -1,6 +1,7 @@
 #include "attract.h"
 
 #include <algorithm>
+#include <utility>
 
 namespace pacman::core {
 
@@ -63,6 +64,13 @@ struct Builder {
     }
     // $5933: byte column ($04) and shift ($03) of the pixel column $0C (high byte $0D = 0)
     void r5933() {
+        if (z[0x0D] != 0) {                         // x >= 256: the column table is read from the pixel x + 4 and 36 columns are added
+            const int xx = (z[0x0C] + 4) & 255;
+            add(3 + 2 + 2 + 3 + 2 + 2 + 2 + 4 + cross(0x5A58, xx) + 2 + 3 + 4 + cross(0x5958, xx) + 3 + 6);
+            z[0x04] = u8(0x5A58 + xx) + 0x24;
+            z[0x03] = u8(0x5958 + xx);
+            return;
+        }
         const int x = z[0x0C];
         add(3 + 3 + 3 + 4 + cross(0x5A58, x) + 3 + 4 + cross(0x5958, x) + 3 + 6);
         z[0x04] = u8(0x5A58 + x);
@@ -380,6 +388,7 @@ struct Builder {
         add(6);
     }
     void rHline() {                                 // $5CF0 with $1D = 1: two pixels per step
+        Busy window(*this);
         event(2, z[0x0C], z[0x0E], z[0x10], z[0x1D], z[0x1E]);
         step(ScreenOp::Draw, DrawCall{8, {z[0x0C], z[0x0E], z[0x10], 2, z[0x1E]}});
         add(2 + 3 + 3);
@@ -1009,6 +1018,663 @@ struct Builder {
         out.length = t;
     }
 
+    // ---- the set-up of a game screen: $531E, $5659, $5850, $53E6 (here with the demo's values: one player, level 1, no spare lives) ------------------------------------
+    int mapCell(int index) const { return u8(0x65BA + index); }   // the pristine maze map (a game that is running would pass its own map)
+    void r5331() {                                  // $5331: copy the maze map (896 bytes) from $65BA to $623A
+        add(6);
+        add(5 * 4 + 2);
+        int p14 = 0x65BA, p16 = 0x623A;
+        for (;;) {
+            add(5 + 6);
+            add(5);
+            ++p16;
+            add((p16 & 255) != 0 ? 3 : 2 + 5);
+            add(5);
+            ++p14;
+            add((p14 & 255) != 0 ? 3 : 2 + 5);
+            add(3 + 2);
+            if ((p16 >> 8) != 0x65) {
+                add(3);
+                continue;
+            }
+            add(2);
+            add(3 + 2);
+            if ((p16 & 255) != 0xBA) {
+                add(3);
+                continue;
+            }
+            add(2);
+            break;
+        }
+        add(6);
+    }
+    void r53be() {                                  // $53BE: save the player's data
+        add(6);
+        add(3 + 4 + cross(0x53E0, z[0x50]) + 2 + 8 * 16 - 1 + 6);
+    }
+    void r53cf() {                                  // JSR $53CF: load the player's data
+        add(6 + 3 + 4 + cross(0x53E0, z[0x50]) + 2 + 8 * 15 - 1 + 6);
+    }
+    void r531e() {                                  // JSR $531E
+        add(6 + 2 + 3);
+        r5331();
+        add(2 + 3 + 2 + 3);
+        r53be();
+        add(6);
+    }
+    void rVline() {                                 // $5D3D (the JSR is paid by the caller): one pixel per row from $10 to $11
+        Busy window(*this);
+        event(11, z[0x0C], z[0x10], z[0x11]);
+        step(ScreenOp::Draw, DrawCall{13, {z[0x0C], z[0x10], z[0x11], 0, 0}});
+        add(6);
+        r5933();
+        for (;;) {
+            add(6);
+            r5b58();
+            add(3 + 3);
+            add(6 + 4 + cross(0x5925, z[0x03]) + 5 + cross(u8(0x5B67 + z[0x10]), z[0x04]) + 6 + 6);
+            add(5);
+            z[0x10] += 1;
+            add(3 + 3);
+            if (z[0x11] >= z[0x10]) {
+                add(3);
+                continue;
+            }
+            add(2);
+            break;
+        }
+        add(6);
+    }
+    void r5d53() {                                  // JSR $5D53: the maze walls from the table at $5F69 (72 horizontal and 70 vertical lines)
+        add(6);
+        add(2 + 3 + 3 + 2 + 2 + 3 + 2 + 3 + 3);
+        z[0x1E] = 0x80;
+        int ptr = 0x5F69;
+        z[0x0D] = 0;
+        add(2 + 3 + 2 + 3);
+        for (int k = 0; k < 72; ++k) {
+            add(2);
+            const int lo = ptr & 255;
+            z[0x0C] = u8(ptr);
+            add(5 + cross(lo, 0) + 3 + 2);
+            z[0x0E] = u8(ptr + 1);
+            add(5 + cross(lo, 1) + 3 + 2);
+            z[0x10] = u8(ptr + 2);
+            add(5 + cross(lo, 2) + 3);
+            add(6);
+            rHline();
+            add(2 + 2 + 3 + 3);
+            add(lo + 3 > 255 ? 2 + 5 : 3);
+            ptr += 3;
+            add(5);
+            add(k < 71 ? 3 : 2);
+        }
+        add(2 + 3);
+        for (int k = 0; k < 70; ++k) {
+            add(2);
+            const int lo = ptr & 255;
+            z[0x0C] = u8(ptr);
+            add(5 + cross(lo, 0) + 3 + 2);
+            z[0x10] = u8(ptr + 1);
+            add(5 + cross(lo, 1) + 3 + 2);
+            z[0x11] = u8(ptr + 2);
+            add(5 + cross(lo, 2) + 3);
+            add(6);
+            rVline();
+            add(2 + 3 + 2 + 3);
+            add(lo + 3 > 255 ? 2 + 5 : 3);
+            ptr += 3;
+            add(5);
+            add(k < 69 ? 3 : 2);
+        }
+        add(6);
+    }
+    void r8a7d() {                                  // JSR $8A7D: the two lines of the ghost-house door
+        add(6);
+        for (int y = 0x4D; y <= 0x4E; ++y) {
+            add(15);
+            z[0x0C] = 0x87;
+            z[0x0E] = 0x93;
+            z[0x10] = y;
+            add(6);
+            rHline();
+        }
+        add(6);
+    }
+    void r6113() {                                  // JSR $6113: the dots and energizers of the map
+        add(6);
+        add(15 + 10);
+        int p16 = 0x623A;
+        int z0e = 0x3B;
+        int col = 0;
+        for (;;) {
+            int y11 = 0x0B;
+            for (int row = 1; row <= 30; ++row) {
+                add(3);
+                const int cell = mapCell(col * 32 + row);
+                add(5 + cross(p16 & 255, row));
+                if (cell == 0) {
+                    add(3);
+                } else {
+                    add(2);
+                    add(2);
+                    if (cell & 1) {
+                        add(3);
+                        add(3 + 3 + 3 + 3);
+                        z[0x0C] = z0e;
+                        z[0x10] = y11;
+                        add(6);
+                        rDot();
+                    } else {
+                        add(2);
+                        add(3 + 3 + 5 + 3 + 3 + 5);
+                        z[0x0C] = z0e - 1;
+                        z[0x10] = y11 - 1;
+                        add(6);
+                        z[0x0D] = 0;
+                        r61b6();
+                        add(2 + 3);
+                    }
+                }
+                add(2 + 3 + 2 + 3);
+                y11 += 6;
+                add(5 + 3 + 2);
+                add(row + 1 < 0x1F ? 3 : 2);
+            }
+            add(3 + 2 + 3);
+            const int v = (p16 & 255) + 0x1F + 1;
+            p16 = (p16 & 0xFF00) | (v & 255);
+            if (v > 255) {
+                add(2 + 5);
+                p16 += 0x100;
+            } else {
+                add(3);
+            }
+            add(2 + 3 + 2 + 3 + 2);
+            z0e += 6;
+            ++col;
+            if (z0e < 0xDD) {
+                add(3);
+                add(10);
+                continue;
+            }
+            add(2);
+            break;
+        }
+        add(6);
+    }
+    void rHlineMid() {                              // JSR $5CF6: a dotted line, entered after "LDA #0 / STA $0D / STA $0F" (the caller has set them)
+        Busy window(*this);
+        step(ScreenOp::Draw, DrawCall{8, {z[0x0C], z[0x0E] | (z[0x0F] << 8), z[0x10], 2, z[0x1E]}});
+        add(6 + 6);
+        const int lo12 = r5b58();
+        add(6);
+        r5933();
+        add(3 + 3);
+        for (;;) {
+            add(6 + 4 + cross(0x5925, z[0x03]) + 5 + cross(lo12, z[0x04]) + 6 + 6);
+            add(5 + cross(lo12, z[0x04]) + 2 + 3 + 6);
+            add(3 + 2);
+            add(6);
+            r5ce7();
+            add(6);
+            r5ce7();
+            add(2 + 3 + 2 + 3);
+            const int v = z[0x0C] + 2;
+            z[0x0C] = v & 255;
+            if (v > 255) {
+                add(2 + 5);
+                z[0x0D] += 1;
+            } else {
+                add(3);
+            }
+            add(3 + 3);
+            const int d = z[0x0D], f = z[0x0F];
+            if (d < f) {
+                add(3);
+                continue;
+            }
+            add(2);
+            if (d == f) {
+                add(3);
+                add(3 + 3);
+                if (z[0x0E] >= z[0x0C]) {
+                    add(3);
+                    continue;
+                }
+                add(2);
+                break;
+            }
+            add(2);
+            add(branch(true, 0x5D2A, 0x5D30));
+            break;
+        }
+        add(6);
+    }
+    void r696a() {                                  // JSR $696A: clear the score box of player $50
+        Busy window(*this);
+        add(6);                                     // JSR $696A
+        event(12, z[0x50]);
+        step(ScreenOp::Draw, DrawCall{4, {z[0x50], 0, 0, 0, 0}});
+        const int x = 2 * z[0x50];
+        add(3 + 2 + 2 + 4 + cross(0x6992, x) + 3 + 4 + cross(0x6993, x) + 3);
+        z[0x04] = u8(0x6992 + x);
+        z[0x10] = u8(0x6993 + x);
+        add(2 + 3);
+        z[0x18] = 12;
+        for (;;) {
+            add(6);
+            r5b58();
+            add(3 + 2 + 2);
+            for (int b = 0; b < 8; ++b) add(6 + 2 + 2 + (b < 7 ? 3 : 2));
+            add(5 + 5);
+            z[0x10] += 1;
+            z[0x18] -= 1;
+            if (z[0x18] != 0) {
+                add(3);
+            } else {
+                add(2);
+                break;
+            }
+        }
+        add(6);
+    }
+    void r70f5() {                                  // $70F5: the digits of the score ($05-$07), right to left
+        for (;;) {
+            add(2 + 2);
+            int a = 0;
+            for (int k = 0; k < 4; ++k) {
+                add(2 + 5 + 5 + 5 + 2 + 2);
+                const int c = z[0x07] & 1;
+                z[0x07] >>= 1;
+                const int c2 = z[0x06] & 1;
+                z[0x06] = (c << 7) | (z[0x06] >> 1);
+                const int c3 = z[0x05] & 1;
+                z[0x05] = (c2 << 7) | (z[0x05] >> 1);
+                a = (c3 << 7) | (a >> 1);
+            }
+            add(3 * branch(true, 0x7104, 0x70F9) + 2);
+            add(2 + 2 + 2 + 2 + 2);
+            a >>= 4;
+            add(6);
+            r7159(a);
+            add(2 + 3 + 2 + 3);
+            const int v = z[0x0E] - 6;
+            z[0x0E] = v & 255;
+            if (v < 0) {
+                add(2 + 5);
+                z[0x0F] -= 1;
+            } else {
+                add(3);
+            }
+            add(3);
+            if (z[0x07] != 0) {
+                add(branch(true, 0x711B, 0x70F5));
+                continue;
+            }
+            add(2 + 3);
+            if (z[0x06] != 0) {
+                add(branch(true, 0x711F, 0x70F5));
+                continue;
+            }
+            add(2 + 3);
+            if (z[0x05] != 0) {
+                add(branch(true, 0x7123, 0x70F5));
+                continue;
+            }
+            add(2);
+            break;
+        }
+        add(6);
+    }
+    void r70cc() {                                  // JSR $70CC: erase the score box and draw the digits
+        add(6);
+        add(3 + 3 + 3 + 3 + 3 + 3);
+        z[0x05] = z[0x52];
+        z[0x06] = z[0x53];
+        z[0x07] = z[0x54];
+        r696a();
+        const int x = 4 * z[0x50];
+        add(3 + 2 + 2 + 2 + (4 + cross(0x7141, x) + 3) + (4 + cross(0x7142, x) + 3) + (4 + cross(0x7143, x) + 3));
+        z[0x0E] = u8(0x7141 + x);
+        z[0x0F] = u8(0x7142 + x);
+        z[0x11] = u8(0x7143 + x);
+        add(6);
+        r70f5();
+        add(3);
+        add(3);
+        if (z[0x50] == 0) {
+            add(3);
+        } else {
+            add(2 + 3 + 3);                         // BEQ not taken, BIT $58, BPL $7140 (no bonus life in the attract game)
+        }
+        add(6);
+    }
+    void r556e(int x) {                             // JSR $556E: the label of a score
+        add(6);
+        for (int k = 0; k < 5; ++k) add(4 + cross(0x55C7 + k, x) + 3);
+        z[0x04] = u8(0x55C7 + x);
+        z[0x10] = u8(0x55C8 + x);
+        z[0x0E] = u8(0x55C9 + x);
+        z[0x0F] = u8(0x55CA + x);
+        z[0x11] = u8(0x55CB + x);
+        add(2 + 3 + 2 + 3 + 3 + 2 + 4 + 2 + 4);
+        z[0x03] = 0;
+        z[0x18] = 7;
+        z[0x1A] = 7;
+        p55b2 = mem5592 | (mem5597 << 8);
+        add(6);
+        rBlit();
+        add(3);
+        if (z[0x50] == 0) {
+            add(3);
+        } else {
+            add(2);
+            add(6);
+            r7159(z[0x50]);
+        }
+        add(6);
+    }
+    void r550a() {                                  // JSR $550A: the labels, scores and the high score
+        add(6);
+        mem5592 = 0xF7;
+        mem5597 = 0x55;
+        add(3 + 3);
+        z[0x50] = z[0x51];
+        for (;;) {
+            add(3 + 2 + 2 + 2 + 2);
+            const int x = 8 * z[0x50];
+            add(4 + cross(0x55CC, x) + 3 + 4 + cross(0x55CD, x) + 3);
+            z[0x0B] = u8(0x55CC + x);
+            z[0x0A] = u8(0x55CD + x);
+            r556e(x);
+            add(2 + 3 + 3);
+            z[0x0D] = 0;
+            z[0x0F] = 0;
+            add(3 + 3 + 2 + 2 + 3);
+            z[0x0C] = z[0x0B];
+            const int v = z[0x0B] + 0x31;
+            z[0x0E] = v & 255;
+            if (v > 255) {
+                add(2 + 5);
+                z[0x0F] += 1;
+            } else {
+                add(3);
+            }
+            rHlineMid();
+            add(3);
+            if (z[0x50] == 0) {
+                add(3);
+            } else {
+                add(2);
+                r53cf();
+            }
+            r70cc();
+            add(5);
+            z[0x50] = (z[0x50] - 1) & 255;
+            if (z[0x50] & 0x80) {
+                add(3);
+                break;
+            }
+            add(2);
+            if (z[0x50] == 0) {
+                add(3);
+                add(2 + 4 + 2 + 4 + 3 + 3 + 3 + 3 + 3 + 3 + 3);
+                mem5592 = 0x28;
+                mem5597 = 0x56;
+                z[0x52] = z[0x00];
+                z[0x53] = z[0x01];
+                z[0x54] = z[0x02];
+            } else {
+                add(2);
+                add(3);
+            }
+        }
+        add(2 + 4 + 2 + 4 + 6);
+        mem5592 = 0xF7;
+        mem5597 = 0x55;
+    }
+    void r6f13() {                                  // JSR $5692 -> JMP $6F13: the level's fruit as a 12 x 3 image
+        add(6 + 3);
+        add(3 + 2 + 3);
+        const int lvl = std::min(z[0x55], 0x1A);
+        add(2 + 2 + 2 + 2 + 3 + 2 + 3);
+        const int x = 4 * lvl;
+        add(4 + cross(0x6AFE, x) + 4 + cross(0x6AFF, x) + 3);
+        const int a = u8(0x6AFE + x), y = u8(0x6AFF + x);
+        z[0x10] = 0xB0;
+        z[0x04] = 0x21;
+        event(13, a | (y << 8), z[0x04], z[0x10]);
+        step(ScreenOp::Draw, DrawCall{7, {a | (y << 8), z[0x04], z[0x10], 0, 0}});
+        const int p6f00 = a | (y << 8);
+        add(4 + 4 + 2 + 3 + 2 + 3);
+        z[0x18] = 12;
+        z[0x03] = 0;
+        for (;;) {
+            add(6);
+            const int lo12 = r5b58();
+            add(3 + 3 + 2 + 3);
+            int xx = z[0x03];
+            int yy = z[0x04];
+            for (int b = 0; b < 3; ++b) {
+                add(5 + cross(lo12, yy) + 2 + 4 + cross(p6f00, xx) + 6 + 2 + 2 + 5);
+                add(branch(b < 2, 0x6F0A, 0x6EFB));
+                ++xx;
+                ++yy;
+            }
+            z[0x03] = xx;
+            add(3 + 5 + 5);
+            z[0x10] += 1;
+            z[0x18] -= 1;
+            if (z[0x18] != 0) {
+                add(branch(true, 0x6F12, 0x6EF0));
+            } else {
+                add(2);
+                break;
+            }
+        }
+        add(6);
+    }
+    void r5659() {                                  // JSR $5659 up to the fruit: page clear, walls, door, dots, labels and scores
+        add(6);                                     // JSR $5659
+        add(6);                                     // JSR $6F46
+        event(1);
+        step(ScreenOp::WipeStart, {}, 0);
+        add(90575);
+        add(4);                                     // STA $C010
+        add(6 + 4 + 4 + 4 + 4 + 6);
+        step(ScreenOp::ShowHires);
+        r5d53();
+        r8a7d();
+        add(3 + 3);
+        z[0xF1] = z[0x50];
+        r53cf();
+        r6113();
+        r550a();
+        add(3 + 3);
+        z[0x50] = z[0xF1];
+        r53cf();
+        r6f13();
+        add(6 + 3 + 2 + 3 + 3 + 3 + 6);             // JSR $56CF (no life icons in the demo)
+        add(3 + 3 + 6);                             // LDA $E8, BNE $5691, RTS
+    }
+    void r5839() {                                  // JSR $5839: Pac-Man's start image
+        add(6 + 5 + 5 + 5 + 5 + 4 + 3);
+        z[0x0C] = 0x8B;
+        z[0x10] = 0x8F;
+        z[0x0D] = 0;
+        z[0x1E] = 0;
+        rDispatch(0xFA, 0x96);
+    }
+    void r80e3() {                                  // JMP $80E3 (attract game): the words GAME OVER
+        add(3);
+        const int cols[2] = {0x0F, 0x15};
+        const int datas[2] = {0x811D, 0x8139};
+        for (int k = 0; k < 2; ++k) {
+            add(2 + 2 + 2 + 6 + 3 + 3 + 3 + 2 + 3 + 6);
+            z[0x10] = 0x69;
+            z[0x1A] = 4;
+            z[0x04] = cols[k];
+            z[0x03] = 0;
+            add(2 + 2 + 2 + (k == 0 ? 6 : 3) + 3 + 4 + 4);
+            z[0x18] = 7;
+            p55b2 = datas[k];
+            add(3);
+            rBlit();
+        }
+    }
+    void r5850() {
+        add(6);
+        r5839();
+        add(3 + 2);
+        r80e3();
+    }
+    void r6e79() {                                  // JSR $6E79: the ghost queues
+        add(2 + 15 * 14 - 1);
+        add(2 + 2);
+        for (int k = 0; k < 128; ++k) {
+            add(2 + 5 + 5 + 5 + 2 + 2 + 2 + 5 + 5 + 5 + 2 + 2);
+            add(k < 127 ? 3 : 2);
+        }
+        add(6);
+    }
+    void r53e6() {                                  // JSR $53E6: the start of a life
+        add(6);
+        r5839();
+        add(2 + 14 * (4 + 4 + 2) + 13 * 3 + 2);
+        add(2);
+        add(84 * (4 + 5 + 2) + 83 * 3 + 2);
+        add(2 + 2 + 7 * (5 + 2) + 6 * 3 + 2);
+        add(6);
+        r6e79();
+        r53cf();
+        add(2 + 3 + 2 + 3 + 2 + 3 + 3 + 3 + 3);
+        add(6 + 3 + 2 + 3 + 6);
+        add(2 + 2);
+        add(4 + 5 + 4 + 5 + 4 + 5);
+        add(2);
+        for (int k = 0; k < 4; ++k) {
+            add(2 + 6);
+            rDelay(255);
+            add(2 + (k < 3 ? 3 : 2));
+        }
+        add(6);
+        rPoll();
+        add(6);
+    }
+    void runDemoSetup() {                           // $5303-$530C: the attract game's screen; ends where the first tick starts ($530F)
+        z[0x50] = 1;
+        z[0x51] = 1;
+        z[0x55] = 1;
+        z[0x58] = 0;
+        z[0xE8] = 1;
+        mem5592 = 0xF7;
+        mem5597 = 0x55;
+        r531e();
+        r5659();
+        r5850();
+        r53e6();
+        out.length = t;
+    }
+    int mem5592 = 0xF7, mem5597 = 0x55;             // the patched immediates of the label routine
+
+    // ---- the death sequence of the attract game: $8BDD-$8C0B, $7EC0-$7F04 (E8 <> 0: no sound) ---------------------------------------------------------------------------
+    void r556eJmp(int x) {                          // $556E entered by a JMP ($58FA): the label of the player
+        const int before = 0;
+        (void)before;
+        r556e(x);
+        // (r556e starts with the 6 cycles of a JSR: the JMP has none)
+    }
+    void runDemoDeath(const std::array<std::pair<int, int>, 4>& ghosts, int pacX, int pacY, int caughtGhost) {
+        for (int g = 1; g <= 4; ++g) {
+            rec[g][0] = ghosts[static_cast<std::size_t>(g - 1)].first;
+            rec[g][1] = ghosts[static_cast<std::size_t>(g - 1)].second;
+        }
+        z[0x60] = pacX;
+        z[0x61] = pacY;
+        z[0xE8] = 1;
+        z[0x50] = 1;
+        z[0x51] = 1;
+        z[0x1D] = 1;
+        z[0xE0] = caughtGhost;
+        z[0x70] = ghosts[static_cast<std::size_t>(caughtGhost - 1)].first;   // the working area holds the ghost that touched Pac-Man
+        z[0x71] = ghosts[static_cast<std::size_t>(caughtGhost - 1)].second;
+        mem5592 = 0xF7;
+        mem5597 = 0x55;
+        add(6);
+        copyOut();                                  // JSR $8712
+        add(6 + 3 + 2 + 2 + 2 + 2 + 3);             // JSR $58FA: LDA $50, ASL x3, TAX, JMP $556E
+        add(-6);
+        r556e(8 * z[0x50]);
+        add(2);                                     // LDY #3
+        for (int k = 0; k < 3; ++k) {
+            add(2 + 6);
+            rDelay(250);
+            add(2 + (k < 2 ? 3 : 2));
+        }
+        add(2 + 3);                                 // LDA #4, STA $E0
+        z[0xE0] = 4;
+        for (;;) {
+            add(6);
+            copyIn();
+            r7d8d();
+            r699e();
+            add(5);
+            z[0xE0] -= 1;
+            if (z[0xE0] != 0) {
+                add(3);
+            } else {
+                add(2);
+                break;
+            }
+        }
+        r7d80();
+        r699e();
+        add(6);                                     // JSR $7EC0
+        r7d80();
+        add(2 + 2 + 6);                             // LDA #$E6, LDY #$9B, JSR $6A20
+        rDispatch(0xE6, 0x9B);
+        add(2);
+        for (int k = 0; k < 3; ++k) {
+            add(2 + 6);
+            rDelay(255);
+            add(2 + (k < 2 ? 3 : 2));
+        }
+        r7d80();
+        r699e();
+        add(2 + 3);                                 // LDA #6, STA $0A
+        z[0x0A] = 6;
+        for (;;) {
+            add(3 + 2 + 2);
+            const int x = 2 * z[0x0A];
+            r7d80();
+            const int lo = u8(0x7F05 + x), hi = u8(0x7F06 + x);
+            add(4 + cross(0x7F05, x) + 4 + cross(0x7F06, x) + 3 + 3);
+            z[0x16] = lo;
+            z[0x17] = hi;
+            r7e1f();
+            add(6 + 3 + 2 + 2 + 4 + 4 + 3);         // JSR $7C82 ... JMP $7BBC
+            add(4 + 4 + 3);
+            add(2 + 6);                             // the demo: BEQ not taken, RTS (no sound)
+            add(2 + 6);                             // LDX #$80, JSR $6CE8
+            rDelay(0x80);
+            r7d80();
+            r69e9();
+            add(5);
+            z[0x0A] -= 1;
+            if (z[0x0A] != 0) {
+                add(branch(true, 0x7F04, 0x7EDE));
+            } else {
+                add(2);
+                break;
+            }
+        }
+        add(6);                                     // RTS of $7EC0
+        add(3 + 2 + 3);                             // LDA $E8, BEQ (not taken), JMP $43D2
+        add(2 + 3 + 6);                             // $43D2: LDA #1, STA $E8, JSR $52BB
+        out.length = t;
+    }
+
     // ---- the whole turn ---------------------------------------------------------------------------------------------------------------------------------------------
     void run() {
         // $52BB: the video switches, the lo-res page 2 filled with $DD, the page clear
@@ -1108,10 +1774,115 @@ struct Builder {
 
 }  // namespace
 
+std::int64_t drawCallCycles(const DrawCall& c, const datapack::Pack& pack) {
+    ScreenScript scratch;
+    Builder b(pack, scratch, false);
+    const int x = c.p[1];
+    const std::int64_t t0 = b.t;
+    switch (c.type) {
+        case 1:
+            b.z[0x0C] = x & 255;
+            b.z[0x0D] = x >> 8;
+            b.z[0x10] = c.p[2];
+            b.z[0x1D] = c.p[3];
+            b.z[0x1E] = c.p[4];
+            b.rDispatch(c.p[0] & 255, c.p[0] >> 8);
+            break;
+        case 2:
+            b.p55b2 = c.p[0];
+            b.z[0x04] = c.p[1];
+            b.z[0x10] = c.p[2];
+            b.z[0x1A] = c.p[3];
+            b.z[0x18] = c.p[4];
+            b.z[0x03] = 0;
+            b.rBlit();
+            break;
+        case 3:
+            b.p69b8 = c.p[0];
+            b.z[0x0C] = x & 255;
+            b.z[0x0D] = x >> 8;
+            b.z[0x10] = c.p[2];
+            b.rMclearBody();
+            break;
+        case 4:
+        case 10:
+            b.z[0x50] = c.type == 4 ? c.p[0] : c.p[0] + 1;
+            b.r696a();
+            break;
+        case 5:
+            b.z[0x0C] = c.p[0] & 255;
+            b.z[0x0D] = c.p[0] >> 8;
+            b.z[0x10] = c.p[1];
+            b.rDot();
+            break;
+        case 6:
+            b.p6951 = c.p[0];
+            b.z[0x0C] = x & 255;
+            b.z[0x0D] = x >> 8;
+            b.z[0x10] = c.p[2];
+            b.rTile();
+            break;
+        case 9:
+            b.z[0x16] = c.p[0] & 255;
+            b.z[0x17] = c.p[0] >> 8;
+            b.z[0x0C] = x & 255;
+            b.z[0x0D] = x >> 8;
+            b.z[0x10] = c.p[2];
+            b.z[0x1D] = c.p[3];
+            b.z[0x1E] = c.p[4];
+            b.r7e1f();
+            break;
+        case 11:
+            b.z[0x0C] = c.p[0] & 255;
+            b.z[0x0D] = c.p[0] >> 8;
+            b.z[0x10] = c.p[1];
+            b.r7819();
+            break;
+        default:
+            break;
+    }
+    return b.t - t0;
+}
+
+std::int64_t tickCostCycles(const std::vector<DrawCall>& calls, const datapack::Pack& pack, bool demo, bool ate, bool energizer) {
+    const std::int64_t idle = demo ? kIdleTickCyclesDemo : kIdleTickCyclesGame;
+    if (calls.empty() && !ate && !energizer) return idle;
+    std::int64_t c = idle + 12;   // 2,939 for a tick that draws (fitted)
+    for (const auto& d : calls) {
+        c += drawCallCycles(d, pack);
+        switch (d.type) {
+            case 1: c += -106; break;
+            case 2: c += 66; break;
+            case 3: c += 609; break;
+            case 5: c += 134; break;
+            case 6: c += 92; break;
+            case 10: c += 40; break;
+            case 11: c += 59; break;
+            default: break;
+        }
+    }
+    if (ate) c += 144;
+    if (energizer) c += 5'650;
+    return c;
+}
+
+bool buildDemoDeathScript(const datapack::Pack& pack, ScreenScript& out, const std::array<std::pair<int, int>, 4>& ghosts, int pacX, int pacY, int caughtGhost, bool withTrace) {
+    static const struct { std::uint16_t address; std::size_t length; } need[] = {
+        {0x5958, 512}, {0x5B67, 384}, {0x717D, 24}, {0x7812, 7}, {0x7843, 14}, {0x88E1, 5}, {0x96E8, 4888}, {0x61CA, 1904}, {0x870D, 5}, {0x7FC7, 120}, {0x69CD, 28}, {0x6A04, 28},
+        {0x55C7, 146}, {0x7F05, 14}, {0x5925, 7},
+    };
+    for (const auto& n : need)
+        if (pack.find(n.address, n.length).empty()) return false;
+    out = ScreenScript{};
+    Builder b(pack, out, withTrace);
+    b.runDemoDeath(ghosts, pacX, pacY, caughtGhost);
+    return true;
+}
+
 bool buildAttractScript(const datapack::Pack& pack, ScreenScript& out, bool withTrace) {
     static const struct { std::uint16_t address; std::size_t length; } need[] = {
         {0x434F, 131}, {0x450A, 370}, {0x4A7A, 2022}, {0x5958, 512}, {0x5B67, 384}, {0x717D, 24}, {0x7812, 7}, {0x7843, 14}, {0x88E1, 5}, {0x96E8, 4888}, {0x61A8, 14}, {0x61CA, 1904},
-        {0x870D, 5}, {0x7FC7, 120}, {0x69CD, 28}, {0x6A04, 28},
+        {0x870D, 5}, {0x7FC7, 120}, {0x69CD, 28}, {0x6A04, 28}, {0x65BA, 896}, {0x5F69, 426}, {0x55C7, 146}, {0x7141, 24}, {0x6992, 12}, {0x6AFE, 436}, {0x5925, 7},
     };
     for (const auto& n : need)
         if (pack.find(n.address, n.length).empty()) return false;
@@ -1119,6 +1890,7 @@ bool buildAttractScript(const datapack::Pack& pack, ScreenScript& out, bool with
     Builder b(pack, out, withTrace);
     b.run();
     b.runChase();
+    b.runDemoSetup();
     return true;
 }
 
@@ -1136,12 +1908,12 @@ bool buildTitleScript(const datapack::Pack& pack, ScreenScript& out, bool withTr
 }
 
 // ---- the player --------------------------------------------------------------------------------------------------------------------------------------------------------
-void ScreenPlayer::start(const ScreenScript* script, const datapack::Pack* pack) {
+void ScreenPlayer::start(const ScreenScript* script, const datapack::Pack* pack, const hires::Page* initial) {
     script_ = script;
     pack_ = pack;
     next_ = 0;
     now_ = 0;
-    page_ = hires::Page();
+    page_ = initial != nullptr ? *initial : hires::Page();
     lores_.fill(0);
     hiresShown_ = false;
     wipeAt_ = -1;
@@ -1192,6 +1964,99 @@ void ScreenPlayer::advance(std::int64_t cycles) {
     }
     now_ = target;
     applyWipeUpTo(now_);
+}
+
+// ---- one turn of the attract loop ----------------------------------------------------------------------------------------------------------------------------------------
+bool AttractTurn::start(const datapack::Pack& pack) {
+    pack_ = &pack;
+    if (!buildAttractScript(pack, intro_, false)) return false;
+    introLength_ = intro_.length;
+    if (!driver_.init(pack)) return false;
+    introPlayer_.start(&intro_, &pack);
+    phase_ = Phase::Intro;
+    now_ = 0;
+    demoTick_ = 0;
+    tickRunning_ = false;
+    length_ = 0;
+    return true;
+}
+
+const hires::Page& AttractTurn::hires() const noexcept {
+    switch (phase_) {
+        case Phase::Intro: return introPlayer_.hires();
+        case Phase::Demo: return shown_;
+        default: return deathPlayer_.hires();
+    }
+}
+
+void AttractTurn::beginDemo() {
+    driver_.newDemo(introPlayer_.hires());
+    shown_ = introPlayer_.hires();
+    phase_ = Phase::Demo;
+    tickStart_ = introLength_;
+    tickRunning_ = false;
+    demoTick_ = 0;
+    completed_ = 0;
+}
+
+void AttractTurn::startTick() {
+    const TickEvents ev = driver_.tick();
+    ++demoTick_;
+    pending_ = driver_.page();
+    tickWasLast_ = ev.demoOver;
+    const bool eaten = ev.ghostEaten[0] || ev.ghostEaten[1] || ev.ghostEaten[2] || ev.ghostEaten[3];
+    tickEnd_ = tickStart_ + (ev.demoOver ? kDemoCatchTickCycles : eaten ? kDemoGhostEatenTickCycles : driver_.tickCycles() + driver_.extraCycles());
+    tickRunning_ = true;
+}
+
+void AttractTurn::beginDeath() {
+    const GameState& c = driver_.core().caughtState();
+    std::array<std::pair<int, int>, 4> ghosts{};
+    for (std::size_t g = 0; g < 4; ++g) ghosts[g] = {c.ghosts[g].x(), c.ghosts[g].y()};
+    buildDemoDeathScript(*pack_, death_, ghosts, c.pacX(), c.pacY(), 1, false);
+    deathStart_ = tickEnd_;
+    deathPlayer_.start(&death_, pack_, &pending_);
+    length_ = deathStart_ + death_.length;
+    phase_ = Phase::Death;
+}
+
+void AttractTurn::advance(std::int64_t cycles) {
+    const std::int64_t target = now_ + cycles;
+    if (phase_ == Phase::Intro) {
+        const std::int64_t to = std::min(target, introLength_);
+        introPlayer_.advance(to - introPlayer_.now());
+        now_ = to;
+        if (now_ >= introLength_) beginDemo();
+    }
+    while (phase_ == Phase::Demo) {
+        if (!tickRunning_) {
+            if (tickStart_ > target) break;
+            startTick();
+        }
+        if (tickEnd_ > target) break;
+        // the tick is over: its picture is shown
+        shown_ = pending_;
+        ++completed_;
+        tickRunning_ = false;
+        tickStart_ = tickEnd_;
+        if (tickWasLast_) {
+            beginDeath();
+        }
+    }
+    if (phase_ == Phase::Death) {
+        const std::int64_t to = std::min(target, length_);
+        deathPlayer_.advance(to - deathStart_ - deathPlayer_.now());
+        if (to >= length_) phase_ = Phase::Done;
+        now_ = to;
+        return;
+    }
+    now_ = target;
+}
+
+bool AttractTurn::runToDemoTick(std::size_t k) {
+    while (phase_ == Phase::Intro) advance(introLength_ - now_);
+    while (phase_ == Phase::Demo && completed_ < k) advance(2000);   // (a tick costs more than 3,000 cycles: one step completes at most one tick)
+    return phase_ == Phase::Demo && completed_ == k;
 }
 
 }  // namespace pacman::core

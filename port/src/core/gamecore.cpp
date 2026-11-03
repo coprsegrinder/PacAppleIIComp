@@ -33,6 +33,16 @@ bool GameCore::newGame(int players) {
     return pack_ != nullptr && newGameState(*pack_, state_);
 }
 
+bool GameCore::newDemo() {
+    if (!newGame()) return false;
+    state_.demo = 1;
+    state_.zp(0x58) = 0;
+    state_.mode79 = 0;
+    e5_ = 0;                                  // $E5 = 0 at the first tick of the demo (recorded: tools/record_demo_full.py)
+    for (std::size_t i = 15; i < queues_[0].size(); ++i) queues_[0][i] = 0xDD;   // $52BB filled the lo-res page with $DD; $6E79 wrote only the first 15 bytes of this queue page
+    return true;
+}
+
 // $570C: the 1UP blink ($58B3) and the energizer phase.
 void GameCore::blinks() {
     GameState& s = state_;
@@ -149,6 +159,11 @@ bool GameCore::contactTest(int g, TickEvents& ev) {
     }
     ev.gameOver = s.lives() == 0;
     caughtState_ = s;   // where Pac-Man and the ghosts stood when he was caught (the death animation starts there)
+    if (s.demo != 0) {   // the attract game ends here: $8C07 jumps back to the title ($43D2)
+        ev.demoOver = true;
+        ev.gameOver = false;
+        return true;
+    }
     if (!ev.gameOver) {
         const PlayerSave kept = savePlayer(s);            // $8C1A / $8C1D
         startOfLife(s, start_, kept);

@@ -12,6 +12,7 @@
 
 #include "../datapack/datapack.h"
 #include "../hires/hires.h"
+#include "gamedriver.h"
 #include "tickdraw.h"
 
 namespace pacman::core {
@@ -50,11 +51,19 @@ bool buildTitleScript(const datapack::Pack& pack, ScreenScript& out, bool withTr
 // The title turn and the chase that follows it (the two chase loops and the four ghost-eaten animations), up to the start of the demo game at cycle 22,486,410.
 bool buildAttractScript(const datapack::Pack& pack, ScreenScript& out, bool withTrace);
 
+// The end of the attract game: Pac-Man is caught, the ghosts and he are erased and his six death frames are drawn (no sound), then the loop goes back to the title. Times count from the
+// first instruction of the death routine ($8BDD); `length` is the cycle at which the next turn's `JSR $52BB` starts (= its cycle 0). ghosts: x, y of ghosts 1-4, caughtGhost: 1-4.
+bool buildDemoDeathScript(const datapack::Pack& pack, ScreenScript& out, const std::array<std::pair<int, int>, 4>& ghosts, int pacX, int pacY, int caughtGhost, bool withTrace);
+
+// The cycles the original's drawing routine spends on one drawing call, from its entry to its RTS (the instructions of the routine, summed up; types 1-6, 9, 10, 11 of DrawCall;
+// 0 for the others). The glue of the call site is not in it.
+std::int64_t drawCallCycles(const DrawCall& call, const datapack::Pack& pack);
+
 // Plays a script. `advance` moves time forward and applies every step that has become due. The hi-res page is exact at every cycle apart from the drawing
 // calls themselves, which take effect at the cycle they start (the original needs up to ~800 cycles to finish a glyph).
 class ScreenPlayer {
 public:
-    void start(const ScreenScript* script, const datapack::Pack* pack);
+    void start(const ScreenScript* script, const datapack::Pack* pack, const hires::Page* initial = nullptr);   // `initial`: the page the script draws on (default: black)
     void advance(std::int64_t cycles);
     std::int64_t now() const noexcept { return now_; }
     bool finished() const noexcept { return script_ == nullptr || now_ >= script_->length; }
@@ -73,6 +82,50 @@ private:
     bool hiresShown_ = false;
     std::int64_t wipeAt_ = -1;
     std::size_t wiped_ = 0;
+};
+
+// One whole turn of the attract loop (TASK-033-4d): the title, the chase and the set-up of the demo game (exact scripts), the demo game itself (the game core playing the
+// original's recorded moves; its ticks cost what the cost model of gamedriver.h says), and the end of the demo (exact script), after which the next turn starts at cycle `now()` = 0.
+class AttractTurn {
+public:
+    bool start(const datapack::Pack& pack);
+    void advance(std::int64_t cycles);
+    std::int64_t now() const noexcept { return now_; }
+    bool finished() const noexcept { return phase_ == Phase::Done; }
+    bool hiresVisible() const noexcept { return phase_ == Phase::Intro ? introPlayer_.hiresVisible() : true; }
+    const hires::Page& hires() const noexcept;
+    std::uint8_t loresByte(std::size_t offset) const noexcept { return introPlayer_.loresByte(offset); }
+    // the demo game
+    std::size_t demoTicks() const noexcept { return demoTick_; }             // ticks started so far
+    bool inDemo() const noexcept { return phase_ == Phase::Demo; }
+    std::int64_t demoStart() const noexcept { return introLength_; }          // the cycle of the first tick
+    std::int64_t length() const noexcept { return length_; }                  // the length of the turn once it has ended (0 before)
+    // Runs until `k` ticks are complete (hires() is then the page the original shows at the start of tick k). False if the demo ended before.
+    bool runToDemoTick(std::size_t k);
+    GameDriver& driver() noexcept { return driver_; }
+
+private:
+    enum class Phase { Intro, Demo, Death, Done };
+    void beginDemo();
+    void startTick();
+    void beginDeath();
+    const datapack::Pack* pack_ = nullptr;
+    Phase phase_ = Phase::Intro;
+    ScreenScript intro_, death_;
+    ScreenPlayer introPlayer_, deathPlayer_;
+    GameDriver driver_;
+    hires::Page shown_;
+    hires::Page pending_;
+    std::int64_t now_ = 0;
+    std::int64_t introLength_ = 0;
+    std::int64_t tickStart_ = 0;     // the start of the tick that is running
+    std::int64_t tickEnd_ = 0;
+    bool tickRunning_ = false;
+    bool tickWasLast_ = false;
+    std::size_t demoTick_ = 0;
+    std::size_t completed_ = 0;     // ticks whose pictures are shown
+    std::int64_t deathStart_ = 0;
+    std::int64_t length_ = 0;
 };
 
 }  // namespace pacman::core
