@@ -150,3 +150,5 @@ Latest: 031-6b done in code (not seen live). Next: 031-7 (cartoons 2 and 3 in C+
 Latest: 031-7 done (cartoons 2 and 3 equal the golden final pages). Next 031-8: integration - pacman_play plays several levels; optional --level N debug option; full-suite checkpoint.
 
 Latest: M6 DONE (levels, fruit, cartoons in C++; 10 natural level changes equal the oracle). pacman_play --level N --items K shows a cartoon quickly. Next: M7 sound (TASK-032), M8 pacing/packaging; small open items: READY pause, death animation, title/attract, two-player core; run the Python suite (bash tools/full_suite.sh python, ~25 min).
+
+Latest: M7 planned (docs/M7_PLAN.md, 032-1..032-6). Next 032-1: sound data audit in the pack.
