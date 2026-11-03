@@ -20,7 +20,7 @@ Sources: code at $6F5E-$7040 read statically (V: instruction semantics), and che
 | (digital joystick, mode 1) | game-port `$C061` read 4 times | the keyboard mode also accepts four switches on the game port (masks 1, 2, 4, 8 = one direction each; everything else = no input), see UNEXECUTED_CODE.md | V (all 16 masks run) |
 | Ctrl-S | $93 | toggles sound: flips the low operand byte of the two speaker instructions at $7BB6/$7D07 between $30 (`BIT $C030`, speaker) and $20 (`BIT $C020`, no sound) | V (clicks 1,237 -> 0 -> 120 over equal intervals) |
 | Esc | $9B | pause: waits for any key | V (driven in TASK-020: parks at $6F9A, any key resumes) |
-| Space | $A0 | in demo ($E8 <> 0): jump to $4144 (players prompt) | V |
+| Space | $A0 | in demo ($E8 <> 0): jump to $4144 = `JMP $4217` (players prompt); also tested at $5292 and $52EE (033-4e) | V |
 
 Mapping of codes to directions: **code 1 = UP, 0 = DOWN, 3 = LEFT, 2 = RIGHT (V)**: the customised-keyboard prompts ask for "MOVE LEFT", "MOVE RIGHT", "MOVE UP", "MOVE DOWN" and store the answers in the compare constants for codes 3, 2, 1, 0 respectively (TASK-020). So A = up and Z = down by default. The direction codes are produced through three `BIT abs` skips ($6FC3/$6FC6/$6FC9) that each load a different constant (0, 3, 2, 1): the idiom from CODE_COVERAGE.md.
 The compared key constants ($C1, $95, $88, $DA) are patched by the "customised keyboard" option ($498B writes $6FBA): that path ($4955-$4A00) was run in TASK-020 (see below).

@@ -78,6 +78,7 @@ struct Builder {
     }
     // $6F5E with no key pressed in the attract mode
     void rPoll() {
+        out.polls.push_back(t);
         event(4);
         add(62);
     }
@@ -478,6 +479,7 @@ struct Builder {
                 } else {
                     add(2 + 6);
                     rHline();
+                    out.spaceChecks.push_back({t, 19});
                     add(4 + 2 + 2);
                 }
             }
@@ -1694,6 +1696,7 @@ struct Builder {
         for (int k = 0; k < 11; ++k) {
             add(2 + 6);
             rDelay(250);
+            out.spaceChecks.push_back({t, 12});
             add(4 + 2 + 2);
             add(2 + (k < 10 ? 3 : 2));
         }
@@ -2051,6 +2054,42 @@ void AttractTurn::advance(std::int64_t cycles) {
         return;
     }
     now_ = target;
+}
+
+bool AttractTurn::nextCheck(std::int64_t after, KeyCheck& out) const {
+    if (phase_ == Phase::Intro) {
+        const auto& polls = intro_.polls;
+        const auto& spaces = intro_.spaceChecks;
+        const auto p = std::upper_bound(polls.begin(), polls.end(), after);
+        const auto l = std::upper_bound(spaces.begin(), spaces.end(), after, [](std::int64_t v, const std::pair<std::int64_t, int>& e) { return v < e.first; });
+        if (p != polls.end() && (l == spaces.end() || *p <= l->first)) {
+            out = {*p, 0};
+            return true;
+        }
+        if (l != spaces.end()) {
+            out = {l->first, l->second};
+            return true;
+        }
+        out = {std::max(after + 1, introLength_ + pollOffset(0)), 0};   // the poll of the first tick
+        return true;
+    }
+    if (phase_ == Phase::Demo) {
+        if (!tickRunning_) {
+            const std::int64_t at = tickStart_ + pollOffset(demoTick_);
+            if (at <= after) return false;   // (cannot happen: the tick of a poll that has been passed is running)
+            out = {at, 0};
+            return true;
+        }
+        const std::int64_t own = tickStart_ + pollOffset(demoTick_ - 1);
+        if (own > after) {
+            out = {own, 0};
+            return true;
+        }
+        if (tickWasLast_) return false;
+        out = {tickEnd_ + pollOffset(demoTick_), 0};
+        return true;
+    }
+    return false;
 }
 
 bool AttractTurn::runToDemoTick(std::size_t k) {

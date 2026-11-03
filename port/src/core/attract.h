@@ -43,6 +43,15 @@ struct ScreenScript {
     std::int64_t length = 0;            // the cycle at which the next part of the attract loop starts
     std::vector<TraceEvent> trace;      // filled only when asked for
     std::vector<std::pair<std::int64_t, std::int64_t>> busy;   // [start, end) of every drawing routine of the original: inside such a window the original's picture is half drawn
+    std::vector<std::int64_t> polls;        // the cycles at which the original calls the key poll $6F5E (TASK-033-4e; always filled)
+    std::vector<std::pair<std::int64_t, int>> spaceChecks;  // the cycle of every `LDA $C000` that tests for Space ($5292 after each logo line, $52EE after each delay pass of the lo-res effect) and the cycles from there to the poll's entry when it is taken (19, 12)
+};
+
+// A place where the original looks at the keyboard. `at` = the cycle of its first instruction; `toPoll` > 0 = a Space test ($5292, $52EE: only Space acts, the key stays in the latch
+// otherwise; taken, the poll $6F5E is entered `toPoll` cycles later), 0 = the key poll $6F5E itself (takes the key out of the latch; Space jumps to the prompt, 36 cycles after the entry).
+struct KeyCheck {
+    std::int64_t at = 0;
+    int toPoll = 0;
 };
 
 // The title turn: from the entry of $52BB (lo-res flash, the logo, the typed "Character / Nickname" screen) to the first call of the chase. False if the pack lacks data.
@@ -100,6 +109,8 @@ public:
     bool inDemo() const noexcept { return phase_ == Phase::Demo; }
     std::int64_t demoStart() const noexcept { return introLength_; }          // the cycle of the first tick
     std::int64_t length() const noexcept { return length_; }                  // the length of the turn once it has ended (0 before)
+    // The first place AFTER the cycle `after` where the original reads the keyboard (TASK-033-4e); false if there is none left in this turn (the death of the demo reads no key).
+    bool nextCheck(std::int64_t after, KeyCheck& out) const;
     // Runs until `k` ticks are complete (hires() is then the page the original shows at the start of tick k). False if the demo ended before.
     bool runToDemoTick(std::size_t k);
     GameDriver& driver() noexcept { return driver_; }
@@ -122,6 +133,7 @@ private:
     std::int64_t tickEnd_ = 0;
     bool tickRunning_ = false;
     bool tickWasLast_ = false;
+    static std::int64_t pollOffset(std::size_t tick) noexcept { return tick == 0 ? 17 : 11; }   // the poll of a tick, from the tick's start (found in the oracle)
     std::size_t demoTick_ = 0;
     std::size_t completed_ = 0;     // ticks whose pictures are shown
     std::int64_t deathStart_ = 0;

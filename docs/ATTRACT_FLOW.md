@@ -9,7 +9,7 @@ Measured on the oracle (the headless Apple II model running the original code), 
 | `$4821` | the boot menus on the Apple II **text screen (ROM font, GETLN/RDKEY)**: "PACMAN CAN BE PLAYED WITH / 1. KEYBOARD / 2. APPLE JOYSTICK / CHOOSE A MODE (1 - 2)", then (after `1`) "NORMAL OR CUSTOMIZED KEYBOARD (N/C)?" | text pages read at the key waits, cycles 525,410 and 536,997 |
 | `$43D2` | **the attract loop** (`$E8=1`), see section 2 | trace |
 | key `Space` during the attract | the key poll `$6F5E` (called after every glyph of the title text and in the chase loops) jumps to `$4144` when `$E8<>0` and the key is Space | disassembly `$6FA2-$6FAE` |
-| `$4144`-`$4217` | "RANK? / NUMBER?" style prompts for the **hidden menu** (Ctrl-V Ctrl-C) and the **players prompt** ("HOW MANY PLAYERS? (1 - 5)"), then `$4217`: "PRESS <RETURN> TO PLAY / OR <SPACE> TO GO BACK TO DEMO." (RDKEY loop, Return = start, Space = back to the demo, `$FD0C`) | `docs/DYNAMIC_COVERAGE.md`, disassembly |
+| `$4144` = `JMP $4217` (V: 033-4e); `$4147`-`$4216` | "RANK? / NUMBER?" style prompts for the **hidden menu** (Ctrl-V Ctrl-C) and the **players prompt** ("HOW MANY PLAYERS? (1 - 5)"), then `$4217`: "PRESS <RETURN> TO PLAY / OR <SPACE> TO GO BACK TO DEMO." (RDKEY loop, Return = start, Space = back to the demo, `$FD0C`) | `docs/DYNAMIC_COVERAGE.md`, disassembly |
 | Return | `$52FC` starts a game: `$E8=0`, screen build, **intro jingle once (`$568A`, `$F4`)**, 3.05 s READY wait, ticks | 033-2, `docs/SOUND.md` |
 
 All the text-screen prompts use the **Apple II ROM character generator**. The port has no copy of it (and must not ship one): see the open decision in section 4.
@@ -42,3 +42,5 @@ After the death animation of the last life (033-3b) and the words GAME OVER (las
 | 033-4g | wire everything into `pacman_play`: boot menus, attract, prompts, game, GAME OVER, attract | live run, marker times equal to this table |
 
 **Open decision for the user (blocks 033-4e/4f only):** the boot menus, the players prompt and the "PRESS RETURN" prompt are Apple II **text-mode** screens drawn with the ROM font. The port cannot ship that font. Options: (a) draw these three prompts with the game's own hires letters (`$4553` glyph set, as the attract title does) - looks different from the original text screens, texts and key handling identical; (b) a font of my own making in the style of the Apple II (not the original glyphs); (c) the user supplies a legal copy of the Apple II character ROM at run time (never shipped or committed), and the port reads it like it reads the disk image. I recommend (c) with (a) as the fallback when the file is absent.
+
+**Update 2026-11-03 (033-4e):** the character ROM was supplied (option c is possible); the text prompts, the key checks and their cycles are in `docs/M8_PLAN.md` (033-4e result). Space is also tested at `$5292` (logo lines) and `$52EE` (lo-res effect passes), not only in `$6F5E`.

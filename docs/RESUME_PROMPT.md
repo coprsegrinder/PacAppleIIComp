@@ -192,3 +192,5 @@ Latest: 033-4b done (attract title screen: ScreenScript/ScreenPlayer in port/src
 Latest: 033-4c done (buildAttractScript = title + chase up to cycle 22,486,410; suite 129/0). Next: 033-4d the demo game (set-up $531E/$5659/$53E6, 7,894 ticks of GameCore in demo mode with the recorded keys, ends with Pac-Man being caught: death animation without sound, then the next turn at +63,189,736).
 
 Latest: 033-4d done (AttractTurn = title + chase + demo set-up + 7,894 demo ticks + death; 790 of 790 pages equal the oracle; suite 133/0; turn length 63,190,772 vs 63,189,736 because of the fitted tick cost). Next: 033-4e (loop, Space -> players prompt, PRESS RETURN with the character ROM, GAME OVER -> attract).
+
+Latest: 033-4e done (AttractFlow in port/src/core/attractflow.*, TextScreen in textscreen.*; 15/15 oracle runs of Space+digit+Space/Return equal; suite 138/0). Open: 033-4e2 hidden menu (Ctrl-V Ctrl-C: rank/cartoon prompts, needs GETLN), 033-4f boot menus (text mode, character ROM), 033-4g wiring into pacman_play.

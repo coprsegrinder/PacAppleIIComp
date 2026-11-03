@@ -35,6 +35,8 @@ struct Config {
     std::string setupEvents;  // --setupevents <demosetup_events.bin>: the same for the screen set-up of the attract game (tools/export_title_events.py demosetup)
     std::string endEvents;    // --endevents <demoend_events.bin>: the end of the attract game (its death) and the start of the next turn (tools/export_title_events.py demoend)
     std::string demoPages;    // --demopages <pages_DEMOF.bin>: the hi-res page at the start of every 10th tick of the attract game (tools/record_demo_full.py)
+    std::string prompts;      // --prompts <prompts.bin>: the Space/prompt runs of the oracle (tools/capture_prompts.py, tools/export_prompts.py)
+    std::string charRom;      // --charrom <file>: the Apple II character generator ROM dump (for the picture test of the text screens)
     std::string demoCycles;   // --democycles <demo_cycles.bin>: the cycle at which every tick of the attract game starts (tools/record_demo_full.py)
     std::string titleSnaps;   // --titlesnaps <title_snaps.bin>: screen memory of the oracle every 50,000 cycles of that turn (tools/capture_title_snaps.py, local only)
     std::string deaths;  // --deaths <death_timing.bin>: measured landmarks of 220 deaths (tools/export_deaths.py, local only)

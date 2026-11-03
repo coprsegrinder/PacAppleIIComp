@@ -36,6 +36,10 @@ int main(int argc, char** argv) {
             testfw::config().endEvents = argv[++i];
         } else if (std::strcmp(argv[i], "--demopages") == 0 && i + 1 < argc) {
             testfw::config().demoPages = argv[++i];
+        } else if (std::strcmp(argv[i], "--prompts") == 0 && i + 1 < argc) {
+            testfw::config().prompts = argv[++i];
+        } else if (std::strcmp(argv[i], "--charrom") == 0 && i + 1 < argc) {
+            testfw::config().charRom = argv[++i];
         } else if (std::strcmp(argv[i], "--democycles") == 0 && i + 1 < argc) {
             testfw::config().demoCycles = argv[++i];
         } else if (std::strcmp(argv[i], "--titlesnaps") == 0 && i + 1 < argc) {
