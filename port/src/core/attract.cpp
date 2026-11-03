@@ -18,12 +18,21 @@ struct Builder {
     int p55b2 = 0;                 // the operand of "LDA $0666,X" in the OR blit, patched by the callers
     int p6951 = 0;                 // the operand of the tile routine
     bool blitSteps = true;         // false while a dispatcher call draws its own 3 x 10 image with one step
+    bool noDraw = false;           // true while the shifted-image routine runs its dispatcher: the type 9 step already draws the image
+    int rec[5][20] = {};           // the four ghost records (ghosts 1-4) of the chase, copied to and from the working area $70-$83
+    int p69b8 = 0x69CD;            // the mask table operand of the masked clear
 
     Builder(const datapack::Pack& p, ScreenScript& o, bool tr) : pack(p), out(o), trace(tr) {
         z[0x1D] = 1;
     }
 
     void add(int n) { t += n; }
+    struct Busy {                  // records the window of a drawing routine
+        Builder& b;
+        std::int64_t start;
+        explicit Busy(Builder& bb) : b(bb), start(bb.t) {}
+        ~Busy() { b.out.busy.emplace_back(start, b.t); }
+    };
     int u8(int address) const {
         const auto s = pack.find(static_cast<std::uint16_t>(address), 1);
         return s.empty() ? 0 : s[0];
@@ -37,6 +46,7 @@ struct Builder {
         if (trace) out.trace.push_back({t, kind, {a, b, c, d, e}});
     }
     void step(ScreenOp op, const DrawCall& call = {}, int a = 0) {
+        if (noDraw && op == ScreenOp::Draw) return;
         ScreenStep s;
         s.at = t;
         s.op = op;
@@ -74,6 +84,7 @@ struct Builder {
     }
     // $55A6: the OR blit; one loop pass per row (each pass is an event and a drawing step)
     void rBlit() {
+        Busy window(*this);
         const int w = z[0x1A];
         for (;;) {
             const int data = p55b2 + z[0x03];
@@ -105,6 +116,7 @@ struct Builder {
     }
     // $6172: the small dot
     void rDot() {
+        Busy window(*this);
         event(7, z[0x0C], z[0x10]);
         step(ScreenOp::Draw, DrawCall{5, {z[0x0C], z[0x10], 0, 0, 0}});
         add(6);
@@ -128,6 +140,7 @@ struct Builder {
     }
     // $693A: a tile of 8 rows x 2 bytes from the table at p6951
     void rTile() {
+        Busy window(*this);
         event(8, p6951, z[0x0C] | (z[0x0D] << 8), z[0x10]);
         step(ScreenOp::Draw, DrawCall{6, {p6951, z[0x0C] | (z[0x0D] << 8), z[0x10], 0, 0}});
         add(2 + 3);
@@ -187,6 +200,7 @@ struct Builder {
     }
     // $6A20 with $1D <> 0: the OR path for $1E <> 0, otherwise the AND #$7F path
     void rDispatch(int a, int y) {
+        Busy window(*this);
         event(6, a | (y << 8), z[0x0C] | (z[0x0D] << 8), z[0x10], z[0x1D], z[0x1E]);
         step(ScreenOp::Draw, DrawCall{1, {a | (y << 8), z[0x0C] | (z[0x0D] << 8), z[0x10], z[0x1D], z[0x1E]}});
         add(3 + 2 + 3);
@@ -469,6 +483,532 @@ struct Builder {
         }
     }
 
+    // ---- the chase: $4689-$47D9 -------------------------------------------------------------------------------------------------------------------------------------
+    void copyIn() {                                 // $86FC (the JSR is paid by the caller): ghost record $E0 -> $70-$83
+        const int e0 = z[0xE0];
+        add(3 + 4 + cross(0x870D, e0) + 2 + 20 * 16 - 1 + 6);
+        for (int i = 0; i < 20; ++i) z[0x70 + i] = rec[e0][i];
+    }
+    void copyOut() {                                // $8712: $70-$83 -> ghost record $E0 (15 cycles a byte)
+        const int e0 = z[0xE0];
+        add(3 + 4 + cross(0x870D, e0) + 2 + 20 * 15 - 1 + 6);
+        for (int i = 0; i < 20; ++i) rec[e0][i] = z[0x70 + i];
+    }
+    void r7d80() {                                  // JSR $7D80: the place of Pac-Man
+        add(6 + 3 + 3 + 3 + 3 + 2 + 3 + 6);
+        z[0x0C] = z[0x60];
+        z[0x10] = z[0x61];
+        z[0x0D] = 0;
+    }
+    void r7d8d() {                                  // JSR $7D8D: the place of the ghost
+        add(6 + 3 + 3 + 3 + 3 + 2 + 3 + 6);
+        z[0x0C] = z[0x70];
+        z[0x10] = z[0x71];
+        z[0x0D] = 0;
+    }
+    void r7da9() {                                  // JSR $7DA9: x -= 5, y -= 4
+        add(6 + 26);
+        z[0x0C] = (z[0x0C] - 5) & 255;
+        z[0x10] = (z[0x10] - 4) & 255;
+    }
+    void rMclearBody() {                            // $69A1: the masked clear of a 3 x 10 block
+        Busy window(*this);
+        event(9, p69b8, z[0x0C] | (z[0x0D] << 8), z[0x10]);
+        step(ScreenOp::Draw, DrawCall{3, {p69b8, z[0x0C] | (z[0x0D] << 8), z[0x10], 0, 0}});
+        add(2 + 3);
+        z[0x18] = 0xF6;
+        add(6);
+        r5933();
+        add(5 + 5);
+        z[0x03] = (z[0x03] << 2) & 255;
+        for (;;) {
+            add(6);
+            const int lo12 = r5b58();
+            add(2 + 3 + 3 + 3);
+            int x = z[0x03];
+            int yy = z[0x04];
+            for (int b = 0; b < 3; ++b) {
+                add(4 + cross(p69b8, x) + 5 + cross(lo12, yy) + 2 + 6 + 2 + 2 + 5);
+                add(b < 2 ? 3 : 2);
+                ++x;
+                ++yy;
+            }
+            z[0x10] += 1;
+            z[0x18] = (z[0x18] + 1) & 255;
+            add(5 + 5);
+            if (z[0x18] != 0) {
+                add(3);
+            } else {
+                add(2);
+                break;
+            }
+        }
+        add(6);
+    }
+    void r699e() {                                  // JSR $699E: erase the block at ($0C - 4, $10 - 4)
+        add(6);
+        add(6 + 26);                                // JSR $7D9A
+        z[0x0C] = (z[0x0C] - 4) & 255;
+        z[0x10] = (z[0x10] - 4) & 255;
+        rMclearBody();
+    }
+    void r69e9() {                                  // JSR $69E9: erase with the second mask table at ($0C - 5, $10 - 4)
+        add(6);
+        r7da9();
+        add(2 + 2 + 4 + 4);
+        p69b8 = 0x6A04;
+        add(6);
+        rMclearBody();
+        add(2 + 2 + 4 + 4);
+        p69b8 = 0x69CD;
+        add(6);
+    }
+    void r79a4() {                                  // JSR $79A4: Pac-Man's image
+        add(6);
+        int a = z[0x66] & 0x0F;
+        add(3 + 2 + 3);
+        z[0x66] = a;
+        const int t3 = a & 3;
+        add(2);
+        int idx;
+        if (t3 == 0) {
+            add(branch(true, 0x79AE, 0x79BE));
+            idx = 0;
+        } else {
+            add(2);
+            add(2);
+            int carry;
+            if (t3 == 3) {
+                add(2 + 2);
+                a = 1;
+                carry = 1;
+            } else {
+                add(branch(true, 0x79B2, 0x79B4));
+                a = t3;
+                carry = 0;
+            }
+            add(2);
+            carry = a & 1;
+            add(3);
+            if (carry) {
+                add(branch(true, 0x79B9, 0x79BC));
+                idx = z[0x62] + 1;
+                add(2);
+            } else {
+                add(2);
+                add(2 + 2);
+                idx = z[0x62] + 5;
+                add(2);
+            }
+        }
+        add(2 + 2 + 2 + 3);
+        z[0x1E] = 0x80;
+        const int x = 2 * idx;
+        const int lo = u8(0x96E8 + x);
+        const int hi = u8(0x96E9 + x);
+        add(4 + cross(0x96E8, x) + 4 + cross(0x96E9, x));
+        add(3);
+        rDispatch(lo, hi);
+    }
+    void r88a2Chase() {                             // JSR $88A2 with the frightened flag, the eyes flag and the timer of the chase
+        add(6);
+        int x = 2 * z[0xE0];
+        add(3 + 2 + 2 + 3);
+        if (z[0x78] == 0) {
+            add(branch(true, 0x88AA, 0x88BC));
+        } else {
+            add(2);
+            add(3);
+            if (z[0xE2] != 0) {
+                add(branch(true, 0x88AE, 0x88BA));
+                x = 0;
+                add(2);
+            } else {
+                add(2);
+                add(3 + 2);
+                if (z[0xE1] >= 0x80) {
+                    add(branch(true, 0x88B4, 0x88BA));
+                    x = 0;
+                    add(2);
+                } else {
+                    add(2);
+                    x = 6;
+                    add(2 + 2);
+                    if ((z[0xE1] & 0x10) == 0) {
+                        add(branch(true, 0x88BA, 0x88C2));
+                    } else {
+                        add(2);
+                        x = 0;
+                        add(2);
+                    }
+                }
+            }
+        }
+        add(3);
+        if (z[0x79] == 0) {
+            add(branch(true, 0x88C0, 0x88C2));
+        } else {
+            add(2);
+            x = 0x0A;
+            add(2);
+        }
+        add(3 + 2);
+        add(2 + 2 + 2 + 2);
+        const int y = x >> 1;
+        add(4 + cross(0x88E1, y) + 3);
+        z[0x1E] = u8(0x88E1 + y);
+        add(2 + 2 + 2);
+        x += 12;
+        const int lo = u8(0x9E5C + x);
+        const int hi = u8(0x9E5D + x);
+        add(4 + cross(0x9E5C, x) + 4 + cross(0x9E5D, x));
+        add(6);
+        rDispatch(lo, hi);
+        add(3 + 2 + 6);
+    }
+    void r7819() {                                  // $7819 (the JSR is paid by the caller): the energizer is blanked
+        Busy window(*this);
+        step(ScreenOp::Draw, DrawCall{11, {z[0x0C], z[0x10], 0, 0, 0}});
+        add(2 + 3);
+        z[0x18] = 0xF8;
+        add(6);
+        r5933();
+        add(5);
+        z[0x03] = (z[0x03] << 1) & 255;
+        for (;;) {
+            add(6);
+            const int lo12 = r5b58();
+            const int x = z[0x03];
+            const int yy = z[0x04];
+            add(3 + 3);
+            add(4 + cross(0x7843, x) + 5 + cross(lo12, yy) + 2 + 6 + 2);
+            add(4 + cross(0x7844, x) + 5 + cross(lo12, yy + 1) + 2 + 6);
+            z[0x10] += 1;
+            z[0x18] = (z[0x18] + 1) & 255;
+            add(5 + 5);
+            if (z[0x18] != 0) {
+                add(3);
+            } else {
+                add(2);
+                break;
+            }
+        }
+        add(6);
+    }
+    void r7e4f() { add(2 + 10 * 63 + 9 * 3 + 2 + 6); }   // $7E4F: the 30-byte image buffer shifted by one pixel
+    void r7e1f() {                                  // JSR $7E1F: the score image of an eaten ghost
+        Busy window(*this);
+        const int ptr = z[0x16] | (z[0x17] << 8);
+        if (trace) out.trace.push_back({t + 6, 10, {ptr, z[0x0C] | (z[0x0D] << 8), z[0x10], z[0x1D], z[0x1E]}});
+        step(ScreenOp::Draw, DrawCall{9, {ptr, z[0x0C] | (z[0x0D] << 8), z[0x10], z[0x1D], z[0x1E]}});
+        add(6);
+        r7da9();
+        add(6);
+        r5933();
+        add(2);
+        const int lo16 = ptr & 255;
+        for (int i = 29; i >= 0; --i) add(5 + ((lo16 + i) > 255 ? 1 : 0) + 5 + 2 + (i > 0 ? 3 : 2));
+        add(3);
+        if (z[0x03] == 0) {
+            add(branch(true, 0x7E33, 0x7E3C));
+        } else {
+            add(2);
+            add(3);
+            const int n = z[0x03];
+            for (int k = 0; k < n; ++k) {
+                add(6);
+                r7e4f();
+                add(5);
+                add(k < n - 1 ? 3 : 2);
+            }
+        }
+        add(6 + 3 + 4 + 3 + 6);
+        z[0x03] = u8(0x7812 + z[0x03]);
+        add(6 + 26);
+        z[0x0C] = (z[0x0C] + 4) & 255;
+        z[0x10] = (z[0x10] + 4) & 255;
+        add(2 + 2 + 2 + 3);
+        int lo = 0x70 - z[0x03];
+        int hi;
+        if (lo >= 0) {
+            add(branch(true, 0x7E4B, 0x7E4C));
+            hi = 0x7E;
+        } else {
+            add(2 + 2);
+            lo += 256;
+            hi = 0x7D;
+        }
+        add(3);
+        const bool before = noDraw;
+        noDraw = true;
+        const bool beforeBlit = blitSteps;
+        blitSteps = false;
+        rDispatch(lo & 255, hi);
+        blitSteps = beforeBlit;
+        noDraw = before;
+    }
+    void r467c() {                                  // JSR $467C: the ghost-eaten animation (attract mode: a delay instead of the sound)
+        add(6);
+        add(6);                                     // JSR $7DB8
+        const int a = z[0x68];
+        add(3 + 2);
+        int ptr;
+        if (a == 2) {
+            add(branch(true, 0x7DBE, 0x7DCC));
+            ptr = 0x7FC7;
+            add(2 + 2 + 3);
+        } else {
+            add(2 + 2);
+            if (a == 4) {
+                add(branch(true, 0x7DC2, 0x7DD2));
+                ptr = 0x7FE5;
+                add(2 + 2 + 3);
+            } else {
+                add(2 + 2);
+                if (a == 8) {
+                    add(branch(true, 0x7DC6, 0x7DD8));
+                    ptr = 0x8003;
+                    add(2 + 2);
+                } else {
+                    add(2);
+                    ptr = 0x8021;
+                    add(2 + 2 + 3);
+                }
+            }
+        }
+        add(3 + 3);
+        z[0x16] = ptr & 255;
+        z[0x17] = ptr >> 8;
+        r7d80();
+        r699e();
+        r7d8d();
+        r699e();
+        r7d8d();
+        r7e1f();
+        add(3);
+        add(branch(true, 0x7DF6, 0x7E0E));
+        add(2 + 6);
+        rDelay(255);
+        r7d8d();
+        r69e9();
+        r7d80();
+        add(3);                                     // JMP $79A4: the dispatcher's RTS returns to $467F
+        add(-6);
+        r79a4();
+        add(2 + 2 + 3 + 3 + 3 + 2 + 6);             // CLC, SED, LDA $68, ADC $68, STA $68, CLD, RTS
+        const int v = z[0x68];
+        int lo = (v & 15) * 2;
+        int hi = (v >> 4) * 2;
+        if (lo > 9) {
+            lo -= 10;
+            ++hi;
+        }
+        z[0x68] = ((hi % 10) << 4) | lo;
+    }
+    void runChase() {                               // from the first JSR $8712 at $46B5 to the JMP $5303 (time t = the cycle at which that routine starts working)
+        z[0x5E] = 0x70;
+        z[0x59] = 0x20;
+        z[0x80] = 0x18;
+        z[0x62] = 3;
+        z[0x66] = 0;
+        z[0x78] = 0;
+        z[0x79] = 0;
+        z[0x81] = 1;
+        z[0x5F] = 1;
+        z[0x60] = 0x8D;
+        z[0x71] = 0x68;
+        z[0x61] = 0x68;
+        z[0xE0] = 4;
+        for (int e0 = 4; e0 >= 1; --e0) {
+            z[0xE0] = e0;
+            copyOut();
+            add(5);
+            add(e0 > 1 ? 3 : 2);
+            if (e0 > 1) add(6);
+        }
+        z[0xE0] = 0;
+        add(2 + 3 + 2 + 3 + 2 + 3 + 2 + 3);
+        rec[1][0] = 0xB1;
+        rec[2][0] = 0xC1;
+        rec[3][0] = 0xD1;
+        rec[4][0] = 0xE1;
+        for (;;) {                                  // loop A: Pac-Man runs to the left
+            add(5);
+            z[0x59] -= 1;
+            if (z[0x59] != 0) {
+                add(branch(true, 0x46D0, 0x46EC));
+            } else {
+                add(2);
+                add(6);
+                rPoll();
+                add(2 + 3);
+                z[0x59] = 0x20;
+                r7d80();
+                r699e();
+                add(2 + 3 + 2 + 3);
+                z[0x60] -= 2;
+                r7d80();
+                add(5);
+                z[0x66] += 1;
+                r79a4();
+            }
+            add(6 + 6);
+            add(2 + 3);
+            z[0xE0] = 4;
+            for (;;) {
+                add(6);
+                copyIn();
+                add(5);
+                z[0x80] -= 1;
+                if (z[0x80] != 0) {
+                    add(branch(true, 0x46FA, 0x4711));
+                } else {
+                    add(2);
+                    add(2 + 3);
+                    z[0x80] = 0x18;
+                    r7d8d();
+                    r699e();
+                    add(2 + 3 + 2 + 3);
+                    z[0x70] -= 2;
+                    r7d8d();
+                    r88a2Chase();
+                }
+                add(6);
+                copyOut();
+                add(5);
+                z[0xE0] -= 1;
+                if (z[0xE0] != 0) {
+                    add(branch(true, 0x4716, 0x46F3));
+                } else {
+                    add(2);
+                    break;
+                }
+            }
+            add(5);
+            z[0x5E] -= 1;
+            if (z[0x5E] != 0) {
+                add(branch(true, 0x471C, 0x4742));
+            } else {
+                add(2);
+                add(2 + 3);
+                z[0x5E] = 0x60;
+                add(3);
+                if (z[0x5F] != 0) {
+                    add(2);
+                    add(2 + 3 + 2 + 3 + 6);
+                    z[0x10] = 0x67;
+                    z[0x0C] = 0x4B;
+                    r61b6();
+                    add(2);
+                    add(branch(true, 0x4733, 0x4740));
+                    z[0x5F] = 0;
+                    add(3);
+                } else {
+                    add(branch(true, 0x4724, 0x4733));
+                    add(2 + 3 + 2 + 3 + 6);
+                    z[0x10] = 0x66;
+                    z[0x0C] = 0x4A;
+                    r7819();
+                    add(2 + 3);
+                    z[0x5F] = 1;
+                }
+            }
+            add(3 + 2);
+            if (z[0x60] < 0x4F) {
+                add(branch(true, 0x4748, 0x474B));
+                break;
+            }
+            add(2);
+            add(3);
+        }
+        add(2 + 3 + 3 + 3 + 3 + 2 + 3 + 2 + 3 + 3);   // loop B: the ghosts are frightened and run to the right
+        for (int g = 1; g <= 4; ++g) rec[g][8] = 1;
+        z[0xE2] = 0xFF;
+        z[0x68] = 2;
+        z[0x62] = 2;
+        bool done = false;
+        while (!done) {
+            add(5);
+            z[0x59] -= 1;
+            if (z[0x59] != 0) {
+                add(branch(true, 0x4763, 0x477F));
+            } else {
+                add(2);
+                add(6);
+                rPoll();
+                add(2 + 3);
+                z[0x59] = 0x20;
+                r7d80();
+                r699e();
+                add(2 + 3 + 2 + 3);
+                z[0x60] += 2;
+                r7d80();
+                add(5);
+                z[0x66] += 1;
+                r79a4();
+            }
+            add(6 + 6);
+            add(2 + 3);
+            z[0xE0] = 4;
+            for (;;) {
+                add(6);
+                copyIn();
+                add(5);
+                z[0x80] -= 1;
+                if (z[0x80] != 0) {
+                    add(branch(true, 0x478D, 0x47C0));
+                } else {
+                    add(2);
+                    add(2 + 3);
+                    z[0x80] = 0x40;
+                    add(3);
+                    if (z[0x79] != 0) {
+                        add(branch(true, 0x4793, 0x47C0));
+                    } else {
+                        add(2);
+                        add(2 + 3 + 3 + 2);
+                        const int diff = (z[0x70] - z[0x60]) & 255;
+                        if (diff >= 5) {
+                            add(branch(true, 0x479E, 0x47AD));
+                            r7d8d();
+                            r699e();
+                            add(2 + 3 + 2 + 3);
+                            z[0x70] += 2;
+                            r7d8d();
+                            r88a2Chase();
+                        } else {
+                            add(2);
+                            r467c();
+                            add(3 + 2);
+                            if (z[0x68] == 0x32) {
+                                add(branch(true, 0x47A7, 0x47C9));
+                                done = true;
+                                break;
+                            }
+                            add(2);
+                            add(2 + 3);
+                            z[0x79] = 1;
+                            add(branch(true, 0x47AD, 0x47C0));
+                        }
+                    }
+                }
+                add(6);
+                copyOut();
+                add(5);
+                z[0xE0] -= 1;
+                if (z[0xE0] != 0) {
+                    add(branch(true, 0x47C5, 0x4786));
+                } else {
+                    add(2);
+                    add(branch(true, 0x47C9, 0x475F));
+                    break;
+                }
+            }
+        }
+        add(2 + 2 + 3 + 3 + 2 + 3 + 3 + 3);         // $47C9-$47D7: up to and including the JMP $5303
+        out.length = t;
+    }
+
     // ---- the whole turn ---------------------------------------------------------------------------------------------------------------------------------------------
     void run() {
         // $52BB: the video switches, the lo-res page 2 filled with $DD, the page clear
@@ -567,6 +1107,20 @@ struct Builder {
 };
 
 }  // namespace
+
+bool buildAttractScript(const datapack::Pack& pack, ScreenScript& out, bool withTrace) {
+    static const struct { std::uint16_t address; std::size_t length; } need[] = {
+        {0x434F, 131}, {0x450A, 370}, {0x4A7A, 2022}, {0x5958, 512}, {0x5B67, 384}, {0x717D, 24}, {0x7812, 7}, {0x7843, 14}, {0x88E1, 5}, {0x96E8, 4888}, {0x61A8, 14}, {0x61CA, 1904},
+        {0x870D, 5}, {0x7FC7, 120}, {0x69CD, 28}, {0x6A04, 28},
+    };
+    for (const auto& n : need)
+        if (pack.find(n.address, n.length).empty()) return false;
+    out = ScreenScript{};
+    Builder b(pack, out, withTrace);
+    b.run();
+    b.runChase();
+    return true;
+}
 
 bool buildTitleScript(const datapack::Pack& pack, ScreenScript& out, bool withTrace) {
     // the data this screen reads (all in the data pack)

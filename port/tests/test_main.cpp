@@ -25,6 +25,8 @@ int main(int argc, char** argv) {
             testfw::config().drawticks = argv[++i];
         } else if (std::strcmp(argv[i], "--titleevents") == 0 && i + 1 < argc) {
             testfw::config().titleEvents = argv[++i];
+        } else if (std::strcmp(argv[i], "--chaseevents") == 0 && i + 1 < argc) {
+            testfw::config().chaseEvents = argv[++i];
         } else if (std::strcmp(argv[i], "--titlesnaps") == 0 && i + 1 < argc) {
             testfw::config().titleSnaps = argv[++i];
         } else if (std::strcmp(argv[i], "--deaths") == 0 && i + 1 < argc) {

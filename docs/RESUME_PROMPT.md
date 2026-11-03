@@ -188,3 +188,5 @@ Latest: 033-4a done (docs/ATTRACT_FLOW.md: attract loop 63,189,736 cycles, demo 
 Latest: the user supplied "Apple II roms/" (open-source ROMs incl. character ROM 341-0036, 2048 bytes, 8 bytes per glyph, bit 6 = leftmost pixel; 56 distinct byte values) and allowed committing it: so the text-mode prompts can use the REAL character ROM (option c of docs/ATTRACT_FLOW.md section 4, now also shippable). Next: 033-4b the title screen.
 
 Latest: 033-4b done (attract title screen: ScreenScript/ScreenPlayer in port/src/core/attract.*, cycle-exact against 11,549 oracle events and 242 screen snapshots; suite 128/0). Method for the next screens: capture_events.py + capture_title_snaps.py windows, Python model (tools/title_model.py style) until 0 mismatches, then port. Next: 033-4c chase loops A/B + ghost-eaten animations (from 12,250,257 on).
+
+Latest: 033-4c done (buildAttractScript = title + chase up to cycle 22,486,410; suite 129/0). Next: 033-4d the demo game (set-up $531E/$5659/$53E6, 7,894 ticks of GameCore in demo mode with the recorded keys, ends with Pac-Man being caught: death animation without sound, then the next turn at +63,189,736).

@@ -7,6 +7,7 @@
 
 #include <array>
 #include <cstdint>
+#include <utility>
 #include <vector>
 
 #include "../datapack/datapack.h"
@@ -40,10 +41,14 @@ struct ScreenScript {
     std::vector<ScreenStep> steps;
     std::int64_t length = 0;            // the cycle at which the next part of the attract loop starts
     std::vector<TraceEvent> trace;      // filled only when asked for
+    std::vector<std::pair<std::int64_t, std::int64_t>> busy;   // [start, end) of every drawing routine of the original: inside such a window the original's picture is half drawn
 };
 
 // The title turn: from the entry of $52BB (lo-res flash, the logo, the typed "Character / Nickname" screen) to the first call of the chase. False if the pack lacks data.
 bool buildTitleScript(const datapack::Pack& pack, ScreenScript& out, bool withTrace);
+
+// The title turn and the chase that follows it (the two chase loops and the four ghost-eaten animations), up to the start of the demo game at cycle 22,486,410.
+bool buildAttractScript(const datapack::Pack& pack, ScreenScript& out, bool withTrace);
 
 // Plays a script. `advance` moves time forward and applies every step that has become due. The hi-res page is exact at every cycle apart from the drawing
 // calls themselves, which take effect at the cycle they start (the original needs up to ~800 cycles to finish a glyph).

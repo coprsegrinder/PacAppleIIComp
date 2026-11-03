@@ -1,6 +1,7 @@
 // TASK-033-4b: the attract title screen against the oracle. Needs --image and --titleevents (every routine entry of one title turn with its cycle) and, for the picture test,
 // --titlesnaps (the screen memory every 50,000 cycles). Both files come from the original running on the oracle (tools/capture_events.py, tools/capture_title_snaps.py).
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -74,7 +75,51 @@ TEST(attract_title_routine_entries_equal_the_oracle_to_the_cycle) {
     CHECK(script.length == 12'250'257);   // the first call of the chase ($8712 at $46B5)
 }
 
-TEST(attract_title_pictures_equal_the_oracle) {
+TEST(attract_chase_routine_entries_equal_the_oracle_to_the_cycle) {
+    if (testfw::config().image.empty() || testfw::config().chaseEvents.empty()) {
+        std::printf("    SKIPPED (needs --image and --chaseevents)\n");
+        return;
+    }
+    datapack::Pack pack;
+    CHECK(loadPack(pack));
+    core::ScreenScript script;
+    CHECK(core::buildAttractScript(pack, script, true));
+    const auto f = readFile(testfw::config().chaseEvents);
+    CHECK(f.size() > 8 && std::memcmp(f.data(), "TEV1", 4) == 0);
+    if (f.size() <= 8) return;
+    std::uint32_t count = 0;
+    std::memcpy(&count, f.data() + 4, 4);
+    CHECK(f.size() == 8 + static_cast<std::size_t>(count) * 28);
+    // the chase starts where the title script ends; the oracle's list also holds the first page clear of the demo game after the chase
+    std::vector<core::TraceEvent> mine;
+    for (const auto& e : script.trace)
+        if (e.at >= 12'250'257) mine.push_back(e);
+    std::vector<std::array<std::int32_t, 7>> theirs;
+    for (std::uint32_t i = 0; i < count; ++i) {
+        std::array<std::int32_t, 7> v{};
+        std::memcpy(v.data(), f.data() + 8 + static_cast<std::size_t>(i) * 28, 28);
+        if (v[0] >= 12'250'257 && v[0] < script.length) theirs.push_back(v);
+    }
+    CHECK(mine.size() == theirs.size());
+    std::size_t bad = 0;
+    const std::size_t n = std::min(mine.size(), theirs.size());
+    for (std::size_t i = 0; i < n; ++i) {
+        const core::TraceEvent& e = mine[i];
+        const auto& v = theirs[i];
+        bool same = e.at == v[0] && e.kind == v[1];
+        if (e.kind == 5) {
+            same = same && e.p[0] == v[2];
+        } else if (e.kind != 4) {
+            for (int k = 0; k < 5; ++k) same = same && e.p[static_cast<std::size_t>(k)] == v[2 + static_cast<std::size_t>(k)];
+        }
+        if (!same && bad++ < 5) std::printf("    event %zu: mine t=%lld kind %d (%d %d %d %d %d) | oracle t=%d kind %d (%d %d %d %d %d)\n", i, static_cast<long long>(e.at), e.kind, e.p[0], e.p[1], e.p[2], e.p[3], e.p[4], v[0], v[1], v[2], v[3], v[4], v[5], v[6]);
+    }
+    std::printf("    %zu events of the chase compared (erasures, Pac-Man and ghost images, blit rows, key polls, delay passes, energizer tiles, the four ghost-eaten animations): %zu differ; the chase ends at cycle %lld\n", n, bad, static_cast<long long>(script.length));
+    CHECK(bad == 0);
+    CHECK(script.length == 22'486'410);   // the demo game's set-up call ($531E) starts here
+}
+
+TEST(attract_title_and_chase_pictures_equal_the_oracle) {
     if (testfw::config().image.empty() || testfw::config().titleEvents.empty() || testfw::config().titleSnaps.empty()) {
         std::printf("    SKIPPED (needs --image, --titleevents and --titlesnaps)\n");
         return;
@@ -82,7 +127,7 @@ TEST(attract_title_pictures_equal_the_oracle) {
     datapack::Pack pack;
     CHECK(loadPack(pack));
     core::ScreenScript script;
-    CHECK(core::buildTitleScript(pack, script, true));
+    CHECK(core::buildAttractScript(pack, script, true));
     const auto snaps = readFile(testfw::config().titleSnaps);
     CHECK(snaps.size() > 12 && std::memcmp(snaps.data(), "TSN1", 4) == 0);
     if (snaps.size() <= 12) return;
@@ -90,12 +135,8 @@ TEST(attract_title_pictures_equal_the_oracle) {
     std::memcpy(&count, snaps.data() + 4, 4);
     const std::size_t rec = 5 + 8192 + 1024 + 1024;
     CHECK(snaps.size() == 12 + static_cast<std::size_t>(count) * rec);
-    // times at which a drawing is half done in the original (a step takes effect at its first cycle): from a routine entry to the next routine entry
-    std::vector<std::pair<std::int64_t, std::int64_t>> busy;
-    for (std::size_t i = 0; i + 1 < script.trace.size(); ++i) {
-        const int k = script.trace[i].kind;
-        if (k == 3 || k == 6 || k == 7 || k == 8) busy.emplace_back(script.trace[i].at, script.trace[i + 1].at);
-    }
+    // the windows in which a drawing of the original is half done (a step takes effect at its first cycle)
+    const auto& busy = script.busy;
     core::ScreenPlayer player;
     player.start(&script, &pack);
     std::size_t compared = 0, bad = 0, skipped = 0, loresChecked = 0, hiresChecked = 0;
