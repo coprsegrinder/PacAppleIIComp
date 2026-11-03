@@ -16,7 +16,7 @@ def one(level):
     name = 'V%02d' % level
     G.SCENARIOS[name] = dict(seed=500 + level, ticks=TICKS, pokes=[])
     inputs = G.make_inputs(500 + level, TICKS)
-    pokes = [[5, 0x55, level], [10, 0x57, 3]] + ([[300, 0x60, 0x8B], [300, 0x61, 0x6B]] if level % 2 else [])
+    pokes = [[5, 0x55, level], [10, 0x57, 3]] + ([[300, 0x60, 0x8B], [300, 0x61, 0x6B]] if level % 2 else []) + ([[310, 0x60, 0x8B], [310, 0x61, 0x8F]] if level == 23 else [])   # level 23: put Pac-Man back to the start spot 10 ticks after the pick-up, because on the poked spot he walks through the wall out of the maze (TASK-031-5b)
     pokes = pokes + [[t, 0x58, 0x83] for t in range(100, TICKS, 100)] 
     results = []
     for attempt in range(int(os.environ.get('REPLAYS', '2'))):

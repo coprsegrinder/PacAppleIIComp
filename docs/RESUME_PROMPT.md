@@ -140,3 +140,5 @@ Latest: 031-3 done (startNextLevel equals the oracle on 7 level changes; stand-i
 Latest: 031-4 done (tables audited, L22/L23/L30 recorded and equal). Next 031-5: bonus fruit logic without fed bytes.
 
 Latest: 031-5 done (fruit state equal at levels 1,2,5,9,13,23,24). Open: 031-5b (V23 Pac-Man X mismatch at tick 544, excluded from the logic list). Next: 031-5b or 031-6 (cartoon 1 in the flow).
+
+Latest: 031-5b done (V23 was a poke artifact; re-recorded; near-ghost +1 seen at a catch at level 23). Next 031-6: cartoon trigger + cartoon 1 in the game flow.
