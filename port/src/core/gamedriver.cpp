@@ -61,13 +61,10 @@ constexpr std::int64_t kSoundAfterFrame = 1'610;   // the sound of a step starts
 
 void GameDriver::buildDeathSequence(const GameState& before) {
     sequence_.clear();
-    const auto frames = pack_->find(0x96E8, 18);
-    if (frames.empty()) return;
     RestartInputs in;
     in.pacX = before.pacX();
     in.pacY = before.pacY();
-    const std::size_t fi = static_cast<std::size_t>(pacmanFrame(before)) * 2;
-    in.pacImage = frames[fi] | (frames[fi + 1] << 8);
+    in.pacImage = 0x9BE6;   // $7EC1: LDA #$E6 / LDY #$9B / JSR $6A20 - the death always starts with this one image (frame 6 of the table at $96E8), whatever frame Pac-Man had (oracle: A and L catches)
     for (int g = 0; g < 4; ++g) {
         in.ghostXY[static_cast<std::size_t>(g) * 2] = before.ghosts[g].x();
         in.ghostXY[static_cast<std::size_t>(g) * 2 + 1] = before.ghosts[g].y();

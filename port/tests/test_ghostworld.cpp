@@ -3,16 +3,19 @@
 // $E1 $E2 $E4 $EA $EB and the four move-queue pages must equal the oracle's. Only a completed maze (the next level's set-up is M6), a game over and the poke artefact of
 // scenario D (Pac-Man outside the map) replace our state by the oracle's. Needs --image, --ticks and ghostram_X.bin next to ticks_X.bin.
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <fstream>
 #include <iterator>
 #include <map>
+#include <sstream>
 #include <string>
 #include <vector>
 
 #include "../src/core/gamecore.h"
+#include "../src/core/screen.h"
 #include "../src/datapack/datapack.h"
 #include "../src/verify/verify.h"
 #include "test_framework.h"
@@ -75,7 +78,7 @@ TEST(ghostworld_free_running_against_the_oracle_recordings) {
     if (!loaded.ok) return;
     std::map<std::size_t, std::pair<std::size_t, std::size_t>> diffs;   // offset -> (count, first tick)
     std::map<std::size_t, std::string> firstWhere;
-    std::size_t ticks = 0, resyncs = 0, sharedBad = 0, queueBad = 0, levelChanges = 0, levelChangeBad = 0, soundTicks = 0, soundSkipped = 0, soundStarts = 0, soundBad = 0, fruitBad = 0, fruitTicks = 0, pointsTicks = 0, fileCount = 0, caught = 0, eaten = 0, shown = 0;
+    std::size_t ticks = 0, resyncs = 0, sharedBad = 0, queueBad = 0, levelChanges = 0, levelChangeBad = 0, soundTicks = 0, soundSkipped = 0, soundStarts = 0, soundBad = 0, fruitBad = 0, fruitTicks = 0, pointsTicks = 0, fileCount = 0, deathChecked = 0, deathBad = 0, caught = 0, eaten = 0, shown = 0;
     std::vector<std::string> files = split(testfw::config().ticks);
     for (const auto& extra : split(testfw::config().drawticks))   // the poked and custom scenarios of --drawticks are free-running tests too (one-player ones with ghostram_X.bin)
         if (std::find(files.begin(), files.end(), extra) == files.end()) files.push_back(extra);
@@ -127,6 +130,28 @@ TEST(ghostworld_free_running_against_the_oracle_recordings) {
                 }
             }
         }
+        // TASK-033-3: the oracle's drawing-call log of this recording (tick_calls_X.txt, first ticks only): the death animation starts where the core says Pac-Man and the ghosts stood
+        std::vector<std::vector<std::array<int, 6>>> callLog;
+        {
+            std::string cp = path;
+            const auto tickAt = cp.rfind("ticks_");
+            if (tickAt != std::string::npos) {
+                cp.replace(tickAt, 6, "tick_calls_");
+                cp.replace(cp.size() - 4, 4, ".txt");
+                std::ifstream in(cp);
+                std::string line;
+                while (std::getline(in, line)) {
+                    if (line.rfind("tick ", 0) == 0) {
+                        callLog.emplace_back();
+                    } else if (!callLog.empty() && line.rfind("  type ", 0) == 0) {
+                        std::array<int, 6> c{};
+                        std::istringstream ss(line.substr(7));
+                        for (auto& v : c) ss >> v;
+                        callLog.back().push_back(c);
+                    }
+                }
+            }
+        }
         for (std::size_t k = 0; k + 1 < n; ++k) {
             const auto kr = keysAt.equal_range(static_cast<std::uint32_t>(k));
             for (auto it = kr.first; it != kr.second; ++it) core.input().pushKey(static_cast<std::uint8_t>(it->second));
@@ -171,6 +196,30 @@ TEST(ghostworld_free_running_against_the_oracle_recordings) {
                 }
             }
             caught += ev.caught;
+            if (ev.caught && !ev.gameOver && k < callLog.size() ) {   // the start of the death animation: ghost 4..1 clears, Pac-Man clear, Pac-Man's last image
+                const auto& blk = callLog[k];
+                std::size_t st = 0;
+                for (std::size_t i = 0; i + 1 < blk.size() && st == 0; ++i)
+                    if (blk[i][0] == 2 && blk[i][1] == 0x55F7 && blk[i + 1][0] == 6 && blk[i + 1][1] == 0x7201 && blk[i + 1][2] == 47) st = i + 2;
+                if (st != 0 && st + 5 < blk.size()) {
+                    const GameState& cs = core.caughtState();
+                    ++deathChecked;
+                    bool same = true;
+                    for (std::size_t g = 0; g < 4; ++g)
+                        same = same && blk[st + g][2] + 4 == cs.ghosts[3 - g].x() && blk[st + g][3] + 4 == cs.ghosts[3 - g].y();
+                    same = same && blk[st + 4][2] + 4 == cs.pacX() && blk[st + 4][3] + 4 == cs.pacY();
+                    const int myImage = 0x9BE6;   // the constant the death routine draws ($7EC1)
+                    same = same && blk[st + 5][1] == myImage;
+                    if (!same) {
+                        ++deathBad;
+                        std::printf("    %s tick %zu: death start differs: oracle ghosts", path.c_str(), k);
+                        for (std::size_t g = 0; g < 4; ++g) std::printf(" (%d,%d)", blk[st + g][2] + 4, blk[st + g][3] + 4);
+                        std::printf(" pac (%d,%d) image %d | mine ghosts", blk[st + 4][2] + 4, blk[st + 4][3] + 4, blk[st + 5][1]);
+                        for (int g = 3; g >= 0; --g) std::printf(" (%d,%d)", cs.ghosts[g].x(), cs.ghosts[g].y());
+                        std::printf(" pac (%d,%d) image %d\n", cs.pacX(), cs.pacY(), myImage);
+                    }
+                }
+            }
             for (bool e : ev.ghostEaten) eaten += e;
             const bool resync = ev.levelComplete || ev.outsideMap || ev.gameOver || (b.lives() & 0x7F) == 0;
             if (!resync) {
@@ -255,6 +304,8 @@ TEST(ghostworld_free_running_against_the_oracle_recordings) {
             }
         }
     }
+    std::printf("    death animation start (positions of Pac-Man and the 4 ghosts, his last image) at %zu catches: %zu differ\n", deathChecked, deathBad);
+    CHECK(deathBad == 0);
     std::printf("    %zu files, %zu ticks run free (nothing fed): %zu catches and %zu ghosts eaten by the core; shared variables wrong in %zu ticks, queues wrong in %zu\n", fileCount, ticks, caught, eaten, sharedBad, queueBad);
     for (const auto& [off, d] : diffs) std::printf("    %-12s differs in %zu ticks (first: tick %zu of %s)\n", offsetName(off).c_str(), d.first, d.second, firstWhere[off].c_str());
     std::printf("    bonus fruit: %zu ticks with the fruit shown, %zu with its points shown; $E5/$E6/$E7 wrong in %zu ticks\n", fruitTicks, pointsTicks, fruitBad);

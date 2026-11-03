@@ -178,3 +178,5 @@ Latest: 033-1c done (tick cost model in gamedriver.h; live game uses it). Next: 
 Latest: 033-2 done (READY wait 3,114,542 cycles measured, added at game start; death total split into animation 2,928,721 + READY). Next: 033-3 death animation (also measure GAME OVER).
 
 Latest: 033-3 STOPPED at the time limit: death animation coded and timed from the oracle (sequence in GameDriver, live loop plays it with the six sounds), but the new draw-call check is RED (ghost clear y 79 vs 81 in the fed-ghost test); free-running path unchecked; nothing watched. Next turn: fix/verify in test_ghostworld, then watch live; READY also shows at game start.
+
+Latest: 033-3 checked: death start (positions + constant image $9BE6) equals the oracle in the free-running core at 2 catches; full suite 123/0. Death step times vary with where Pac-Man dies (2 deaths: 6,043,263 vs 6,018,829 total) - port uses the first death constants. Next: 033-3b (death step cost model from more recorded deaths) and GAME OVER pause; then 033-4 new game.
