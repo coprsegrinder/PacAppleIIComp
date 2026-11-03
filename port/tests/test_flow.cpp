@@ -167,4 +167,28 @@ TEST(flow_other_keys_and_the_loop) {
     w.advance(15'000);
     const int after = w.monitor().peek(0x4E) | (w.monitor().peek(0x4F) << 8);
     CHECK(after - before >= 990 && after - before <= 1010);
+    // the digit of the prompt stays in `$51`: after Space (back to the demo) the next turn shows that many players (TASK-033-6c); a game then leaves its memory to the demo
+    core::AttractFlow s;
+    CHECK(s.start(pack, flowtest::romPath()));
+    CHECK(s.memory().players == 1);
+    s.advance(200'000);
+    s.keyDown(core::kKeySpace);
+    s.advance(200'000);
+    settle(s);
+    s.keyDown(0xB3);
+    settle(s);
+    CHECK(s.memory().players == 3);
+    s.keyDown(core::kKeySpace);
+    settle(s);
+    CHECK(s.mode() == core::AttractFlow::Mode::Attract && s.memory().players == 3 && s.turnIndex() == 1);
+    core::AttractMemory left;
+    left.players = 2;
+    left.current = 2;
+    left.live[0] = 0x40;
+    left.live[1] = 0x03;
+    left.saves[1][0] = 0x20;
+    left.high = {0x40, 0x03, 0x00};
+    left.e5 = 6;
+    s.returnFromGame(left);
+    CHECK(s.memory().players == 2 && s.memory().high[0] == 0x40 && s.memory().e5 == 6 && s.turnIndex() == 2);
 }

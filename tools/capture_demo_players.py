@@ -16,6 +16,7 @@ def hook():
     if st['back'] and mc.cpu.pc == 0x7861 and mc.m[0xE8] == 1 and not st['hit']:
         st['hit'] = True
         open('scratch/page_demo_players_%d.bin' % N, 'wb').write(bytes(mc.m[0x2000:0x4000]))
+        open('scratch/mem_demo_players_%d.bin' % N, 'wb').write(bytes(mc.m[0:0x400]))
         print('demo first tick: $50=%02X $51=%02X' % (mc.m[0x50], mc.m[0x51]))
         raise SystemExit
     return step()

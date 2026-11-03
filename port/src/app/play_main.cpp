@@ -391,7 +391,7 @@ void programThread(core::GameDriver& drv, const datapack::Pack& pack, app::GameW
         first = false;
         if (!runGame(drv, pack, window, quit, seconds, begin)) return;
         flow.setSoundOn(drv.core().input().soundOn());
-        flow.returnFromGame();
+        flow.returnFromGame(drv.attractMemory(flow.memory()));
     }
 }
 

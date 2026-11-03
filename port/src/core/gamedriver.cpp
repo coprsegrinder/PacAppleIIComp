@@ -21,9 +21,10 @@ bool GameDriver::newGame(int players, int rank) {
     return true;
 }
 
-bool GameDriver::newDemo(const hires::Page& screen) {
-    if (!core_.newDemo()) return false;
+bool GameDriver::newDemo(const hires::Page& screen, const AttractMemory* memory) {
+    if (!core_.newDemo(memory)) return false;
     display_ = DisplayState{};
+    if (memory != nullptr) display_.high = memory->high;
     prev_ = TickExtras{};
     syncExtras();
     page_ = screen;

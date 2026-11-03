@@ -22,9 +22,9 @@ struct Builder {
     bool noDraw = false;           // true while the shifted-image routine runs its dispatcher: the type 9 step already draws the image
     int rec[5][20] = {};           // the four ghost records (ghosts 1-4) of the chase, copied to and from the working area $70-$83
     int p69b8 = 0x69CD;            // the mask table operand of the masked clear
-    bool savedPlayers = false;     // hudCycles: $53CF loads each player's own score and lives from the tables below; the bonus-life test of $7124 runs
-    std::array<std::array<int, 3>, 6> savedScore{};
-    std::array<int, 6> savedLives{};
+    bool savedPlayers = false;     // $53BE / $53CF really keep each player's eight bytes (the attract game's memory, hudCycles); the bonus-life test of $7124 runs
+    std::array<std::array<int, 8>, 6> saves{};
+    AttractMemory memory;          // what the attract game starts from
 
     Builder(const datapack::Pack& p, ScreenScript& o, bool tr) : pack(p), out(o), trace(tr) {
         z[0x1D] = 1;
@@ -1056,17 +1056,20 @@ struct Builder {
     void r53be() {                                  // $53BE: save the player's data
         add(6);
         add(3 + 4 + cross(0x53E0, z[0x50]) + 2 + 8 * 16 - 1 + 6);
+        if (savedPlayers && z[0x50] >= 0 && z[0x50] <= 5)
+            for (int i = 0; i < 8; ++i) saves[static_cast<std::size_t>(z[0x50])][static_cast<std::size_t>(i)] = z[0x52 + i];
     }
     void r53cf() {                                  // JSR $53CF: load the player's data
         add(6 + 3 + 4 + cross(0x53E0, z[0x50]) + 2 + 8 * 15 - 1 + 6);
-        if (savedPlayers) {
-            for (int i = 0; i < 3; ++i) z[0x52 + i] = savedScore[static_cast<std::size_t>(z[0x50])][static_cast<std::size_t>(i)];
-            z[0x58] = savedLives[static_cast<std::size_t>(z[0x50])];
-        }
+        if (savedPlayers && z[0x50] >= 0 && z[0x50] <= 5)
+            for (int i = 0; i < 8; ++i) z[0x52 + i] = saves[static_cast<std::size_t>(z[0x50])][static_cast<std::size_t>(i)];
     }
     void r531e() {                                  // JSR $531E
         add(6 + 2 + 3);
+        z[0x59] = 1;                                // LDA #1, STA $59
         r5331();
+        z[0x56] = 0xF8;                             // $56 = $F8, $57 = $40: the items and the fruit counter of a fresh maze
+        z[0x57] = 0x40;
         add(2 + 3 + 2 + 3);
         r53be();
         add(6);
@@ -1573,11 +1576,19 @@ struct Builder {
         rPoll();
         add(6);
     }
-    void runDemoSetup() {                           // $5303-$530C: the attract game's screen; ends where the first tick starts ($530F)
-        z[0x50] = 1;
-        z[0x51] = 1;
-        z[0x55] = 1;
+    void loadMemory() {                             // the state of memory the attract game finds (AttractMemory)
+        z[0x50] = memory.current;
+        z[0x51] = memory.players;
+        for (int i = 0; i < 8; ++i) z[0x52 + i] = memory.live[static_cast<std::size_t>(i)];
+        for (int i = 0; i < 3; ++i) z[i] = memory.high[static_cast<std::size_t>(i)];
+        z[0x55] = 1;                                // $47D5: the chase ends with LDA #1, STA $55: the demo always plays level 1
         z[0x58] = 0;
+        for (int p = 0; p < 6; ++p)
+            for (int i = 0; i < 8; ++i) saves[static_cast<std::size_t>(p)][static_cast<std::size_t>(i)] = memory.saves[static_cast<std::size_t>(p)][static_cast<std::size_t>(i)];
+        savedPlayers = true;
+    }
+    void runDemoSetup() {                           // $5303-$530C: the attract game's screen; ends where the first tick starts ($530F)
+        loadMemory();
         z[0xE8] = 1;
         mem5592 = 0xF7;
         mem5597 = 0x55;
@@ -1604,8 +1615,7 @@ struct Builder {
         z[0x60] = pacX;
         z[0x61] = pacY;
         z[0xE8] = 1;
-        z[0x50] = 1;
-        z[0x51] = 1;
+        loadMemory();
         z[0x1D] = 1;
         z[0xE0] = caughtGhost;
         z[0x70] = ghosts[static_cast<std::size_t>(caughtGhost - 1)].first;   // the working area holds the ghost that touched Pac-Man
@@ -1884,8 +1894,11 @@ std::int64_t hudCycles(const datapack::Pack& pack, int players, const std::array
     b.savedPlayers = true;
     for (int p = 1; p <= 5; ++p) {
         const std::uint32_t s = scores[static_cast<std::size_t>(p)];
-        b.savedScore[static_cast<std::size_t>(p)] = {static_cast<int>(s & 255), static_cast<int>((s >> 8) & 255), static_cast<int>((s >> 16) & 255)};
-        b.savedLives[static_cast<std::size_t>(p)] = lives[static_cast<std::size_t>(p)];
+        auto& save = b.saves[static_cast<std::size_t>(p)];
+        save[0] = static_cast<int>(s & 255);
+        save[1] = static_cast<int>((s >> 8) & 255);
+        save[2] = static_cast<int>((s >> 16) & 255);
+        save[6] = lives[static_cast<std::size_t>(p)];
     }
     b.z[0x00] = static_cast<int>(high & 255);
     b.z[0x01] = static_cast<int>((high >> 8) & 255);
@@ -1904,7 +1917,8 @@ std::int64_t hudExtraCycles(const datapack::Pack& pack, int players, int current
     return hudCycles(pack, players, scores, lives, high) - hudCycles(pack, 1, one, oneLives, high);
 }
 
-bool buildDemoDeathScript(const datapack::Pack& pack, ScreenScript& out, const std::array<std::pair<int, int>, 4>& ghosts, int pacX, int pacY, int caughtGhost, bool withTrace) {
+bool buildDemoDeathScript(const datapack::Pack& pack, ScreenScript& out, const std::array<std::pair<int, int>, 4>& ghosts, int pacX, int pacY, int caughtGhost, bool withTrace,
+                          const AttractMemory* memory) {
     static const struct { std::uint16_t address; std::size_t length; } need[] = {
         {0x5958, 512}, {0x5B67, 384}, {0x717D, 24}, {0x7812, 7}, {0x7843, 14}, {0x88E1, 5}, {0x96E8, 4888}, {0x61CA, 1904}, {0x870D, 5}, {0x7FC7, 120}, {0x69CD, 28}, {0x6A04, 28},
         {0x55C7, 146}, {0x7F05, 14}, {0x5925, 7},
@@ -1913,11 +1927,12 @@ bool buildDemoDeathScript(const datapack::Pack& pack, ScreenScript& out, const s
         if (pack.find(n.address, n.length).empty()) return false;
     out = ScreenScript{};
     Builder b(pack, out, withTrace);
+    if (memory != nullptr) b.memory = *memory;
     b.runDemoDeath(ghosts, pacX, pacY, caughtGhost);
     return true;
 }
 
-bool buildAttractScript(const datapack::Pack& pack, ScreenScript& out, bool withTrace) {
+bool buildAttractScript(const datapack::Pack& pack, ScreenScript& out, bool withTrace, const AttractMemory* memory) {
     static const struct { std::uint16_t address; std::size_t length; } need[] = {
         {0x434F, 131}, {0x450A, 370}, {0x4A7A, 2022}, {0x5958, 512}, {0x5B67, 384}, {0x717D, 24}, {0x7812, 7}, {0x7843, 14}, {0x88E1, 5}, {0x96E8, 4888}, {0x61A8, 14}, {0x61CA, 1904},
         {0x870D, 5}, {0x7FC7, 120}, {0x69CD, 28}, {0x6A04, 28}, {0x65BA, 896}, {0x5F69, 426}, {0x55C7, 146}, {0x7141, 24}, {0x6992, 12}, {0x6AFE, 436}, {0x5925, 7},
@@ -1926,6 +1941,7 @@ bool buildAttractScript(const datapack::Pack& pack, ScreenScript& out, bool with
         if (pack.find(n.address, n.length).empty()) return false;
     out = ScreenScript{};
     Builder b(pack, out, withTrace);
+    if (memory != nullptr) b.memory = *memory;
     b.run();
     b.runChase();
     b.runDemoSetup();
@@ -2005,9 +2021,10 @@ void ScreenPlayer::advance(std::int64_t cycles) {
 }
 
 // ---- one turn of the attract loop ----------------------------------------------------------------------------------------------------------------------------------------
-bool AttractTurn::start(const datapack::Pack& pack) {
+bool AttractTurn::start(const datapack::Pack& pack, const AttractMemory& memory) {
     pack_ = &pack;
-    if (!buildAttractScript(pack, intro_, false)) return false;
+    memory_ = memory;
+    if (!buildAttractScript(pack, intro_, false, &memory_)) return false;
     introLength_ = intro_.length;
     if (!driver_.init(pack)) return false;
     introPlayer_.start(&intro_, &pack);
@@ -2028,7 +2045,7 @@ const hires::Page& AttractTurn::hires() const noexcept {
 }
 
 void AttractTurn::beginDemo() {
-    driver_.newDemo(introPlayer_.hires());
+    driver_.newDemo(introPlayer_.hires(), &memory_);
     shown_ = introPlayer_.hires();
     phase_ = Phase::Demo;
     tickStart_ = introLength_;
@@ -2051,7 +2068,7 @@ void AttractTurn::beginDeath() {
     const GameState& c = driver_.core().caughtState();
     std::array<std::pair<int, int>, 4> ghosts{};
     for (std::size_t g = 0; g < 4; ++g) ghosts[g] = {c.ghosts[g].x(), c.ghosts[g].y()};
-    buildDemoDeathScript(*pack_, death_, ghosts, c.pacX(), c.pacY(), 1, false);
+    buildDemoDeathScript(*pack_, death_, ghosts, c.pacX(), c.pacY(), 1, false, &memory_);
     deathStart_ = tickEnd_;
     deathPlayer_.start(&death_, pack_, &pending_);
     length_ = deathStart_ + death_.length;

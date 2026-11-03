@@ -31,6 +31,7 @@ public:
     // The eating code $7AAC-$7ABB: call once for every dot or energizer eaten (Pac-Man acts, so it follows a tick() that returned true).
     void itemEaten(GameState& state, const StepTables& tables);
     std::uint8_t f3() const noexcept { return f3_; }
+    void setF3(std::uint8_t v) noexcept { f3_ = v; }   // the attract game starts with what the last game left in $F3 (TASK-033-6c)
 
     // The "near ghost" delay inside the ghost/Pac-Man contact test $8B34-$8B65: from level 5 on, when a ghost is on the same row or column as Pac-Man
     // and closer than 10 units, Pac-Man gets one more tick of delay ($59 += 1) unless bit 1 of a coordinate is set (see the .cpp for which one).

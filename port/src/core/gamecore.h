@@ -11,6 +11,7 @@
 
 #include "../datapack/datapack.h"
 #include "eating.h"
+#include "attractmemory.h"
 #include "gamestate.h"
 #include "input.h"
 #include "junction.h"
@@ -54,7 +55,7 @@ public:
     bool init(const datapack::Pack& pack);                    // loads the tables; false if the pack lacks them
     // State of the first tick of a game for `players` (1-5) players, all starting at level `rank` ($54D4: every player's bytes and maze are saved; player 1 plays first). TASK-033-6.
     bool newGame(int players = 1, int rank = 1);
-    bool newDemo();                                           // state of the first tick of the attract game ($E8 = 1, no lives, $79 = 0, the leftovers of the title in the first ghost queue)
+    bool newDemo(const AttractMemory* memory = nullptr);   // TASK-033-6c: the first tick of the attract game, from the memory the last prompt/game left;                                           // state of the first tick of the attract game ($E8 = 1, no lives, $79 = 0, the leftovers of the title in the first ghost queue)
     GameState& state() noexcept { return state_; }
     const GameState& state() const noexcept { return state_; }
     InputPoller& input() noexcept { return poller_; }
@@ -62,6 +63,10 @@ public:
     PortInput& port() noexcept { return port_; }
     int player() const noexcept { return player_; }
     int players() const noexcept { return players_; }
+    // The memory the attract game starts from after this game (the last player's bytes, every player's save, the number of players); `before` supplies what this game did not touch.
+    AttractMemory attractMemory(const AttractMemory& before) const;
+    // The memory of the attract game right now (in the demo: the blink counters and the penalty counter as they stand), for the next turn or a Space in the middle of the demo.
+    void storeBlinkState(AttractMemory& m) const noexcept { m.e5 = e5_; m.e6 = e6_; m.f3 = timer_.f3(); }
     // The score (BCD, 24 bits) of player `p` as it is kept for him while another player plays (his $52-$54); for the current player the state holds it.
     std::uint8_t savedLives(int p) const noexcept { return stores_[static_cast<std::size_t>(p)].save.bytes[6]; }   // $58 of the saved player
     std::uint32_t savedScore(int p) const noexcept { const auto& b = stores_[static_cast<std::size_t>(p)].save.bytes; return b[0] | (b[1] << 8) | (b[2] << 16); }

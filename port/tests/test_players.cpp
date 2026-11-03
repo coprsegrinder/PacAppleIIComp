@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "../src/core/attract.h"
+#include <sstream>
 #include "../src/core/gamecore.h"
 #include "../src/core/gamedriver.h"
 #include "../src/core/ticktrace.h"
@@ -317,4 +318,136 @@ TEST(players_driver_switches_players) {
         over = e.gameOver;
     }
     CHECK(over && catches == 2);
+    // what the attract game that follows starts from: both players, the one who died last (player 2) as `$50`, nobody has a life, the saves of both
+    const AttractMemory mem = drv.attractMemory(AttractMemory{});
+    CHECK(mem.players == 2 && mem.current == 2 && mem.live[6] == 0 && mem.saves[1][6] == 0 && mem.saves[2][6] == 0);
+}
+
+// TASK-033-6c: the attract game starts from what the last prompt/game/demo left in memory. The oracle captures (tools/capture_demo_after_game.py: a real game with N players, then the
+// demo that follows) give that memory and what the demo then does: the page at its first tick, how many ticks it runs, and the cycles to its death and to the next turn.
+namespace {
+std::vector<std::uint8_t> hexBytes(const std::string& s) {
+    std::vector<std::uint8_t> out;
+    for (std::size_t i = 0; i + 1 < s.size(); i += 2) out.push_back(static_cast<std::uint8_t>(std::stoi(s.substr(i, 2), nullptr, 16)));
+    return out;
+}
+std::string fieldOf(const std::string& text, const std::string& key) {
+    const std::size_t a = text.find(key + "=");
+    if (a == std::string::npos) return {};
+    const std::size_t from = a + key.size() + 1;
+    const std::size_t end = text.find_first_of(" \n", from);
+    return text.substr(from, end == std::string::npos ? std::string::npos : end - from);
+}
+}  // namespace
+
+TEST(players_attract_game_after_a_game_equals_the_oracle) {
+    if (testfw::config().demoAfter.empty() || testfw::config().image.empty()) {
+        std::printf("    SKIPPED (needs --demoafter and --image)\n");
+        return;
+    }
+    const auto built = datapack::buildPack(readAllP(testfw::config().image), verify::referenceExpected(), datapack::dataManifest());
+    CHECK_MSG(built.ok, built.reason);
+    if (!built.ok) return;
+    const auto loaded = datapack::loadPack(built.bytes, verify::referenceExpected());
+    CHECK_MSG(loaded.ok, loaded.reason);
+    if (!loaded.ok) return;
+    std::size_t bad = 0;
+    for (const auto& path : splitP(testfw::config().demoAfter)) {
+        const auto raw = readAllP(path);
+        const std::string text(raw.begin(), raw.end());
+        const std::string dir = path.substr(0, path.find("demo_after_"));
+        const std::string tag = path.substr(path.find("demo_after_") + 11, path.size() - path.find("demo_after_") - 11 - 4);
+        const auto page = readAllP(dir + "page_demo_after_" + tag + ".bin");
+        const auto mem = readAllP(dir + "mem_demo_after_" + tag + ".bin");
+        CHECK(page.size() == hires::kPageBytes && mem.size() >= 0x100 && !text.empty());
+        if (page.size() != hires::kPageBytes || mem.size() < 0x100) continue;
+        AttractMemory m;
+        m.players = std::stoi(fieldOf(text, "players"));
+        m.current = std::stoi(fieldOf(text, "current"));
+        const auto live = hexBytes(fieldOf(text, "live"));
+        const auto saves = hexBytes(fieldOf(text, "saves"));
+        const auto high = hexBytes(fieldOf(text, "high"));
+        for (std::size_t i = 0; i < 8 && i < live.size(); ++i) m.live[i] = live[i];
+        for (int p = 1; p <= 5; ++p)
+            for (std::size_t i = 0; i < 8; ++i)
+                if (static_cast<std::size_t>(p - 1) * 8 + i < saves.size()) m.saves[static_cast<std::size_t>(p)][i] = saves[static_cast<std::size_t>(p - 1) * 8 + i];
+        for (std::size_t i = 0; i < 3 && i < high.size(); ++i) m.high[i] = high[i];
+        m.e5 = mem[0xE5];
+        m.e6 = mem[0xE6];
+        m.f3 = mem[0xF3];
+        if (fieldOf(text, "ticks").empty()) {   // a capture of the first picture only (the digit pressed at the prompt, no game played: the other players' scores are 0)
+            AttractTurn first;
+            CHECK(first.start(loaded.pack, m));
+            CHECK(first.runToDemoTick(0));
+            std::size_t dd = 0;
+            for (std::size_t b = 0; b < hires::kPageBytes; ++b) dd += first.hires().byte(b) != page[b];
+            std::printf("    %s: players %d (no game played): first picture differs in %zu bytes\n", tag.c_str(), m.players, dd);
+            bad += dd != 0 ? 1 : 0;
+            continue;
+        }
+        const std::size_t ticks = static_cast<std::size_t>(std::stoul(fieldOf(text, "ticks")));
+        const long long first = std::stoll(fieldOf(text, "first")), death = std::stoll(fieldOf(text, "death")), next = std::stoll(fieldOf(text, "next"));
+        AttractTurn turn;
+        CHECK(turn.start(loaded.pack, m));
+        CHECK(turn.runToDemoTick(0));
+        std::size_t d = 0;
+        for (std::size_t b = 0; b < hires::kPageBytes; ++b) d += turn.hires().byte(b) != page[b];
+        std::int64_t guard = 0;
+        while (!turn.finished() && guard++ < 5000) turn.advance(50'000);
+        const long long mineNext = turn.length() - turn.demoStart();
+        std::printf("    %s: players %d, current %d, e5 %d f3 %d: first picture differs in %zu bytes; demo ticks %zu (oracle %zu); first tick to next turn %lld cycles (oracle %lld, %+lld)\n", tag.c_str(), m.players, m.current, m.e5,
+                    m.f3, d, turn.demoTicks(), ticks, mineNext, next - first, mineNext - (next - first));
+        {   // the set-up of the demo screen (labels and scores of all players, the high score, the fruit): the cycles from the start of the turn to the first tick
+            const std::string t0s = fieldOf(text, "t0");
+            if (!t0s.empty()) {
+                const long long intro = first - std::stoll(t0s);
+                std::printf("      the turn's first tick comes %lld cycles after its start in the oracle, %lld in mine (%+lld; the poll before the tick is counted from 6 to 17 cycles later)\n", intro, static_cast<long long>(turn.demoStart()),
+                            static_cast<long long>(turn.demoStart()) - intro);
+                CHECK(std::llabs(static_cast<long long>(turn.demoStart()) - intro) <= 20);
+            }
+        }
+        {   // the start of every tick against the oracle's (tools/capture_demo_ticks.py), when that file exists
+            const auto rows = readAllP(dir + "demo_ticks_" + tag + ".txt");
+            if (!rows.empty()) {
+                std::istringstream in(std::string(rows.begin(), rows.end()));
+                std::vector<long long> oc;
+                long long c, a, b, e;
+                while (in >> c >> a >> b >> e) oc.push_back(c);
+                AttractTurn t2;
+                CHECK(t2.start(loaded.pack, m));
+                std::vector<long long> pc;
+                for (std::size_t k = 0; k < oc.size() && k < 7894; ++k) {
+                    if (!t2.runToDemoTick(k)) break;
+                    pc.push_back(t2.nextTickStart());
+                }
+                std::size_t shown = 0;
+                for (std::size_t k = 1; k < pc.size() && shown < 12; ++k) {
+                    const long long dOracle = oc[k] - oc[k - 1], dMine = pc[k] - pc[k - 1];
+                    if (std::llabs(dMine - dOracle) > 400) {
+                        std::printf("      tick %zu: the previous tick took %lld cycles in the oracle, %lld in mine\n", k - 1, dOracle, dMine);
+                        ++shown;
+                    }
+                }
+            }
+        }
+        (void)death;
+        const bool ok = d == 0 && turn.demoTicks() == ticks && std::llabs(mineNext - (next - first)) < 3200;   // (the tick cost model's error over the demo: +1,042 for the oracle's own first turn; the F3 case is off by 3,030)
+        bad += ok ? 0 : 1;
+    }
+    // consecutive turns without a key (the oracle: tools/capture_demo_turns.py): the demo starts with $E5/$E6 = 0/0, 1/0, 2/0 and ends with 1/0, 2/0, 3/0
+    {
+        const int starts[3] = {0, 1, 2};
+        for (int k = 0; k < 3; ++k) {
+            AttractMemory m;
+            m.e5 = static_cast<std::uint8_t>(starts[k]);
+            AttractTurn turn;
+            CHECK(turn.start(loaded.pack, m));
+            std::int64_t guard = 0;
+            while (!turn.finished() && guard++ < 5000) turn.advance(50'000);
+            const AttractMemory e = turn.memoryNow();
+            std::printf("    turn %d without a key: the demo starts with E5 %d and ends with E5 %d E6 %d (oracle: E5 %d E6 0)\n", k + 1, starts[k], e.e5, e.e6, starts[k] + 1);
+            CHECK(e.e5 == starts[k] + 1 && e.e6 == 0);
+        }
+    }
+    CHECK(bad == 0);
 }

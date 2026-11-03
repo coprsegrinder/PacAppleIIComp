@@ -12,6 +12,7 @@
 
 #include "../datapack/datapack.h"
 #include "../hires/hires.h"
+#include "attractmemory.h"
 #include "gamedriver.h"
 #include "tickdraw.h"
 
@@ -58,11 +59,12 @@ struct KeyCheck {
 bool buildTitleScript(const datapack::Pack& pack, ScreenScript& out, bool withTrace);
 
 // The title turn and the chase that follows it (the two chase loops and the four ghost-eaten animations), up to the start of the demo game at cycle 22,486,410.
-bool buildAttractScript(const datapack::Pack& pack, ScreenScript& out, bool withTrace);
+bool buildAttractScript(const datapack::Pack& pack, ScreenScript& out, bool withTrace, const AttractMemory* memory = nullptr);
 
 // The end of the attract game: Pac-Man is caught, the ghosts and he are erased and his six death frames are drawn (no sound), then the loop goes back to the title. Times count from the
 // first instruction of the death routine ($8BDD); `length` is the cycle at which the next turn's `JSR $52BB` starts (= its cycle 0). ghosts: x, y of ghosts 1-4, caughtGhost: 1-4.
-bool buildDemoDeathScript(const datapack::Pack& pack, ScreenScript& out, const std::array<std::pair<int, int>, 4>& ghosts, int pacX, int pacY, int caughtGhost, bool withTrace);
+bool buildDemoDeathScript(const datapack::Pack& pack, ScreenScript& out, const std::array<std::pair<int, int>, 4>& ghosts, int pacX, int pacY, int caughtGhost, bool withTrace,
+                          const AttractMemory* memory = nullptr);
 
 // The cycles the original's drawing routine spends on one drawing call, from its entry to its RTS (the instructions of the routine, summed up; types 1-6, 9, 10, 11 of DrawCall;
 // 0 for the others). The glue of the call site is not in it.
@@ -103,7 +105,7 @@ private:
 // original's recorded moves; its ticks cost what the cost model of gamedriver.h says), and the end of the demo (exact script), after which the next turn starts at cycle `now()` = 0.
 class AttractTurn {
 public:
-    bool start(const datapack::Pack& pack);
+    bool start(const datapack::Pack& pack, const AttractMemory& memory = AttractMemory{});   // the memory the turn starts from (players, scores, high score, level)
     void advance(std::int64_t cycles);
     std::int64_t now() const noexcept { return now_; }
     bool finished() const noexcept { return phase_ == Phase::Done; }
@@ -111,12 +113,15 @@ public:
     const hires::Page& hires() const noexcept;
     std::uint8_t loresByte(std::size_t offset) const noexcept { return introPlayer_.loresByte(offset); }
     // the demo game
-    std::size_t demoTicks() const noexcept { return demoTick_; }             // ticks started so far
+    std::size_t demoTicks() const noexcept { return demoTick_; }
+    std::int64_t nextTickStart() const noexcept { return tickStart_; }       // the cycle at which the next tick starts (after runToDemoTick(k): the start of tick k)             // ticks started so far
     bool inDemo() const noexcept { return phase_ == Phase::Demo; }
     std::int64_t demoStart() const noexcept { return introLength_; }          // the cycle of the first tick
     std::int64_t length() const noexcept { return length_; }                  // the length of the turn once it has ended (0 before)
     // The first place AFTER the cycle `after` where the original reads the keyboard (TASK-033-4e); false if there is none left in this turn (the death of the demo reads no key).
     bool nextCheck(std::int64_t after, KeyCheck& out) const;
+    // The memory as it stands now (TASK-033-6c): what the next turn starts from when this one ends or is left by a Space. In the demo the blink counters and the penalty counter move on.
+    AttractMemory memoryNow() { AttractMemory m = memory_; if (phase_ == Phase::Demo || phase_ == Phase::Death || phase_ == Phase::Done) driver_.core().storeBlinkState(m); return m; }
     // Runs until `k` ticks are complete (hires() is then the page the original shows at the start of tick k). False if the demo ended before.
     bool runToDemoTick(std::size_t k);
     GameDriver& driver() noexcept { return driver_; }
@@ -127,6 +132,7 @@ private:
     void startTick();
     void beginDeath();
     const datapack::Pack* pack_ = nullptr;
+    AttractMemory memory_;
     Phase phase_ = Phase::Intro;
     ScreenScript intro_, death_;
     ScreenPlayer introPlayer_, deathPlayer_;

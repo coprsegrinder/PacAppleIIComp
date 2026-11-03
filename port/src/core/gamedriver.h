@@ -58,17 +58,22 @@ class GameDriver {
 public:
     bool init(const datapack::Pack& pack);
     bool newGame(int players = 1, int rank = 1);   // players 1-5 (TASK-033-6), every player starts at level `rank`                        // new core state and the first screen
-    bool newDemo(const hires::Page& screen);   // the attract game: its first tick's state on the given screen (the screen the set-up has drawn)
+    bool newDemo(const hires::Page& screen, const AttractMemory* memory = nullptr);   // the attract game: its first tick's state on the given screen (the screen the set-up has drawn)
     TickEvents tick(FrightenAware& ghosts);   // the ghosts are supplied by the caller (tests)
     TickEvents tick();                        // the ghosts of the game core (M5)
     void syncExtras() noexcept {              // after the shared ghost variables were replaced from outside
         prev_.e1 = core_.ghostShared().e1;
         prev_.e2 = core_.ghostShared().e2;
         prev_.e4 = core_.ghostShared().e4;
+        prev_.e5 = core_.blink1UpCounter();   // the blink counters the core starts with (the attract game after a game: TASK-033-6c)
+        prev_.e6 = core_.blink1UpPhase();
+        prev_.e7 = core_.fruitState();
     }
     void nextLevel() { core_.startNextLevel(); rebuildScreen(); }   // see GameCore::startNextLevel
     void rebuildScreen();                  // the page from the state: walls, door, dots, labels, score, high score, icons, Pac-Man (no ghosts)
     GameCore& core() noexcept { return core_; }
+    // The memory the attract game starts from after this game, with the high score of the game's display (TASK-033-6c)
+    AttractMemory attractMemory(const AttractMemory& before) const { AttractMemory m = core_.attractMemory(before); m.high = display_.high; return m; }
     const hires::Page& page() const noexcept { return page_; }
     DisplayState& display() noexcept { return display_; }
     void setStaticGhosts(bool on) noexcept { staticGhosts_ = on; }    // live program without ghost logic: draw the four ghosts once at their start places

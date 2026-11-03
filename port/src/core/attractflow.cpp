@@ -15,6 +15,8 @@ bool AttractFlow::start(const datapack::Pack& pack, const std::string& romPath) 
     if (!monitor_.loadRom(romPath)) return false;
     monitor_.reset();
     monitor_.poke(0x54E1, 1);
+    mem_ = AttractMemory{};
+    players_ = 1;
     monitor_.poke(0x6FBA, 0x88);                 // the keyboard mode's keys: left arrow, right arrow, A, Z
     monitor_.poke(0x6FB6, 0x95);
     monitor_.poke(0x6FB2, 0xC1);
@@ -26,7 +28,7 @@ bool AttractFlow::start(const datapack::Pack& pack, const std::string& romPath) 
     paused_ = false;
     ctrlV_ = false;
     spaceAt_ = endAt_ = -1;
-    return turn_.start(pack);
+    return turn_.start(pack, mem_);
 }
 
 bool AttractFlow::startBoot(const datapack::Pack& pack, const std::string& romPath) {
@@ -44,7 +46,7 @@ bool AttractFlow::startBoot(const datapack::Pack& pack, const std::string& romPa
 }
 
 void AttractFlow::newTurn() {
-    turn_.start(*pack_);
+    turn_.start(*pack_, mem_);
     ++turnIndex_;
     lastCheck_ = -1;
 }
@@ -162,7 +164,7 @@ void AttractFlow::finishBoot() {
     monitor_.addCycles(3 + 11);
     bootT0_ = monitor_.cycles();
     mode_ = Mode::Attract;
-    turn_.start(*pack_);
+    turn_.start(*pack_, mem_);
     lastCheck_ = -1;
 }
 
@@ -237,6 +239,8 @@ void AttractFlow::afterBootKey(std::uint8_t k) {
 }
 
 void AttractFlow::enterPlayers(std::int64_t at) {
+    mem_ = turn_.memoryNow();                    // what the turn leaves behind (the blink and penalty counters of the demo) starts the next one
+    mem_.players = players_;
     spaceAt_ = at;
     spaceTurn_ = turnIndex_;
     endAt_ = -1;
@@ -385,7 +389,8 @@ void AttractFlow::afterPlayersKey(std::uint8_t k) {
         monitor_.addCycles(2 + 6);               // BCS (not taken), JSR $4A6A: the digit is echoed
         monitor_.gameCout(k);
         monitor_.addCycles(2 + 3);               // AND #7, STA $51
-        players_ = k & 7;
+        players_ = k & 7;                             // $4245
+        mem_.players = players_;                      // `$51` stays: the attract game that follows shows this many players (TASK-033-6c)
         monitor_.poke(0x51, static_cast<std::uint8_t>(players_));
         monitor_.addCycles(2 + 3 + 2 + 3);       // LDA #0, STA $24, LDA #$0B, STA $25
         monitor_.poke(0x24, 0);
@@ -492,6 +497,7 @@ void AttractFlow::advance(std::int64_t cycles) {
         turn_.advance(cycles);
         cycles -= turn_.now() - before;
         if (turn_.finished()) {
+            mem_ = turn_.memoryNow();
             newTurn();
             continue;
         }

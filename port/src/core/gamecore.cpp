@@ -31,7 +31,10 @@ bool GameCore::newGame(int players, int rank) {
     demoPointer_ = DemoStream::kStart;
     timer_ = StepTimer();
     if (pack_ == nullptr || !newGameState(*pack_, state_)) return false;
-    if (rank > 1) state_.zp(0x55) = static_cast<std::uint8_t>(rank);   // the first level of the game ($54E1)
+    if (rank > 1) {
+        state_.zp(0x55) = static_cast<std::uint8_t>(rank);   // the first level of the game ($54E1)
+        startOfLife(state_, start_, savePlayer(state_));      // $53E6 reads the level: the in-house countdowns of the ghosts are the level's
+    }
     for (int p = 1; p <= players_; ++p) {   // $54F4-$5503: every player's bytes and maze are saved
         stores_[static_cast<std::size_t>(p)].save = savePlayer(state_);
         stores_[static_cast<std::size_t>(p)].map = state_.map;
@@ -39,14 +42,31 @@ bool GameCore::newGame(int players, int rank) {
     return true;
 }
 
-bool GameCore::newDemo() {
+bool GameCore::newDemo(const AttractMemory* memory) {
     if (!newGame()) return false;
+    if (memory != nullptr) {                  // the demo starts from what the last game / prompt / demo left: his score (not changed in the demo), the order of players, the blink and penalty counters
+        players_ = memory->players;
+        player_ = memory->current;
+        for (int i = 0; i < 3; ++i) state_.zp(static_cast<std::uint16_t>(0x52 + i)) = memory->live[static_cast<std::size_t>(i)];
+        timer_.setF3(memory->f3);
+    }
     state_.demo = 1;
     state_.zp(0x58) = 0;
     state_.mode79 = 0;
-    e5_ = 0;                                  // $E5 = 0 at the first tick of the demo (recorded: tools/record_demo_full.py)
+    e5_ = memory != nullptr ? memory->e5 : 0;   // $E5 = 0 at the first tick of the first demo (recorded: tools/record_demo_full.py); later ones start with what the last one left
+    if (memory != nullptr) e6_ = memory->e6;
     for (std::size_t i = 15; i < queues_[0].size(); ++i) queues_[0][i] = 0xDD;   // $52BB filled the lo-res page with $DD; $6E79 wrote only the first 15 bytes of this queue page
     return true;
+}
+
+AttractMemory GameCore::attractMemory(const AttractMemory& before) const {
+    AttractMemory m = before;
+    m.players = players_;
+    m.current = player_;
+    for (int i = 0; i < 8; ++i) m.live[static_cast<std::size_t>(i)] = state_.zp(static_cast<std::uint16_t>(0x52 + i));
+    for (int p = 1; p <= players_; ++p) m.saves[static_cast<std::size_t>(p)] = stores_[static_cast<std::size_t>(p)].save.bytes;
+    storeBlinkState(m);
+    return m;
 }
 
 // $570C: the 1UP blink ($58B3) and the energizer phase.

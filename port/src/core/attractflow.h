@@ -52,6 +52,9 @@ public:
     void advance(std::int64_t cycles);
     // After GAME OVER (the caller waits the 4,868,255 cycles of deathtiming.h kGameOverToAttractStart first): the original runs `$52BB` = a new turn from its cycle 0.
     void returnFromGame() { mode_ = Mode::Attract; paused_ = false; newTurn(); }
+    // The same with the memory the game left (the last player's bytes, every player's save, the number of players, the high score): the attract game shows and plays it (TASK-033-6c).
+    void returnFromGame(const AttractMemory& after) { mem_ = after; players_ = after.players; returnFromGame(); }
+    const AttractMemory& memory() const noexcept { return mem_; }
 
     Mode mode() const noexcept { return mode_; }
     int players() const noexcept { return players_; }
@@ -118,6 +121,7 @@ private:
     bool paused_ = false;
     bool ctrlV_ = false;          // the Players prompt got Ctrl-V and waits for Ctrl-C ($4272)
     int players_ = 1;
+    AttractMemory mem_;           // what the attract game starts from
     int cartoon_ = 0;
     std::int64_t cartoonElapsed_ = 0, cartoonLength_ = 0;
     int keyIndex_ = 0;
