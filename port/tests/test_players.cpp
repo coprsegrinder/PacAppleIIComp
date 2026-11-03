@@ -90,7 +90,7 @@ TEST(players_rotation_equals_the_oracle) {
     const auto loaded = datapack::loadPack(built.bytes, verify::referenceExpected());
     CHECK_MSG(loaded.ok, loaded.reason);
     if (!loaded.ok) return;
-    std::size_t switches = 0, bad = 0, ticksRun = 0, wrongEvents = 0, gameOvers = 0;
+    std::size_t switches = 0, bad = 0, ticksRun = 0, wrongEvents = 0, gameOvers = 0, levelEnds = 0;
     for (const auto& path : splitP(testfw::config().playerTicks)) {
         std::string why;
         const auto tr = TickTrace::load(path, why);
@@ -136,6 +136,20 @@ TEST(players_rotation_equals_the_oracle) {
             if (ev.caught != oracleRestart) {
                 ++wrongEvents;
                 if (wrongEvents <= 8) std::printf("    %s tick %zu: caught: oracle %d mine %d\n", path.c_str(), k, oracleRestart, ev.caught);
+                core.state() = b;
+                continue;
+            }
+            if (b.level() > a.level() && a.dotsLeft() == 1) {   // the level end of whoever plays (U: player 2): the same routine as with one player
+                CHECK(ev.levelComplete);
+                core.startNextLevel();
+                const auto m2 = toOracleLayout(core.state()), o2 = toOracleLayout(b);
+                std::size_t d = 0;
+                for (std::size_t i = 0; i < m2.size(); ++i) d += i != 30 && i != 31 && m2[i] != o2[i];
+                ++levelEnds;
+                if (d != 0) {
+                    ++bad;
+                    std::printf("    %s tick %zu: the level change (player %d) differs in %zu bytes\n", path.c_str(), k, core.player(), d);
+                }
                 core.state() = b;
                 continue;
             }
@@ -186,10 +200,11 @@ TEST(players_rotation_equals_the_oracle) {
             CHECK(ev.caught && ev.gameOver && !ev.playerSwitched);
         }
     }
-    std::printf("    %zu ticks run, %zu life restarts compared with the oracle (two players): %zu differ, %zu catch events disagree, %zu ended the game\n", ticksRun, switches, bad, wrongEvents, gameOvers);
+    std::printf("    %zu ticks run, %zu life restarts and %zu level ends compared with the oracle (two players): %zu differ, %zu catch events disagree, %zu ended the game\n", ticksRun, switches, levelEnds, bad, wrongEvents, gameOvers);
     CHECK(wrongEvents == 0);
     CHECK(bad == 0);
     CHECK(switches >= 4);
+    CHECK(levelEnds >= 1);
 }
 
 // The first play screen for 1 to 5 players: labels, marks, dotted lines, score boxes and scores of every player at the places of the tables ($55C7, $6992, $7141), as the oracle draws them.
