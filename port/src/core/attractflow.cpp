@@ -2,19 +2,26 @@
 
 #include <algorithm>
 
-#include "cartoon.h"
-
 namespace pacman::core {
 
-bool AttractFlow::start(const datapack::Pack& pack) {
+namespace {
+constexpr std::uint16_t kRdkey = 0xFD0C, kGetln = 0xFD6F;
+// the texts of the game ($427C: "HOW MANY PLAYERS?  (1 - 5)   " 29 bytes and the 55 bytes of the PRESS RETURN prompt; $41DC: "RANK OR CARTOON? " 17, "RANK NUMBER? (1-21) " 20, "CARTOON NUMBER? (1-3) " 22)
+constexpr std::size_t kPlayersLen = 29, kPressLen = 55, kHiddenLen = 17, kRankLen = 20, kCartoonLen = 22;
+}  // namespace
+
+bool AttractFlow::start(const datapack::Pack& pack, const std::string& romPath) {
     pack_ = &pack;
+    if (!monitor_.loadRom(romPath)) return false;
+    monitor_.reset();
+    monitor_.poke(0x54E1, 1);
     mode_ = Mode::Attract;
     turnIndex_ = 0;
     lastCheck_ = -1;
     haveKey_ = false;
     paused_ = false;
+    ctrlV_ = false;
     spaceAt_ = endAt_ = -1;
-    waitAt_[0] = waitAt_[1] = -1;
     return turn_.start(pack);
 }
 
@@ -24,34 +31,76 @@ void AttractFlow::newTurn() {
     lastCheck_ = -1;
 }
 
-void AttractFlow::showPlayersText() {
-    // $4217: text on, the page cleared ($4868: cursor to the top left), the first line from $427C (29 bytes; the row is not set: $25 stays 0)
-    text_.clear();
+void AttractFlow::syncText() {
+    std::array<std::uint8_t, 1024> page{};
+    for (std::size_t i = 0; i < 1024; ++i) page[i] = monitor_.peek(static_cast<std::uint16_t>(0x800 + i));
+    text_.assign(page, monitor_.peek(0x24), monitor_.peek(0x25));
+    waitClock_ = monitor_.cycles();
+    for (std::size_t i = 0; i < 256; ++i) waitZp_[i] = monitor_.peek(static_cast<std::uint16_t>(i));
+}
+
+std::array<std::uint8_t, 256> AttractFlow::lineBuffer() const {
+    std::array<std::uint8_t, 256> b{};
+    for (std::size_t i = 0; i < 256; ++i) b[i] = monitor_.peek(static_cast<std::uint16_t>(0x200 + i));
+    return b;
+}
+
+// $4217: JSR $6F3C (text on), JSR $4868 (the page cleared), CH = 0, VTAB for the row of $25 (the LDA #6 before it is not used), the 29 bytes of the first line, JSR $FD0C
+void AttractFlow::playersScreen() {
+    monitor_.addCycles(6);
+    monitor_.gameSetTextMode();
+    monitor_.addCycles(6);
+    monitor_.gameClearPage();
+    monitor_.addCycles(2 + 3 + 2);
+    monitor_.poke(0x24, 0);
+    monitor_.addCycles(6);
+    monitor_.gameVtab();
     const auto s = pack_->find(0x427C, 84);
-    if (s.size() >= 29) text_.puts(s.first(29));
+    if (s.size() >= kPlayersLen) monitor_.gamePrint(s.first(kPlayersLen), 0x427C);
+    monitor_.addCycles(6);
+    monitor_.call(kRdkey);
+    mode_ = Mode::Players;
+    ctrlV_ = false;
+}
+
+// $4147: the same with row 0 and "RANK OR CARTOON? " (from $41DC), then JSR $FD6F
+void AttractFlow::hiddenScreen() {
+    monitor_.addCycles(6);
+    monitor_.gameSetTextMode();
+    monitor_.addCycles(6);
+    monitor_.gameClearPage();
+    monitor_.addCycles(2 + 3 + 2);
+    monitor_.poke(0x24, 0);
+    monitor_.addCycles(6);
+    monitor_.gameVtab();
+    const auto s = pack_->find(0x41DC, 59);
+    if (s.size() >= 59) monitor_.gamePrint(s.first(kHiddenLen), 0x41DC);
+    monitor_.addCycles(6);
+    monitor_.call(kGetln);
+    mode_ = Mode::RankOrCartoon;
+}
+
+// which: 1 = "CARTOON NUMBER? (1-3) " ($4201), 2 = "RANK NUMBER? (1-21) " ($41ED): the print loop and JSR $FD6F
+void AttractFlow::linePrompt(int which) {
+    const auto s = pack_->find(0x41DC, 59);
+    if (s.size() >= 59) {
+        if (which == 1) monitor_.gamePrint(s.subspan(kHiddenLen + kRankLen, kCartoonLen), 0x4201);
+        else monitor_.gamePrint(s.subspan(kHiddenLen, kRankLen), 0x41ED);
+    }
+    monitor_.addCycles(6);
+    monitor_.call(kGetln);
+    mode_ = which == 1 ? Mode::CartoonNumber : Mode::RankNumber;
 }
 
 void AttractFlow::enterPlayers(std::int64_t at) {
-    mode_ = Mode::Players;
-    ctrlV_ = false;
     spaceAt_ = at;
     spaceTurn_ = turnIndex_;
-    waitAt_[0] = at + kTakenToPlayersWait;
-    waitAt_[1] = -1;
     endAt_ = -1;
-    // the wait is reached when the RDKEY call has been made (6 cycles after the mark $4233); the clock counts from $6FAE
-    wait_ = std::max<std::int64_t>(0, waitAt_[0] + 6 - turn_.now());
-    promptClock_ = turn_.now() - at;
-    showPlayersText();
-}
-
-// which: 0 = "RANK OR CARTOON? " (from $41DC, 17 bytes), 1 = "CARTOON NUMBER? (1-3) " ($4201, 22 bytes), 2 = "RANK NUMBER? (1-21) " ($41ED, 20 bytes)
-void AttractFlow::showLinePrompt(int which) {
-    static constexpr int kOffset[3] = {0, 0x4201 - 0x41DC, 0x41ED - 0x41DC}, kLength[3] = {17, 22, 20};
-    const auto s = pack_->find(0x41DC, 59);
-    if (s.size() >= 59) text_.puts(s.subspan(static_cast<std::size_t>(kOffset[which]), static_cast<std::size_t>(kLength[which])));
-    lineX_ = 0;
-    escPending_ = false;
+    monitor_.setCycles(0);                       // the clock of the prompts counts from $6FAE
+    monitor_.addCycles(3 + 3);                   // JMP $4144, JMP $4217
+    playersScreen();
+    busy_ = (at - turn_.now()) + monitor_.cycles();
+    syncText();
 }
 
 void AttractFlow::takeKeyAtCheck(const KeyCheck& c) {
@@ -72,189 +121,203 @@ void AttractFlow::takeKeyAtCheck(const KeyCheck& c) {
     }
 }
 
-void AttractFlow::lineRestart() {                  // $FD67: a new line below, the prompt character, X = 0
-    text_.put(0x8D);
-    text_.put(prompt_);
-    lineX_ = 0;
-}
-
-// the line input $FD6F (monitor ROM $FD35-$FD8E): Esc takes the next key as a cursor command (not ported), Ctrl-U takes the character under the cursor, lower case becomes upper case,
-// Return ends the line (CLREOL, CR), Backspace and Ctrl-X as in the ROM, every other character is echoed and stored
-void AttractFlow::lineKey(std::uint8_t k) {
-    if (escPending_) {
-        escPending_ = false;
-        return;
-    }
-    if (k == kKeyEsc) {
-        escPending_ = true;
-        return;
-    }
-    std::uint8_t a = k;
-    if (a == 0x95) a = text_.atCursor();
-    if (a >= 0xE0) a &= 0xDF;
-    line_[lineX_] = a;
-    if (a == kKeyReturn) {
-        text_.clearToEndOfLine();
-        text_.put(0x8D);
-        lineDone();
-        return;
-    }
-    text_.put(a);
-    if (a == kKeyBackspace) {
-        if (lineX_ == 0) lineRestart();
-        else --lineX_;
-        return;
-    }
-    if (a == kKeyCtrlX) {
-        text_.put(0xDC);
-        lineRestart();
-        return;
-    }
-    lineX_ = (lineX_ + 1) & 255;
-    if (lineX_ == 0) {                              // 256 characters: the line is cancelled
-        text_.put(0xDC);
-        lineRestart();
-    }
-}
-
-void AttractFlow::lineDone() {
-    const unsigned len = lineX_;
-    lineX_ = 0;
-    if (mode_ == Mode::RankOrCartoon) {             // $4166-$4176: the first letter decides ($C3 = C)
-        if (line_[0] == 0xC3) {
-            mode_ = Mode::CartoonNumber;
-            showLinePrompt(1);
-            wait_ = kLineToCartoonPrompt;
-        } else {
-            mode_ = Mode::RankNumber;
-            showLinePrompt(2);
-            wait_ = kLineToRankPrompt;
-        }
-        return;
-    }
-    if (mode_ == Mode::CartoonNumber) {             // $4186-$4197: 1 -> 2, 2 -> 5, others -> 9 (the level numbers of the three intermissions)
-        cartoon_ = line_[0] == 0xB1 ? 1 : line_[0] == 0xB2 ? 2 : 3;
-        mode_ = Mode::Cartoon;
-        cartoonElapsed_ = 0;
-        cartoonLength_ = kCartoonCycles[cartoon_ - 1] - kCartoonGolden;
-        wait_ = kCartoonLineToStart;
-        return;
-    }
-    // the rank number ($41AF-$41D9): one character: its low nibble is the rank if it is not 0; else the first nibble times 10 plus the second nibble, below 22
-    std::int64_t c = 6 + 2;
+// the rank number ($41AF-$41D9): one character: its low nibble is the rank if it is not 0; else the first nibble times 10 plus the second nibble, below 22
+void AttractFlow::rankLine() {
+    const unsigned len = monitor_.x();
+    std::int64_t c = 2;                          // CPX #1
     int store = -1;
     if (len == 1) {
-        c += 3 + 4 + 2;
-        const int a = line_[0] & 15;
+        c += 3 + 4 + 2;                          // BEQ (taken), LDA $0200, AND #$0F
+        const int a = monitor_.peek(0x200) & 15;
         if (a != 0) {
-            c += 3 + 4 + 3;
+            c += 3 + 4 + 3;                      // BNE (taken), STA $54E1, JMP $4217
             store = a;
         } else {
-            c += 2 + 3 + 3;
+            c += 2 + 3 + 3;                      // BNE (not taken), JMP $4144, JMP $4217
         }
     } else {
-        c += 2 + 4 + 2 + 2 + 4 + 2 + 2 + 2;
-        const int x = line_[0] & 15;
-        int a = line_[1] & 15;
+        c += 2 + 4 + 2 + 2 + 4 + 2 + 2 + 2;      // BEQ, LDA, AND, TAX, LDA, AND, CPX #0, BEQ (not taken)
+        const int x = monitor_.peek(0x200) & 15;
+        int a = monitor_.peek(0x201) & 15;
         if (x == 0) {
-            c += 1;                               // (BEQ taken: 3 instead of 2)
+            c += 1;                              // (BEQ taken: 3 instead of 2)
         } else {
-            c += x * 6 + (x - 1) * 3 + 2;         // the loop: x passes of CLC / ADC / DEX; BNE is taken in all but the last
+            c += x * 6 + (x - 1) * 3 + 2;        // the loop: x passes of CLC / ADC / DEX; BNE is taken in all but the last
             a += 10 * x;
         }
-        c += 2;
+        c += 2;                                  // CMP #$16
         if (a >= 0x16) {
-            c += 3 + 3 + 3;
+            c += 3 + 3 + 3;                      // BCS (taken), JMP $4144, JMP $4217
         } else {
-            c += 2 + 4 + 3;
+            c += 2 + 4 + 3;                      // BCS (not taken), STA $54E1, JMP $4217
             store = a;
         }
     }
-    if (store >= 0) rank_ = store;
-    mode_ = Mode::Players;
-    ctrlV_ = false;
-    showPlayersText();
-    wait_ = c + 11'282 + 6;
+    monitor_.addCycles(c);
+    if (store >= 0) monitor_.poke(0x54E1, static_cast<std::uint8_t>(store));
+    playersScreen();
 }
 
-void AttractFlow::processPromptKey() {
-    const std::uint8_t k = latch_;
-    haveKey_ = false;
-    if (isLineMode()) {
-        lineKey(k);
+// the line of the hidden menu is complete (GETLN returned with X = its length)
+void AttractFlow::afterLine() {
+    if (mode_ == Mode::RankOrCartoon) {          // $4166: LDA #7, JSR $485C (VTAB), LDA #0, STA $24, LDA $0200, CMP #$C3, BNE
+        monitor_.addCycles(2 + 6);
+        monitor_.gameVtab();
+        monitor_.addCycles(2 + 3 + 4 + 2);
+        monitor_.poke(0x24, 0);
+        if (monitor_.peek(0x200) == 0xC3) {
+            monitor_.addCycles(2);
+            linePrompt(1);
+        } else {
+            monitor_.addCycles(3);
+            linePrompt(2);
+        }
         return;
     }
-    if (mode_ == Mode::Players) {
-        if (ctrlV_) {                                 // $4272: Ctrl-C opens the hidden menu, any other key goes back to the key wait
-            ctrlV_ = false;
-            if (k == kKeyCtrlC) {
-                mode_ = Mode::RankOrCartoon;          // $4147: text on, clear, "RANK OR CARTOON? ", the line input
-                text_.clear();
-                showLinePrompt(0);
-                wait_ = kCtrlCToLine;
+    if (mode_ == Mode::CartoonNumber) {          // $4186: LDX $0200, LDA #2, CPX #$B1, BEQ, LDA #5, CPX #$B2, BEQ, LDA #9, STA $55, JSR $8155
+        const std::uint8_t k = monitor_.peek(0x200);
+        std::uint8_t v;
+        monitor_.addCycles(4 + 2 + 2);
+        if (k == 0xB1) {
+            monitor_.addCycles(3);
+            v = 2;
+            cartoon_ = 1;
+        } else {
+            monitor_.addCycles(2 + 2 + 2);
+            if (k == 0xB2) {
+                monitor_.addCycles(3);
+                v = 5;
+                cartoon_ = 2;
             } else {
-                wait_ = kOtherKeyBack;
+                monitor_.addCycles(2 + 2);
+                v = 9;
+                cartoon_ = 3;
             }
-            return;
         }
-        if (k == kKeyCtrlV) {                         // $4236
-            ctrlV_ = true;
-            wait_ = kCtrlVToSecondKey;
-            return;
-        }
-        if (k < 0xB1 || k > 0xB5) return;             // $4233-$423E: other keys are ignored
-        players_ = k & 7;                             // $4245
-        text_.put(k);                                 // the digit is echoed at the cursor
-        text_.setCursor(0, 11);                       // $4249-$4251: column 0, row $0B
-        const auto s = pack_->find(0x427C, 84);       // (the second text is at $4299, 55 bytes: the table of the data pack starts at $427C)
-        if (s.size() >= 0x1D + 55) text_.puts(s.subspan(0x1D, 55));
-        mode_ = Mode::PressReturn;
-        waitAt_[1] = waitAt_[0] + kDigitToPressWait;
-        wait_ = kDigitToPressWait;
+        monitor_.addCycles(3 + 6);
+        monitor_.poke(0x55, v);
+        mode_ = Mode::Cartoon;
+        cartoonElapsed_ = 0;
+        cartoonLength_ = kHiddenCartoonCycles[cartoon_ - 1];
         return;
     }
-    if (k == kKeySpace) {                             // $4264: back to the demo: $43D2, then a new turn
-        endAt_ = waitAt_[1] + (kSpaceToTurn - 11);
+    rankLine();
+}
+
+// the RDKEY of a prompt returned with the key in A
+void AttractFlow::afterPlayersKey(std::uint8_t k) {
+    if (mode_ == Mode::Players && ctrlV_) {      // $4275: CMP #$83, BNE $4233 / JMP $4147
+        monitor_.addCycles(2);
+        ctrlV_ = false;
+        if (k == kKeyCtrlC) {
+            monitor_.addCycles(2 + 3);
+            hiddenScreen();
+        } else {
+            monitor_.addCycles(3 + 6);
+            monitor_.call(kRdkey);
+        }
+        return;
+    }
+    if (mode_ == Mode::Players) {                // $4236
+        monitor_.addCycles(2);
+        if (k == kKeyCtrlV) {                    // BEQ $4272: JSR $FD0C
+            monitor_.addCycles(3 + 6);
+            ctrlV_ = true;
+            monitor_.call(kRdkey);
+            return;
+        }
+        monitor_.addCycles(2 + 2);               // BEQ (not taken), CMP #$B1
+        if (k < 0xB1) {
+            monitor_.addCycles(3 + 6);           // BCC $4233, JSR $FD0C
+            monitor_.call(kRdkey);
+            return;
+        }
+        monitor_.addCycles(2 + 2);               // BCC (not taken), CMP #$B6
+        if (k >= 0xB6) {
+            monitor_.addCycles(3 + 6);           // BCS $4233, JSR $FD0C
+            monitor_.call(kRdkey);
+            return;
+        }
+        monitor_.addCycles(2 + 6);               // BCS (not taken), JSR $4A6A: the digit is echoed
+        monitor_.gameCout(k);
+        monitor_.addCycles(2 + 3);               // AND #7, STA $51
+        players_ = k & 7;
+        monitor_.poke(0x51, static_cast<std::uint8_t>(players_));
+        monitor_.addCycles(2 + 3 + 2 + 3);       // LDA #0, STA $24, LDA #$0B, STA $25
+        monitor_.poke(0x24, 0);
+        monitor_.poke(0x25, 0x0B);
+        monitor_.addCycles(6);
+        monitor_.gameVtab();
+        const auto s = pack_->find(0x427C, 84);
+        if (s.size() >= kPlayersLen + kPressLen) monitor_.gamePrint(s.subspan(kPlayersLen, kPressLen), 0x4299);
+        monitor_.addCycles(6);
+        monitor_.call(kRdkey);
+        mode_ = Mode::PressReturn;
+        return;
+    }
+    // PressReturn, $4264: CMP #$A0, BNE; CMP #$8D, BNE $4261
+    monitor_.addCycles(2);
+    if (k == kKeySpace) {
+        monitor_.addCycles(2 + 3);               // BNE (not taken), JMP $43D2
+        endAt_ = monitor_.cycles();
         mode_ = Mode::Attract;
         newTurn();
-    } else if (k == kKeyReturn) {                     // $426B: JMP $52FC
-        endAt_ = waitAt_[1] + kReturnToGame;
-        mode_ = Mode::Game;
+        return;
     }
+    monitor_.addCycles(3 + 2);                   // BNE (taken), CMP #$8D
+    if (k == kKeyReturn) {
+        monitor_.addCycles(2 + 3);               // BNE (not taken), JMP $52FC
+        endAt_ = monitor_.cycles();
+        mode_ = Mode::Game;
+        return;
+    }
+    monitor_.addCycles(3 + 6);                   // BNE $4261, JSR $FD0C
+    monitor_.call(kRdkey);
 }
 
 void AttractFlow::advance(std::int64_t cycles) {
     for (;;) {
         if (mode_ == Mode::Game) return;
         if (mode_ == Mode::Cartoon) {                 // the intermission: it runs by itself (the caller draws it from cartoonElapsed()), then the players prompt again
-            if (wait_ > 0) {
-                const std::int64_t step = std::min(wait_, cycles);
-                wait_ -= step;
+            if (busy_ > 0) {
+                const std::int64_t step = std::min(busy_, cycles);
+                busy_ -= step;
                 cycles -= step;
-                promptClock_ += step;
-                if (wait_ > 0) return;
+                if (busy_ > 0) return;
             }
             const std::int64_t step = std::min(cartoonLength_ - cartoonElapsed_, cycles);
             cartoonElapsed_ += step;
             cycles -= step;
-            promptClock_ += step;
             if (cartoonElapsed_ < cartoonLength_) return;
-            mode_ = Mode::Players;                    // $4144: the players prompt (the prompts' own cycles to its key wait follow)
-            ctrlV_ = false;
-            showPlayersText();
-            wait_ = kCartoonEndToPlayersWait + 6;
+            monitor_.addCycles(cartoonLength_);       // $8155 returns: JMP $4144, JMP $4217: the players prompt again
+            const std::int64_t before = monitor_.cycles();
+            monitor_.addCycles(3 + 3);
+            playersScreen();
+            busy_ = monitor_.cycles() - before;
+            syncText();
             continue;
         }
         if (prompting()) {
-            if (wait_ > 0) {
-                const std::int64_t step = std::min(wait_, cycles);
-                wait_ -= step;
+            if (busy_ > 0) {
+                const std::int64_t step = std::min(busy_, cycles);
+                busy_ -= step;
                 cycles -= step;
-                promptClock_ += step;
-                if (wait_ > 0) return;
+                if (busy_ > 0) return;
             }
-            if (!haveKey_) return;                    // waiting for a key (the time is not accounted)
-            processPromptKey();
+            if (!haveKey_) {                          // waiting for a key: the ROM loops in KEYIN (and counts $4E/$4F)
+                if (cycles > 0) monitor_.spin(cycles);
+                return;
+            }
+            haveKey_ = false;
+            const std::int64_t before = monitor_.cycles();
+            monitor_.pressKey(latch_);
+            const Monitor::Status st = monitor_.resume();
+            if (st == Monitor::Status::Done) {
+                if (isLineMode()) afterLine();
+                else afterPlayersKey(monitor_.a());
+            }
+            busy_ = monitor_.cycles() - before;
+            syncText();
             continue;
         }
         if (paused_) {                                // $6F9A: waits for any key, which is then tested like a key of the poll
@@ -262,7 +325,10 @@ void AttractFlow::advance(std::int64_t cycles) {
             const std::uint8_t k = latch_;
             haveKey_ = false;
             paused_ = false;
-            if (k == kKeySpace) enterPlayers(turn_.now() + 12);
+            if (k == kKeySpace) {
+                enterPlayers(turn_.now() + 12);
+                return;
+            }
             continue;
         }
         if (cycles <= 0) return;
@@ -274,6 +340,7 @@ void AttractFlow::advance(std::int64_t cycles) {
             turn_.advance(c.at - turn_.now());
             lastCheck_ = c.at;
             if (haveKey_) takeKeyAtCheck(c);
+            if (prompting()) return;                  // (the rest of the call is dropped: the prompt is just being built)
             continue;
         }
         const std::int64_t before = turn_.now();

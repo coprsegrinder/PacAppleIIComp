@@ -19,9 +19,9 @@ from trace_coverage import runs
 KEYS = {'sp': 0x20, 'cr': 0x0D}
 
 
-def make_machine(cov=False):
+def make_machine(cov=False, real_rom=False):
     body = open('scratch/extract/PAC-MAN.1000.bin', 'rb').read()
-    mc = Machine()
+    mc = Machine(real_rom)
     mc.init_text_screen()
     mc.load(0x1000, body)
     mc.cpu.pc = 0x1000

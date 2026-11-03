@@ -28,8 +28,12 @@ def row_base(r):
 
 class Machine:
     TRAPS = {0xFC22: 'vtab', 0xFD0C: 'rdkey', 0xFD6F: 'getln', 0xFDF0: 'cout1', 0xFE89: 'setkbd', 0xFE93: 'setvid'}
+    ROM_PATH = 'Apple II roms/Apple II plus ROM Pages F8-FF - 341-0020 - Autostart Monitor.bin'
 
-    def __init__(self):
+    def __init__(self, real_rom=False):
+        """real_rom=True (TASK-033-4e3): the Autostart Monitor ROM (341-0020, the Apple II Plus) is loaded at $F800 and RUNS instead of the Python stand-ins: its cycles count, the line
+        input, cursor, scrolling and bell are the real ones. A key wait (the loop at $FD1B-$FD24) raises NeedKey when no key is queued."""
+        self.real_rom = real_rom
         self.m = bytearray(65536)
         self.cpu = CPU(self)
         self.keys = []              # pending keystrokes (values with bit 7 set)
@@ -46,8 +50,15 @@ class Machine:
         self.rom_calls = {}
         self._getln = None          # in-progress GETLN state
         self.cov = None             # set by enable_coverage()
-        for a in self.TRAPS:
-            self.m[a] = 0x60
+        if real_rom:
+            self.TRAPS = {}
+            rom = open(self.ROM_PATH, 'rb').read()
+            assert len(rom) == 2048
+            self.m[0xF800:0x10000] = rom
+            self.m[0x36:0x3A] = bytes([0xF0, 0xFD, 0x1B, 0xFD])      # CSW = COUT1, KSW = KEYIN
+        else:
+            for a in self.TRAPS:
+                self.m[a] = 0x60
 
     # ---- setup helpers ----
     def init_text_screen(self):
@@ -172,7 +183,11 @@ class Machine:
                 self.rom_calls[t] = self.rom_calls.get(t, 0) + 1
                 n += 1
                 continue
-            if cpu.pc >= 0xC100:
+            if self.real_rom and cpu.pc == 0xFD21 and not (self.kbd & 0x80):    # KEYIN: BIT $C000 with no key: wait here (state intact)
+                self._latch_key()
+                if not (self.kbd & 0x80):
+                    raise NeedKey()
+            if cpu.pc >= 0xC100 and not (self.real_rom and cpu.pc >= 0xF800):
                 raise CPUError(f"executing unmodelled ROM/slot address ${cpu.pc:04X}")
             if self.cov is not None:
                 self.cur_pc = cpu.pc

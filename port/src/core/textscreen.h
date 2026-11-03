@@ -1,7 +1,7 @@
 // TASK-033-4e: the Apple II text screen (40 x 24, text page 2 at $0800) as the original's prompts use it. The original does its text output through the monitor ROM
 // (COUT, VTAB, RDKEY); this class has the same effect on the screen memory (the effect is documented behaviour of that ROM: tools/apple2.py stands in for it the same way, and the
 // text pages of the original running against that stand-in are what the tests compare). The pictures use the Apple II character generator, which is read at run time from a file
-// the user provides (the repository's "Apple II roms" folder); the program does not contain it.
+// the user provides (the repository's "Apple II roms" folder); the finished release ships it as a file next to the program (user decision 2026-11-03), the game image is never shipped.
 #pragma once
 
 #include <array>
@@ -20,6 +20,7 @@ public:
     void setCursor(int col, int row) noexcept { col_ = col; row_ = row; }
     void put(std::uint8_t c) noexcept;                    // COUT: $8D = new line, others are stored at the cursor (no inverse set), line wrap
     void puts(std::span<const std::uint8_t> s) noexcept { for (std::uint8_t c : s) put(c); }
+    void assign(const std::array<std::uint8_t, 1024>& memory, int col, int row) noexcept { mem_ = memory; col_ = col; row_ = row; }   // the page of the monitor (monitor.h)
     void clearToEndOfLine() noexcept;                     // the monitor's CLREOL ($FC9C): from the cursor to the end of the line with $A0
     std::uint8_t atCursor() const noexcept { return byte(rowOffset(row_) + static_cast<std::size_t>(col_)); }
     std::uint8_t byte(std::size_t offset) const noexcept { return offset < mem_.size() ? mem_[offset] : std::uint8_t{0}; }

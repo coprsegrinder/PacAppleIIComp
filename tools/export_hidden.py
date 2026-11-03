@@ -1,6 +1,6 @@
-"""TASK-033-4e2: packs scratch/hidden_t*.json (tools/capture_hidden.py) into scratch/hidden.bin for tests/test_flow.cpp.
+"""TASK-033-4e2: packs scratch/hidden_r*.json (tools/capture_hidden.py, run with A2ROM=1: the real monitor ROM) into scratch/hidden.bin for tests/test_flow.cpp.
 Format: 'HIDN', u32 count, per run: u32 number of keys n, n bytes (Apple key codes, bit 7 set), then n + 1 waits: u32 cycle of the key wait (the RDKEY/GETLN call) counted from $6FAE
-(the Space was taken at 101,243 after T0 in every run), u8 rank ($54E1), u8 $55, 1024 bytes text page 2."""
+(the Space was taken at 101,243 after T0 in every run), u8 rank ($54E1), u8 $55, 1024 bytes text page 2, 256 bytes zero page."""
 import glob, json, struct
 
 SPACE_TAKEN = 101243
@@ -9,13 +9,13 @@ KEYS = {'t1': [0x16, 0x03, 'C', 0x0D, '2', 0x0D], 't2': [0x16, 0x03, '7', 0x0D, 
         't9': [0x16, 0x03, 'C', 0x0D, '1', 0x0D], 't10': [0x16, 'x', '5'], 't11': [0x16, 0x03, '1', '2', 0x08, '3', 0x0D, '5', 0x0D], 't12': [0x16, 0x03, '9', 0x18, '4', 0x0D, 0x0D],
         't13': [0x16, 0x03, 'X', 0x0D, 'z', 0x0D]}
 out = open('scratch/hidden.bin', 'wb')
-names = sorted(KEYS, key=lambda s: int(s[1:]))
+names = sorted(KEYS, key=lambda s: int(s[1:]))   # t1..t13 are the key lists; the files are hidden_r1..r13
 out.write(b'HIDN' + struct.pack('<I', len(names)))
 for n in names:
-    w = json.load(open('scratch/hidden_%s.json' % n))
+    w = json.load(open('scratch/hidden_r%s.json' % n[1:]))
     keys = [(ord(k) if isinstance(k, str) else k) | 0x80 for k in KEYS[n]]
     assert len(w) == len(keys) + 1, (n, len(w), len(keys))
     out.write(struct.pack('<I', len(keys)) + bytes(keys))
     for x in w:
-        out.write(struct.pack('<IBB', x['cycle'] - SPACE_TAKEN, x['rank'], x['m55']) + bytes.fromhex(x['page']))
+        out.write(struct.pack('<IBB', x['cycle'] - SPACE_TAKEN, x['rank'], x['m55']) + bytes.fromhex(x['page']) + bytes.fromhex(x['zp']))
 print(len(names), 'runs')

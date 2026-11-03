@@ -11,7 +11,7 @@ import explore
 NAME, TOKENS = sys.argv[1], sys.argv[2:]
 NAMES = {'sp': 0x20, 'cr': 0x0D, 'ctrlv': 0x16, 'ctrlc': 0x03, 'ctrlx': 0x18, 'bs': 0x08, 'esc': 0x1B}
 MARKS = {0x4147, 0x4166, 0x4176, 0x4186, 0x4199, 0x419C, 0x419F, 0x41AF, 0x41B3, 0x41CC, 0x41D2, 0x41D9, 0x4144, 0x4217, 0x4272, 0x4279, 0x8155, 0x4233, 0x4163, 0x41AC}
-mc = make_machine()
+mc = make_machine(real_rom=os.environ.get('A2ROM') == '1')   # A2ROM=1: the real Autostart Monitor ROM runs instead of the stand-ins (TASK-033-4e3)
 step = mc.cpu.step
 st = {'t0': None, 'pressed': False, 'marks': []}
 
@@ -55,7 +55,7 @@ def run_to_wait():
 def snap(key):
     m = mc.m
     waits.append({'key': key, 'pc': mc.cpu.pc, 'cycle': mc.cpu.cycles - st['t0'], 'page': bytes(m[0x800:0xC00]).hex(), 'ch': m[0x24], 'cv': m[0x25], 'rank': m[0x54E1], 'm55': m[0x55],
-                  'buf': bytes(m[0x200:0x220]).hex(), 'marks': st['marks'], 'getln': mc._getln is not None, 'text': mc.switches['text']})
+                  'buf': bytes(m[0x200:0x220]).hex(), 'zp': bytes(m[0:256]).hex(), 'marks': st['marks'], 'getln': mc._getln is not None, 'text': mc.switches['text']})
     st['marks'] = []
 
 

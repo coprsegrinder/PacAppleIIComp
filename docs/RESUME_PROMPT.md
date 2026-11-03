@@ -196,3 +196,5 @@ Latest: 033-4d done (AttractTurn = title + chase + demo set-up + 7,894 demo tick
 Latest: 033-4e done (AttractFlow in port/src/core/attractflow.*, TextScreen in textscreen.*; 15/15 oracle runs of Space+digit+Space/Return equal; suite 138/0). Open: 033-4e2 hidden menu (Ctrl-V Ctrl-C: rank/cartoon prompts, needs GETLN), 033-4f boot menus (text mode, character ROM), 033-4g wiring into pacman_play.
 
 Latest: 033-4e2 done (hidden menu in AttractFlow; 13 oracle key lists equal; suite 140/0; startLevel() must be used by the game start in 033-4g). Next: 033-4f boot menus.
+
+Latest: 033-4e3 done (the monitor ROM runs: port/src/core/cpu6502.*, monitor.*; AttractFlow uses it; start(pack, romPath); suite 140/0). USER DECISION: the release includes the ROM dumps (Autostart Monitor + character ROM) as files, never the game image. Next: 033-4f boot menus (same ROM calls: oracle with A2ROM=1), 033-4g wiring.

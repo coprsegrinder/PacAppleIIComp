@@ -11,7 +11,7 @@ from apple2 import NeedKey
 import explore
 
 NAME, OFF, DIGIT, LAST = sys.argv[1], int(sys.argv[2]), sys.argv[3], sys.argv[4]
-mc = make_machine()
+mc = make_machine(real_rom=os.environ.get('A2ROM') == '1')   # A2ROM=1: the real Autostart Monitor ROM runs instead of the stand-ins (TASK-033-4e3)
 step = mc.cpu.step
 st = {'t0': None, 'pressed': None, 'marks': []}
 
@@ -49,6 +49,7 @@ out['pressed_at'] = st['pressed']
 out['pc_wait'] = mc.cpu.pc
 out['cycle_wait'] = mc.cpu.cycles - st['t0']
 out['pages']['players'] = page()
+out['zp1'] = bytes(mc.m[0:256]).hex()
 out['switches'] = dict(mc.switches)
 mc.push_key(DIGIT)
 try:
@@ -59,6 +60,7 @@ except NeedKey:
 out['pc_wait2'] = mc.cpu.pc
 out['cycle_wait2'] = mc.cpu.cycles - st['t0']
 out['pages']['press'] = page()
+out['zp2'] = bytes(mc.m[0:256]).hex()
 out['zp51'] = mc.m[0x51]
 mc.push_key(0x20 if LAST == 'sp' else 0x0D)
 stop = 0x52BB if LAST == 'sp' else 0x52FC
