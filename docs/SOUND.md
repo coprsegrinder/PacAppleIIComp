@@ -42,3 +42,9 @@ V = verified on the oracle (our own 6502/Apple II model; **not** compared with A
 
 ## 5. Still unknown
 Where exactly the jingle is triggered besides the attract/start path; the key-press-during-jingle behaviour; whether the cartoon sound fires in the intermissions; real-hardware audio shaping (the speaker is a plain click toggle, so a faithful square-wave rendering is the reference; AppleWin audio comparison is TASK-022).
+
+## 6. When the sounds start and how long the game stands still (TASK-032-3a, V on the oracle)
+Tool: `tools/record_sounds.py` (hooks the sound entry points while replaying a recorded scenario; writes the local file scratch/sounds_X.bin: tick, sound code, freeze cycles, entry cycle). Scenarios: A, B, C (golden), G (fruit), H, BL (score poked to 9,980: bonus life). 6 scenarios, 256 sound starts.
+* **Freeze = the whole wrapper call** (the engines busy-wait): dot **2,932** cycles (the clicks span 2,414), energizer **8,990**, fruit **89,807**, bonus life **97,770**, intro jingle **5,153,446**; the six death steps **17,351 (step 6), 18,041 (5), 21,425 (4), 27,617 (3), 30,785 (2), 5,004 (1)** = 120,223 cycles, played in this order inside the death animation (all six in the same tick, the catch tick); every sound had exactly one freeze value in all scenarios.
+* **Starts:** the jingle once, **before the first tick** (tick -1) of each game; a dot sound in the tick in which a dot is eaten; energizer likewise; the fruit sound in the tick Pac-Man reaches the fruit (G: tick 564); the bonus life in the tick that takes the score to 10,000 (BL: tick 179); three deaths gave 3 x 6 death-step sounds. No sound starts in demo mode (the recorder drops events with `$E8 <> 0`).
+* Ghost-eaten (0.174 s) was not in these scenarios (it is in D; verified in play in TASK-032a); its freeze is still to be measured.

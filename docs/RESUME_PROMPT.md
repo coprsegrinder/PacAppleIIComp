@@ -156,3 +156,5 @@ Latest: M7 planned (docs/M7_PLAN.md, 032-1..032-6). Next 032-1: sound data audit
 Latest: 032-1 done (sound lists in the pack, SoundData reader). Next 032-2: click-list generator in C++ for all 12 sounds vs the oracle.
 
 Latest: 032-2 done (click times of all 12 sounds equal the oracle). Next 032-3: sound events in the core (which tick starts which sound, freeze lengths).
+
+Latest: 032-3a done (oracle sound starts and freeze lengths recorded). Next 032-3b: GameCore TickEvents::sounds + test against scratch/sounds_X.bin (python -I tools/record_sounds.py A B C G H BL, ~4 min; add D for ghost eaten).
