@@ -538,3 +538,245 @@ TEST(background_fill_reaches_the_bars_and_not_the_picture) {
     CHECK(bars > 0 && barsNotBlack == 0);
     CHECK(differences(got, expected(page, cw, ch)) == 0);
 }
+
+// ---- TASK-034-2: windowed mode: free resizing, the picture centred at a whole-number scale, optional removal of the title bar and frame ----
+namespace {
+
+// Gives the window this client area (the outer size follows the style and the DPI of the window).
+void setClient(HWND h, int cw, int ch) {
+    const DWORD style = static_cast<DWORD>(GetWindowLongW(h, GWL_STYLE));
+    RECT r{0, 0, cw, ch};
+    if ((style & WS_CAPTION) == WS_CAPTION) AdjustWindowRectExForDpi(&r, style, FALSE, 0, GetDpiForWindow(h));
+    SetWindowPos(h, nullptr, 0, 0, r.right - r.left, r.bottom - r.top, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
+POINT clientOrigin(HWND h) {
+    POINT p{0, 0};
+    ClientToScreen(h, &p);
+    return p;
+}
+
+// The part of the frame that is not black outside the viewport (must be nothing) and inside it (must be most of it).
+void checkShape(const std::vector<std::uint32_t>& got, int cw, int ch, const app::Viewport& vp, std::size_t& outsideLit, std::size_t& insideLit, std::size_t& inside) {
+    outsideLit = insideLit = inside = 0;
+    for (int y = 0; y < ch; ++y)
+        for (int x = 0; x < cw; ++x) {
+            const bool in = x >= vp.x && x < vp.x + vp.w && y >= vp.y && y < vp.y + vp.h;
+            const bool lit = (got[static_cast<std::size_t>(y) * static_cast<std::size_t>(cw) + static_cast<std::size_t>(x)] & 0xFFFFFF) != 0;
+            if (in) {
+                ++inside;
+                insideLit += lit;
+            } else {
+                outsideLit += lit;
+            }
+        }
+}
+
+}  // namespace
+
+TEST(windowed_free_resizing_keeps_the_picture_shape_centred_with_bars) {
+    GameWindow w(GameWindowOptions{3, false});
+    CHECK(w.ok());
+    if (!w.ok() || !w.usesDirect3d()) return;
+    const hires::Page page = busyPage();
+    w.setPage(page);
+    // any size: whole-number scale where it fits (the picture is compared pixel for pixel), a fractional fit below 1x (shape and bars are checked)
+    const SIZE sizes[] = {{840, 576}, {777, 555}, {1000, 700}, {1500, 400}, {400, 900}, {2000, 1200}, {281, 193}, {200, 140}, {150, 100}};
+    for (const SIZE& s : sizes) {
+        setClient(w.hwnd(), s.cx, s.cy);
+        pump(20);
+        std::vector<std::uint32_t> got;
+        int cw = 0, ch = 0;
+        CHECK(w.captureFrame(got, cw, ch));
+        CHECK(cw == s.cx && ch == s.cy);
+        const app::Viewport vp = app::computeViewport(cw, ch);
+        if (vp.scale >= 1) {
+            const std::size_t bad = differences(got, expected(page, cw, ch));
+            std::printf("    client %ld x %ld: scale %d at %d,%d, %zu pixels differ\n", s.cx, s.cy, vp.scale, vp.x, vp.y, bad);
+            CHECK(bad == 0);
+        } else {
+            std::size_t outside = 0, lit = 0, inside = 0;
+            checkShape(got, cw, ch, vp, outside, lit, inside);
+            std::printf("    client %ld x %ld: fractional fit %d x %d at %d,%d, %zu lit outside, %zu of %zu lit inside\n", s.cx, s.cy, vp.w, vp.h, vp.x, vp.y, outside, lit, inside);
+            CHECK(outside == 0 && lit > inside / 4);   // the test page is about half lit; nothing outside the viewport
+            CHECK(std::abs(static_cast<double>(vp.w) / vp.h - 280.0 / 192.0) < 0.02);
+        }
+    }
+    // the smallest the window can be is a half-size picture; a smaller request is raised to it
+    setClient(w.hwnd(), 10, 10);
+    const SIZE tiny = clientSize(w.hwnd());
+    CHECK(tiny.cx >= 140 && tiny.cy >= 96);
+}
+
+TEST(windowed_leaving_full_screen_gives_back_the_window_as_it_was) {
+    GameWindow w(GameWindowOptions{3, true});
+    CHECK(w.ok());
+    if (!w.ok()) return;
+    setClient(w.hwnd(), 1000, 700);
+    SetWindowPos(w.hwnd(), nullptr, 120, 90, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+    pump(20);
+    const POINT o0 = clientOrigin(w.hwnd());
+    const SIZE s0 = clientSize(w.hwnd());
+    w.setFullscreen(true);
+    pump(30);
+    w.setFullscreen(false);
+    pump(30);
+    CHECK(clientSize(w.hwnd()).cx == s0.cx && clientSize(w.hwnd()).cy == s0.cy);   // 1000 x 700, not the preset size
+    CHECK(clientOrigin(w.hwnd()).x == o0.x && clientOrigin(w.hwnd()).y == o0.y);
+    CHECK(IsWindowVisible(w.hwnd()) != FALSE);
+    // Ctrl+Plus / Ctrl+Minus step from the scale the picture has now (1000 x 700 is scale 3)
+    CHECK(w.handleHotkey(VK_ADD, true, false));
+    CHECK(clientSize(w.hwnd()).cx == 1120 && clientSize(w.hwnd()).cy == 768);
+    setClient(w.hwnd(), 1000, 700);
+    CHECK(w.handleHotkey(VK_SUBTRACT, true, false));
+    CHECK(clientSize(w.hwnd()).cx == 560 && clientSize(w.hwnd()).cy == 384);
+}
+
+TEST(borderless_windowed_mode_removes_title_bar_and_frame_and_keeps_resizing) {
+    GameWindow w(GameWindowOptions{3, true});
+    CHECK(w.ok());
+    if (!w.ok()) return;
+    const hires::Page page = busyPage();
+    w.setPage(page);
+    setClient(w.hwnd(), 1000, 700);
+    pump(30);
+    CHECK(w.borders());
+    CHECK((GetWindowLongW(w.hwnd(), GWL_STYLE) & WS_CAPTION) == WS_CAPTION);
+    const POINT o0 = clientOrigin(w.hwnd());
+    const SIZE s0 = clientSize(w.hwnd());
+    for (int round = 0; round < 6; ++round) {   // off and on again: the picture area never moves or changes size
+        CHECK(w.handleHotkey(VK_F8, false, false));
+        pump(20);
+        CHECK(!w.borders());
+        const LONG style = GetWindowLongW(w.hwnd(), GWL_STYLE);
+        CHECK((style & WS_CAPTION) != WS_CAPTION && (style & WS_THICKFRAME) != 0 && (style & WS_VISIBLE) != 0);   // no title bar; still resizable; still shown
+        CHECK(IsWindowVisible(w.hwnd()) != FALSE);
+        CHECK(clientSize(w.hwnd()).cx == s0.cx && clientSize(w.hwnd()).cy == s0.cy);
+        CHECK(clientOrigin(w.hwnd()).x == o0.x && clientOrigin(w.hwnd()).y == o0.y);
+        RECT wr{};
+        GetWindowRect(w.hwnd(), &wr);
+        CHECK(wr.left == o0.x && wr.top == o0.y && wr.right - wr.left == s0.cx && wr.bottom - wr.top == s0.cy);   // the whole window is the picture area
+        if (w.usesDirect3d()) {
+            std::vector<std::uint32_t> got;
+            int cw = 0, ch = 0;
+            CHECK(w.captureFrame(got, cw, ch));
+            CHECK(cw == s0.cx && ch == s0.cy && differences(got, expected(page, cw, ch)) == 0);
+        }
+        CHECK(w.handleHotkey(VK_F8, false, false));
+        pump(20);
+        CHECK(w.borders() && (GetWindowLongW(w.hwnd(), GWL_STYLE) & WS_CAPTION) == WS_CAPTION);
+        CHECK(clientSize(w.hwnd()).cx == s0.cx && clientSize(w.hwnd()).cy == s0.cy);
+        CHECK(clientOrigin(w.hwnd()).x == o0.x && clientOrigin(w.hwnd()).y == o0.y);
+    }
+    // without the frame: resize edges and the dragging area are found by the window itself
+    w.setBorders(false);
+    pump(20);
+    RECT wr{};
+    GetWindowRect(w.hwnd(), &wr);
+    const auto hit = [&](int x, int y) { return static_cast<int>(SendMessageW(w.hwnd(), WM_NCHITTEST, 0, MAKELPARAM(static_cast<short>(x), static_cast<short>(y)))); };
+    const int midX = (wr.left + wr.right) / 2, midY = (wr.top + wr.bottom) / 2;
+    CHECK(hit(wr.left + 1, midY) == HTLEFT && hit(wr.right - 2, midY) == HTRIGHT);
+    CHECK(hit(midX, wr.top + 1) == HTTOP && hit(midX, wr.bottom - 2) == HTBOTTOM);
+    CHECK(hit(wr.left + 1, wr.top + 1) == HTTOPLEFT && hit(wr.right - 2, wr.top + 1) == HTTOPRIGHT);
+    CHECK(hit(wr.left + 1, wr.bottom - 2) == HTBOTTOMLEFT && hit(wr.right - 2, wr.bottom - 2) == HTBOTTOMRIGHT);
+    CHECK(hit(midX, midY) == HTCAPTION);   // dragging the picture moves the window
+    // it can still be given any size (the same call the resize edges end in); the picture follows
+    for (const SIZE& s : {SIZE{840, 576}, SIZE{1280, 720}, SIZE{700, 900}}) {
+        setClient(w.hwnd(), s.cx, s.cy);
+        pump(20);
+        CHECK(clientSize(w.hwnd()).cx == s.cx && clientSize(w.hwnd()).cy == s.cy);
+        if (w.usesDirect3d()) {
+            std::vector<std::uint32_t> got;
+            int cw = 0, ch = 0;
+            CHECK(w.captureFrame(got, cw, ch));
+            CHECK(cw == s.cx && ch == s.cy && differences(got, expected(page, cw, ch)) == 0);
+        }
+    }
+    // full screen with the frame removed: back from it the window is still bare and the picture area is the same
+    w.setFullscreen(true);
+    pump(30);
+    CHECK(w.setScale(2));   // asked for while in full screen: applies on the way back
+    w.setBorders(true);   // changed while in full screen: applies on the way back
+    w.setFullscreen(false);
+    pump(30);
+    CHECK(w.borders() && (GetWindowLongW(w.hwnd(), GWL_STYLE) & WS_CAPTION) == WS_CAPTION && IsWindowVisible(w.hwnd()) != FALSE);
+    CHECK(clientSize(w.hwnd()).cx == 560 && clientSize(w.hwnd()).cy == 384);   // the scale asked for meanwhile
+}
+
+// The game thread must not notice any of it: window size changes and frame removal while 150,000 game ticks run leave the page, score and level exactly as without.
+TEST(resizing_and_removing_the_frame_while_the_game_runs_changes_nothing_in_the_game) {
+    if (testfw::config().image.empty()) {
+        std::printf("    SKIPPED (needs --image)\n");
+        return;
+    }
+    datapack::Pack pack;
+    CHECK(flowtest::loadPack(pack));
+    constexpr int kTicks = 150000;
+    struct Result { std::vector<std::uint8_t> page; unsigned score = 0, level = 0; int changes = 0; };
+    const auto run = [&](bool disturb) {
+        Result res;
+        core::GameDriver drv;
+        CHECK(drv.init(pack) && drv.newGame());
+        GameWindow w(GameWindowOptions{3, false});
+        CHECK(w.ok());
+        std::atomic<bool> done{false};
+        std::thread worker([&] {
+            for (int t = 0; t < kTicks; ++t) {
+                drv.tick();
+                if (t % 3 == 0) w.setPage(drv.page());
+                if (t % 1000 == 0) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+            done = true;
+        });
+        const SIZE sizes[] = {{840, 576}, {1000, 700}, {1280, 720}, {500, 900}, {2000, 800}, {300, 200}};
+        while (!done) {
+            if (disturb) {
+                setClient(w.hwnd(), sizes[res.changes % 6].cx, sizes[res.changes % 6].cy);
+                if (res.changes % 4 == 3) w.setBorders(!w.borders());
+                ++res.changes;
+            }
+            pump(2);
+        }
+        worker.join();
+        for (std::size_t i = 0; i < hires::kPageBytes; ++i) res.page.push_back(drv.page().byte(i));
+        res.score = drv.core().state().zp(0x52);
+        res.level = drv.core().state().level();
+        return res;
+    };
+    const Result plain = run(false);
+    const Result disturbed = run(true);
+    std::printf("    %d ticks; %d size/frame changes while it ran; page equal %d, score byte %u / %u\n", kTicks, disturbed.changes, plain.page == disturbed.page, plain.score, disturbed.score);
+    CHECK(disturbed.changes >= 6);
+    CHECK(plain.page == disturbed.page && plain.score == disturbed.score && plain.level == disturbed.level);
+}
+
+TEST(resizing_does_not_change_the_cycles_the_clock_hands_out) {
+    GameWindow w(GameWindowOptions{3, false});
+    CHECK(w.ok());
+    core::CycleClock clock;
+    const std::int64_t t0 = core::nowNanoseconds();
+    clock.start(t0);
+    std::atomic<bool> done{false};
+    std::int64_t handed = 0, endNs = 0;
+    std::thread worker([&] {
+        while (core::nowNanoseconds() - t0 < 800'000'000) {
+            handed += clock.cyclesDue(core::nowNanoseconds());
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        endNs = core::nowNanoseconds();
+        handed += clock.cyclesDue(endNs);
+        done = true;
+    });
+    int changes = 0;
+    while (!done) {
+        setClient(w.hwnd(), 400 + (changes * 97) % 1400, 300 + (changes * 61) % 700);
+        if (changes % 5 == 4) w.setBorders(!w.borders());
+        ++changes;
+        pump(15);
+    }
+    worker.join();
+    const std::int64_t exact = clock.cyclesIn(endNs - t0);
+    std::printf("    %d size/frame changes in 0.8 s; cycles handed out %lld, exact %lld, skipped %lld\n", changes, static_cast<long long>(handed), static_cast<long long>(exact), static_cast<long long>(clock.skipped()));
+    CHECK(changes >= 10);
+    CHECK(handed == exact && clock.skipped() == 0);
+}

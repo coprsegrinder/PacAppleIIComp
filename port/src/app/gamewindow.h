@@ -46,6 +46,10 @@ public:
     bool muted() const noexcept { return muted_; }
     int effectiveScale() const noexcept;               // the scale actually drawn (largest whole number that fits when in full screen)
     bool setScale(int scale);                          // 1..8; applies at once in windowed mode, remembered in full screen
+    // Windowed mode (TASK-034-2): the window can be resized freely; the picture keeps its 280:192 shape, whole-number scale, centred, bars around it (display_layout.h).
+    // setBorders(false) removes the title bar and frame; the window is still resizable at its edges and can be moved by dragging the picture. The picture does not move or change size.
+    bool borders() const noexcept { return borders_; }
+    void setBorders(bool on);
     void setFullscreen(bool on);                       // never touches the game: only the window style, size and the swap chain change
     void setBackground(Background b);                  // what fills the bars around the picture (window thread)
     Background background() const noexcept { return background_; }
@@ -62,6 +66,9 @@ private:
     LRESULT handle(UINT msg, WPARAM wp, LPARAM lp);
     void pushKey(std::uint8_t code);
     void applyWindowedSize();
+    LONG windowedStyle() const;                        // the style of the windowed mode for the current borders_ setting (without WS_VISIBLE)
+    RECT outerRect(int clientX, int clientY, int clientW, int clientH) const;   // the window rectangle that has this client area, in the current windowed style
+    LRESULT hitTest(LPARAM lp);                        // borderless windowed mode: resize edges, and the picture moves the window
     void fitToMonitor();                               // full screen: cover the monitor the window is on (again after a display change)
     UINT dpi() const;
     void paint();
@@ -70,11 +77,16 @@ private:
     HWND hwnd_ = nullptr;
     int scale_ = 3;
     bool fullscreen_ = false;
+    bool borders_ = true;               // windowed mode only: title bar and frame
+    bool scalePending_ = false;         // setScale() was called in full screen: applies when leaving it
     Background background_ = Background::Black;
     bool muted_ = false;
     unsigned refreshHz_ = 60;
     std::unique_ptr<D3dRenderer> d3d_;
     WINDOWPLACEMENT saved_{};
+    POINT savedClientOrigin_{};         // windowed client area before full screen (screen coordinates) and its size
+    SIZE savedClientSize_{};
+    bool savedZoomed_ = false;
     LONG savedStyle_ = 0;
 
     std::mutex mutex_;                  // guards page_, pageVersion_, keys_

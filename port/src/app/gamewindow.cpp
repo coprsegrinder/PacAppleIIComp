@@ -8,6 +8,8 @@
 #include <cstdlib>
 #include <cstring>
 
+#include <windowsx.h>
+
 #include "../video/colour.h"
 
 namespace pacman::app {
@@ -18,6 +20,7 @@ constexpr int kH = 192;
 constexpr UINT_PTR kRefreshTimer = 1;
 constexpr const wchar_t* kClass = L"PacmanApplePortGameWindow";
 constexpr std::size_t kMaxQueuedKeys = 64;
+constexpr int kMinClientW = kW / 2, kMinClientH = kH / 2;   // smallest picture area: half size
 
 }  // namespace
 
@@ -38,7 +41,7 @@ GameWindow::GameWindow(const GameWindowOptions& options) {
     if (!RegisterClassW(&wc) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) return;
     page_.clear(0);  // black until the emulation thread sets a page
     RECT r{0, 0, kW * scale_, kH * scale_};
-    const DWORD style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
+    const DWORD style = WS_OVERLAPPEDWINDOW;   // resizable, with maximize
     AdjustWindowRectExForDpi(&r, style, FALSE, 0, GetDpiForSystem());
     hwnd_ = CreateWindowW(kClass, L"Pac-Man (Apple II port)", style, CW_USEDEFAULT, CW_USEDEFAULT, r.right - r.left, r.bottom - r.top, nullptr, nullptr,
                           inst, this);
@@ -96,10 +99,61 @@ void GameWindow::pushKey(std::uint8_t code) {
 }
 
 int GameWindow::effectiveScale() const noexcept {
-    if (!fullscreen_ || !hwnd_) return scale_;
+    if (!hwnd_) return scale_;
     RECT rc{};
     GetClientRect(hwnd_, &rc);
-    return std::max(1, std::min(static_cast<int>(rc.right - rc.left) / kW, static_cast<int>(rc.bottom - rc.top) / kH));
+    return std::max(1, computeViewport(static_cast<int>(rc.right - rc.left), static_cast<int>(rc.bottom - rc.top)).scale);
+}
+
+LONG GameWindow::windowedStyle() const {
+    // framed: the normal Windows window. bare: no title bar, no frame drawn (WM_NCCALCSIZE gives the whole window to the picture), but WS_THICKFRAME stays so that Windows still lets
+    // the edges resize it and keeps the shadow; no maximize button (nothing to click it with)
+    return static_cast<LONG>(borders_ ? WS_OVERLAPPEDWINDOW : (WS_POPUP | WS_THICKFRAME | WS_MINIMIZEBOX | WS_SYSMENU));
+}
+
+RECT GameWindow::outerRect(int x, int y, int w, int h) const {
+    RECT r{x, y, x + w, y + h};
+    if (borders_) AdjustWindowRectExForDpi(&r, static_cast<DWORD>(windowedStyle()), FALSE, 0, dpi());
+    return r;
+}
+
+LRESULT GameWindow::hitTest(LPARAM lp) {
+    // borderless windowed mode only: the frame is not drawn, so the edges are found here; everywhere else the picture area moves the window when dragged
+    const POINT p{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
+    RECT r{};
+    GetWindowRect(hwnd_, &r);
+    if (!IsZoomed(hwnd_)) {
+        const int b = GetSystemMetricsForDpi(SM_CXSIZEFRAME, dpi()) + GetSystemMetricsForDpi(SM_CXPADDEDBORDER, dpi());
+        const bool left = p.x < r.left + b, right = p.x >= r.right - b, top = p.y < r.top + b, bottom = p.y >= r.bottom - b;
+        if (top && left) return HTTOPLEFT;
+        if (top && right) return HTTOPRIGHT;
+        if (bottom && left) return HTBOTTOMLEFT;
+        if (bottom && right) return HTBOTTOMRIGHT;
+        if (left) return HTLEFT;
+        if (right) return HTRIGHT;
+        if (top) return HTTOP;
+        if (bottom) return HTBOTTOM;
+    }
+    return HTCAPTION;
+}
+
+void GameWindow::setBorders(bool on) {
+    if (!hwnd_ || on == borders_) return;
+    if (fullscreen_) {   // applies when leaving full screen
+        borders_ = on;
+        return;
+    }
+    if (IsZoomed(hwnd_)) ShowWindow(hwnd_, SW_RESTORE);
+    RECT cr{};
+    GetClientRect(hwnd_, &cr);
+    POINT origin{0, 0};
+    ClientToScreen(hwnd_, &origin);
+    const bool visible = (GetWindowLongW(hwnd_, GWL_STYLE) & WS_VISIBLE) != 0;
+    borders_ = on;
+    SetWindowLongW(hwnd_, GWL_STYLE, windowedStyle() | (visible ? static_cast<LONG>(WS_VISIBLE) : 0));
+    const RECT r = outerRect(origin.x, origin.y, static_cast<int>(cr.right), static_cast<int>(cr.bottom));   // the picture stays exactly where it is
+    SetWindowPos(hwnd_, nullptr, r.left, r.top, r.right - r.left, r.bottom - r.top, SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+    InvalidateRect(hwnd_, nullptr, FALSE);
 }
 
 UINT GameWindow::dpi() const {
@@ -121,9 +175,10 @@ void GameWindow::setBackground(Background b) {
 }
 
 void GameWindow::applyWindowedSize() {
-    RECT r{0, 0, kW * scale_, kH * scale_};
-    AdjustWindowRectExForDpi(&r, static_cast<DWORD>(GetWindowLongW(hwnd_, GWL_STYLE)), FALSE, 0, dpi());
+    if (IsZoomed(hwnd_)) ShowWindow(hwnd_, SW_RESTORE);
+    const RECT r = outerRect(0, 0, kW * scale_, kH * scale_);
     SetWindowPos(hwnd_, nullptr, 0, 0, r.right - r.left, r.bottom - r.top, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+    scalePending_ = false;
     InvalidateRect(hwnd_, nullptr, FALSE);
 }
 
@@ -131,6 +186,7 @@ bool GameWindow::setScale(int scale) {
     if (!hwnd_ || scale < 1 || scale > 8) return false;
     scale_ = scale;
     if (!fullscreen_) applyWindowedSize();
+    else scalePending_ = true;   // the picture is as large as the screen allows in full screen; the window gets this size when it comes back
     return true;
 }
 
@@ -140,15 +196,27 @@ void GameWindow::setFullscreen(bool on) {
         saved_.length = sizeof(saved_);
         GetWindowPlacement(hwnd_, &saved_);
         savedStyle_ = GetWindowLongW(hwnd_, GWL_STYLE);
+        savedZoomed_ = IsZoomed(hwnd_) != FALSE;
+        RECT cr{};
+        GetClientRect(hwnd_, &cr);
+        savedClientOrigin_ = POINT{0, 0};
+        ClientToScreen(hwnd_, &savedClientOrigin_);
+        savedClientSize_ = SIZE{cr.right, cr.bottom};
         SetWindowLongW(hwnd_, GWL_STYLE, static_cast<LONG>(WS_POPUP) | (savedStyle_ & WS_VISIBLE));   // WS_VISIBLE must be kept: without it the window disappears (black screen)
         fitToMonitor();
         fullscreen_ = true;
     } else {
-        SetWindowLongW(hwnd_, GWL_STYLE, savedStyle_);
         fullscreen_ = false;
-        SetWindowPlacement(hwnd_, &saved_);
-        applyWindowedSize();
-        SetWindowPos(hwnd_, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+        SetWindowLongW(hwnd_, GWL_STYLE, windowedStyle() | (savedStyle_ & WS_VISIBLE));   // the border setting may have been changed meanwhile
+        if (savedZoomed_ && borders_) {   // it was maximised: back to maximised
+            SetWindowPlacement(hwnd_, &saved_);
+            SetWindowPos(hwnd_, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+        } else {   // the window as it was: the same picture area at the same place (or the scale asked for in full screen)
+            const int cw = scalePending_ ? kW * scale_ : static_cast<int>(savedClientSize_.cx), ch = scalePending_ ? kH * scale_ : static_cast<int>(savedClientSize_.cy);
+            const RECT r = outerRect(savedClientOrigin_.x, savedClientOrigin_.y, cw, ch);
+            SetWindowPos(hwnd_, nullptr, r.left, r.top, r.right - r.left, r.bottom - r.top, SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+        }
+        scalePending_ = false;
     }
     InvalidateRect(hwnd_, nullptr, TRUE);
 }
@@ -158,12 +226,20 @@ bool GameWindow::handleHotkey(unsigned vk, bool ctrl, bool alt) {
         setFullscreen(!fullscreen_);
         return true;
     }
-    if (ctrl && (vk == VK_OEM_PLUS || vk == VK_ADD)) {
-        setScale(scale_ + 1);
+    if (vk == VK_F8) {   // title bar and frame on/off (windowed mode)
+        setBorders(!borders_);
         return true;
     }
-    if (ctrl && (vk == VK_OEM_MINUS || vk == VK_SUBTRACT)) {
-        setScale(scale_ - 1);
+    if (ctrl && (vk == VK_OEM_PLUS || vk == VK_ADD || vk == VK_OEM_MINUS || vk == VK_SUBTRACT)) {
+        // one step up or down from the picture's present whole-number scale (a window resized freely is stepped from where it is)
+        int base = scale_;
+        if (hwnd_ && !fullscreen_) {
+            RECT cr{};
+            GetClientRect(hwnd_, &cr);
+            const bool preset = cr.right == kW * scale_ && cr.bottom == kH * scale_;
+            if (!preset) base = std::max(1, computeViewport(static_cast<int>(cr.right), static_cast<int>(cr.bottom)).scale);
+        }
+        setScale(base + ((vk == VK_OEM_PLUS || vk == VK_ADD) ? 1 : -1));
         return true;
     }
     if (vk == VK_F9) {
@@ -237,6 +313,27 @@ LRESULT GameWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
     case WM_PAINT: paint(); return 0;
     case WM_ERASEBKGND: return 1;
+    case WM_GETMINMAXINFO: {   // free resizing, but never smaller than a half-size picture
+        auto* mm = reinterpret_cast<MINMAXINFO*>(lp);
+        const RECT r = outerRect(0, 0, kMinClientW, kMinClientH);
+        mm->ptMinTrackSize.x = r.right - r.left;
+        mm->ptMinTrackSize.y = r.bottom - r.top;
+        return 0;
+    }
+    case WM_NCCALCSIZE:       // borderless windowed mode: the whole window is the picture area (a maximised window is cut to the work area, not to the overhanging frame)
+        if (!borders_ && !fullscreen_ && wp) {
+            if (IsZoomed(hwnd_)) {
+                MONITORINFO mi{};
+                mi.cbSize = sizeof(mi);
+                GetMonitorInfoW(MonitorFromWindow(hwnd_, MONITOR_DEFAULTTONEAREST), &mi);
+                reinterpret_cast<NCCALCSIZE_PARAMS*>(lp)->rgrc[0] = mi.rcWork;
+            }
+            return 0;
+        }
+        break;
+    case WM_NCHITTEST:
+        if (!borders_ && !fullscreen_) return hitTest(lp);
+        break;
     case WM_DISPLAYCHANGE:   // resolution or monitor layout changed: a full-screen window must cover its monitor again
         if (fullscreen_) fitToMonitor();
         return 0;
