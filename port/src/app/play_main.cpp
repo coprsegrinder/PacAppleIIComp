@@ -202,11 +202,21 @@ bool runGame(core::GameDriver& drv, const datapack::Pack& pack, app::GameWindow&
     struct TickLog {   // for the real-program checks (--log): how many game ticks ran in how much real time, so that the game's speed can be compared between FPS settings
         app::GameWindow& w;
         std::int64_t firstNs = 0;   // the first tick (the jingle and READY come before it)
-        long ticks = 0;
+        long ticks = 0, pictureChanges = 0;
+        std::int64_t costSum = 0, costMin = 1LL << 60, costMax = 0, freezeSum = 0;   // modelled cycles per tick (with the sound stand-stills), and the stand-stills alone
+        long slow = 0;                                                               // ticks that cost more than twice the typical tick   // ticks after which the picture differed from the one before
+        std::vector<std::uint8_t> last;
+        void note(const hires::Page& p) {
+            const auto b = p.bytes();
+            if (last.size() != b.size() || !std::equal(b.begin(), b.end(), last.begin())) {
+                ++pictureChanges;
+                last.assign(b.begin(), b.end());
+            }
+        }
         ~TickLog() {
             const double s = firstNs == 0 ? 0.0 : static_cast<double>(core::nowNanoseconds() - firstNs) / 1e9;
             char buf[160];
-            std::snprintf(buf, sizeof(buf), "game: ticks=%ld seconds=%.3f", ticks, s);
+            std::snprintf(buf, sizeof(buf), "game: ticks=%ld seconds=%.3f picture_changes=%ld tick_cycles_min=%lld mean=%.0f max=%lld freeze_cycles_total=%lld slow_ticks=%ld", ticks, s, pictureChanges, static_cast<long long>(costMin), ticks ? static_cast<double>(costSum) / static_cast<double>(ticks) : 0.0, static_cast<long long>(costMax), static_cast<long long>(freezeSum), slow);
             w.logLine(buf);
         }
     } tickLog{window};
@@ -314,8 +324,17 @@ bool runGame(core::GameDriver& drv, const datapack::Pack& pack, app::GameWindow&
                 window.setPage(drv.page());
                 break;
             }
+            {
+                const std::int64_t cost = drv.tickCycles() + drv.extraCycles() + soundFreeze;
+                tickLog.costSum += cost;
+                tickLog.costMin = (std::min)(tickLog.costMin, cost);
+                tickLog.costMax = (std::max)(tickLog.costMax, cost);
+                tickLog.freezeSum += soundFreeze;
+                tickLog.slow += cost > 2 * core::kTypicalTickCycles;
+            }
             budget -= drv.tickCycles() + drv.extraCycles() + soundFreeze;   // the tick's modelled cost (033-1c), not a flat mean
             changed = true;
+            tickLog.note(drv.page());
             window.setPage(drv.page());   // every tick is a picture the window may show (the window takes the newest one at its next frame)
             if (budget < -core::kDeathSequenceCycles * 2) budget = 0;
         }
