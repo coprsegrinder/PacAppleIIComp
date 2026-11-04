@@ -25,3 +25,16 @@ Highest priority: the original gameplay (logic, timing, collisions, input, anima
 * **Cause (V, reproduced on a visible window with the window-only screenshot script, and by a failing test):** `GameWindow::setFullscreen` replaced the window style with `WS_POPUP` and so dropped `WS_VISIBLE`; Windows then treated the window as hidden and stopped drawing it. The old fullscreen test used hidden windows (`visible = false`), where the flag is irrelevant, so it never saw this.
 * **Fix:** the popup style keeps the saved window's `WS_VISIBLE`. New test `visible_window_full_screen_stays_visible_and_shows_the_picture` (a visible window: stays visible, covers the monitor, Direct3D picture byte-equal, F11 back restores the 840x576 client). Suite 154/0. Real game checked: full screen fills the monitor with the picture centred at the largest whole-number scale, F11 returns to the window.
 * Lesson recorded: window behaviour must also be tested on VISIBLE windows.
+
+## Section 1 - Fullscreen (done 2026-11-04, TASK-034-1)
+What the spec asks and where it stands:
+| Requirement | Status |
+|---|---|
+| Alt+Enter toggles fullscreen / windowed | V (F11 does the same; both unchanged keys; holding the key now switches ONCE: auto-repeat is ignored, test) |
+| Keep the picture's ratio (280:192 by the user's decision, not 4:3), never stretch, 16:9 / 16:10 / 21:9 / ultrawide | V: `computeViewport` + byte-exact Direct3D picture at 2560x1440 full screen; layout test covers 4:3, 16:9, 16:10, 21:9 (2 sizes), 32:9, exact fits |
+| Unused space filled with the selected background | V: `background.h` (`Background`, `backgroundFill`) is asked by both renderers; only Black exists until Section 7; test: every bar pixel is the fill and the picture is untouched |
+| Centred | V (layout test: margins differ by at most 1 pixel) |
+| Switching does not interrupt or reset the game | V: test runs 150,000 game ticks on a worker thread while the main thread switches fullscreen 150 times: final page, score and level are identical to the run without switching |
+| Switching does not affect timing or speed | V: while fullscreen is switched 27 times in 0.8 s the cycle clock hands out exactly the cycles the elapsed time earned (831,598 = 831,598), nothing skipped |
+Also done: per-monitor DPI awareness (true pixels on every monitor; `WM_DPICHANGED` keeps the window's picture size), `WM_DISPLAYCHANGE` refits a fullscreen window to its monitor (test), fullscreen goes to the monitor the window is on, the window's own style keeps `WS_VISIBLE` (earlier fix). Suite 158/0; real game checked in full screen with the window-only screenshot script.
+Limits / not done: the mouse cursor stays visible in full screen (it will be needed for the pause menu in Section 3); there is no exclusive-mode fullscreen (borderless fullscreen only, which is what the Section 4 "Borderless Fullscreen" will use; the separate "Fullscreen" option of Section 4 needs a decision, see below); window position is not remembered between runs (Section 4, settings file).

@@ -403,3 +403,138 @@ TEST(visible_window_full_screen_stays_visible_and_shows_the_picture) {
     CHECK(!w.fullscreen() && IsWindowVisible(w.hwnd()) != FALSE);
     CHECK(clientSize(w.hwnd()).cx == 840 && clientSize(w.hwnd()).cy == 576);
 }
+
+// ---- TASK-034-1: full screen must not touch the game or its clock ----
+#include "../src/core/cycleclock.h"
+#include "../src/core/gamedriver.h"
+#include "flow_common.h"
+
+TEST(full_screen_switching_while_the_game_runs_changes_nothing_in_the_game) {
+    if (testfw::config().image.empty()) {
+        std::printf("    SKIPPED (needs --image)\n");
+        return;
+    }
+    datapack::Pack pack;
+    CHECK(flowtest::loadPack(pack));
+    constexpr int kTicks = 150000;
+    struct Result { std::vector<std::uint8_t> page; unsigned score = 0, level = 0; int toggles = 0; };
+    const auto run = [&](bool toggle) {
+        Result res;
+        core::GameDriver drv;
+        CHECK(drv.init(pack) && drv.newGame());
+        GameWindow w(GameWindowOptions{3, false});
+        CHECK(w.ok());
+        std::atomic<bool> done{false};
+        std::thread worker([&] {   // the game thread, as in the program: ticks, and the newest page goes to the window
+            for (int t = 0; t < kTicks; ++t) {
+                drv.tick();
+                if (t % 3 == 0) w.setPage(drv.page());
+                if (t % 1000 == 0) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+            done = true;
+        });
+        while (!done) {
+            if (toggle) {
+                w.setFullscreen(!w.fullscreen());
+                ++res.toggles;
+            }
+            pump(2);
+        }
+        worker.join();
+        if (w.fullscreen()) w.setFullscreen(false);
+        for (std::size_t i = 0; i < hires::kPageBytes; ++i) res.page.push_back(drv.page().byte(i));
+        res.score = drv.core().state().zp(0x52);
+        res.level = drv.core().state().level();
+        return res;
+    };
+    const Result plain = run(false);
+    const Result toggled = run(true);
+    std::printf("    %d ticks; %d full screen switches while it ran; page equal %d, score byte %u / %u\n", kTicks, toggled.toggles, plain.page == toggled.page, plain.score, toggled.score);
+    CHECK(toggled.toggles >= 3);
+    CHECK(plain.page == toggled.page);
+    CHECK(plain.score == toggled.score && plain.level == toggled.level);
+}
+
+TEST(full_screen_switching_does_not_change_the_cycles_the_clock_hands_out) {
+    GameWindow w(GameWindowOptions{3, false});
+    CHECK(w.ok());
+    core::CycleClock clock;
+    const std::int64_t t0 = core::nowNanoseconds();
+    clock.start(t0);
+    std::atomic<bool> done{false};
+    std::int64_t handed = 0, endNs = 0;
+    std::thread worker([&] {   // the game thread's pacing loop
+        while (core::nowNanoseconds() - t0 < 800'000'000) {
+            handed += clock.cyclesDue(core::nowNanoseconds());
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        endNs = core::nowNanoseconds();
+        handed += clock.cyclesDue(endNs);
+        done = true;
+    });
+    int toggles = 0;
+    while (!done) {
+        w.setFullscreen(!w.fullscreen());
+        ++toggles;
+        pump(20);
+    }
+    worker.join();
+    const std::int64_t exact = clock.cyclesIn(endNs - t0);
+    std::printf("    %d switches in 0.8 s; cycles handed out %lld, exact for the elapsed time %lld, skipped %lld\n", toggles, static_cast<long long>(handed), static_cast<long long>(exact), static_cast<long long>(clock.skipped()));
+    CHECK(toggles >= 10);
+    CHECK(handed == exact);        // not one cycle lost or gained
+    CHECK(clock.skipped() == 0);   // the pacing never fell behind
+}
+
+TEST(full_screen_holding_the_key_down_switches_once_and_a_display_change_refits_the_window) {
+    GameWindow w(GameWindowOptions{3, true});
+    CHECK(w.ok());
+    if (!w.ok()) return;
+    const LPARAM first = 1, repeat = (1 << 30) | 1;
+    SendMessageW(w.hwnd(), WM_KEYDOWN, VK_F11, first);
+    CHECK(w.fullscreen());
+    for (int i = 0; i < 5; ++i) SendMessageW(w.hwnd(), WM_KEYDOWN, VK_F11, repeat);   // auto-repeat of the held key
+    CHECK(w.fullscreen());
+    // the window is moved/resized by something else (a display change): it covers its monitor again
+    SetWindowPos(w.hwnd(), nullptr, 10, 10, 400, 300, SWP_NOZORDER | SWP_NOACTIVATE);
+    SendMessageW(w.hwnd(), WM_DISPLAYCHANGE, 32, 0);
+    MONITORINFO mi{};
+    mi.cbSize = sizeof(mi);
+    GetMonitorInfoW(MonitorFromWindow(w.hwnd(), MONITOR_DEFAULTTONEAREST), &mi);
+    RECT r{};
+    GetWindowRect(w.hwnd(), &r);
+    CHECK(r.left == mi.rcMonitor.left && r.top == mi.rcMonitor.top && r.right == mi.rcMonitor.right && r.bottom == mi.rcMonitor.bottom);
+    SendMessageW(w.hwnd(), WM_KEYDOWN, VK_F11, first);
+    CHECK(!w.fullscreen());
+}
+
+TEST(background_fill_reaches_the_bars_and_not_the_picture) {
+    GameWindow w(GameWindowOptions{3, false});
+    CHECK(w.ok());
+    if (!w.ok() || !w.usesDirect3d()) return;
+    CHECK(w.background() == app::Background::Black);
+    CHECK(app::backgroundFill(app::Background::Black).r == 0.0f);
+    const hires::Page page = busyPage();
+    w.setPage(page);
+    RECT r{0, 0, 1000, 700};
+    AdjustWindowRect(&r, static_cast<DWORD>(GetWindowLongW(w.hwnd(), GWL_STYLE)), FALSE);
+    SetWindowPos(w.hwnd(), nullptr, 0, 0, r.right - r.left, r.bottom - r.top, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+    pump(30);
+    w.setBackground(app::Background::Black);
+    std::vector<std::uint32_t> got;
+    int cw = 0, ch = 0;
+    CHECK(w.captureFrame(got, cw, ch));
+    const app::Viewport vp = app::computeViewport(cw, ch);
+    std::size_t barsNotBlack = 0, bars = 0;
+    for (int y = 0; y < ch; ++y)
+        for (int x = 0; x < cw; ++x) {
+            const bool inside = x >= vp.x && x < vp.x + vp.w && y >= vp.y && y < vp.y + vp.h;
+            if (!inside) {
+                ++bars;
+                barsNotBlack += (got[static_cast<std::size_t>(y) * static_cast<std::size_t>(cw) + static_cast<std::size_t>(x)] & 0xFFFFFF) != 0;
+            }
+        }
+    std::printf("    %zu bar pixels, %zu not black\n", bars, barsNotBlack);
+    CHECK(bars > 0 && barsNotBlack == 0);
+    CHECK(differences(got, expected(page, cw, ch)) == 0);
+}

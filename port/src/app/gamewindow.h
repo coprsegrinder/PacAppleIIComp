@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "../hires/hires.h"
+#include "background.h"
 #include "d3drenderer.h"
 #include "display_layout.h"
 
@@ -45,7 +46,9 @@ public:
     bool muted() const noexcept { return muted_; }
     int effectiveScale() const noexcept;               // the scale actually drawn (largest whole number that fits when in full screen)
     bool setScale(int scale);                          // 1..8; applies at once in windowed mode, remembered in full screen
-    void setFullscreen(bool on);
+    void setFullscreen(bool on);                       // never touches the game: only the window style, size and the swap chain change
+    void setBackground(Background b);                  // what fills the bars around the picture (window thread)
+    Background background() const noexcept { return background_; }
     // Port hotkeys; returns true if the key was one of them (and so must not reach the game). ctrl/alt: modifier state.
     bool handleHotkey(unsigned vk, bool ctrl, bool alt);
     int run();                                         // message loop until the window closes; returns the exit code
@@ -59,12 +62,15 @@ private:
     LRESULT handle(UINT msg, WPARAM wp, LPARAM lp);
     void pushKey(std::uint8_t code);
     void applyWindowedSize();
+    void fitToMonitor();                               // full screen: cover the monitor the window is on (again after a display change)
+    UINT dpi() const;
     void paint();
     void currentPixels(std::uint32_t* out);   // the 280 x 192 picture to show (page or image), marks it as painted
 
     HWND hwnd_ = nullptr;
     int scale_ = 3;
     bool fullscreen_ = false;
+    Background background_ = Background::Black;
     bool muted_ = false;
     unsigned refreshHz_ = 60;
     std::unique_ptr<D3dRenderer> d3d_;

@@ -44,6 +44,7 @@ struct D3dRenderer::Impl {
     ComPtr<ID3D11RasterizerState> raster;
     ComPtr<ID3D11Texture2D> staging;
     bool warp = false;
+    Background background = Background::Black;
     int w = 0, h = 0;
 
     bool makeTarget() {
@@ -75,6 +76,7 @@ struct D3dRenderer::Impl {
 D3dRenderer::D3dRenderer() : d_(std::make_unique<Impl>()) {}
 D3dRenderer::~D3dRenderer() = default;
 
+void D3dRenderer::setBackground(Background b) { d_->background = b; }
 bool D3dRenderer::software() const noexcept { return d_->warp; }
 int D3dRenderer::width() const noexcept { return d_->w; }
 int D3dRenderer::height() const noexcept { return d_->h; }
@@ -150,7 +152,8 @@ bool D3dRenderer::draw(const std::uint32_t* argb, const Viewport& vp) {
     for (int y = 0; y < kGameH; ++y) std::memcpy(static_cast<char*>(m.pData) + static_cast<std::size_t>(y) * m.RowPitch, argb + static_cast<std::size_t>(y) * kGameW, kGameW * 4);
     d.context->Unmap(d.picture.Get(), 0);
 
-    const float black[4] = {0, 0, 0, 1};
+    const BackgroundFill fill = backgroundFill(d.background);
+    const float black[4] = {fill.r, fill.g, fill.b, 1};
     ID3D11RenderTargetView* rt = d.rtv.Get();
     d.context->OMSetRenderTargets(1, &rt, nullptr);
     d.context->ClearRenderTargetView(d.rtv.Get(), black);

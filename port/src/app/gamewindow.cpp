@@ -22,7 +22,12 @@ constexpr std::size_t kMaxQueuedKeys = 64;
 }  // namespace
 
 GameWindow::GameWindow(const GameWindowOptions& options) {
-    SetProcessDPIAware();
+    // True pixels on every monitor (no Windows bitmap scaling, which would blur the picture and misplace a full-screen window on a monitor with another scale setting)
+    {
+        using SetContext = BOOL(WINAPI*)(DPI_AWARENESS_CONTEXT);
+        const auto setContext = reinterpret_cast<SetContext>(reinterpret_cast<void*>(GetProcAddress(GetModuleHandleW(L"user32.dll"), "SetProcessDpiAwarenessContext")));
+        if (!(setContext && setContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2))) SetProcessDPIAware();
+    }
     scale_ = std::clamp(options.scale, 1, 8);
     const HINSTANCE inst = GetModuleHandleW(nullptr);
     WNDCLASSW wc{};
@@ -34,7 +39,7 @@ GameWindow::GameWindow(const GameWindowOptions& options) {
     page_.clear(0);  // black until the emulation thread sets a page
     RECT r{0, 0, kW * scale_, kH * scale_};
     const DWORD style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
-    AdjustWindowRect(&r, style, FALSE);
+    AdjustWindowRectExForDpi(&r, style, FALSE, 0, GetDpiForSystem());
     hwnd_ = CreateWindowW(kClass, L"Pac-Man (Apple II port)", style, CW_USEDEFAULT, CW_USEDEFAULT, r.right - r.left, r.bottom - r.top, nullptr, nullptr,
                           inst, this);
     if (!hwnd_) return;
@@ -97,9 +102,27 @@ int GameWindow::effectiveScale() const noexcept {
     return std::max(1, std::min(static_cast<int>(rc.right - rc.left) / kW, static_cast<int>(rc.bottom - rc.top) / kH));
 }
 
+UINT GameWindow::dpi() const {
+    const UINT d = hwnd_ ? GetDpiForWindow(hwnd_) : 0;
+    return d != 0 ? d : 96;
+}
+
+void GameWindow::fitToMonitor() {
+    MONITORINFO mi{};
+    mi.cbSize = sizeof(mi);
+    GetMonitorInfoW(MonitorFromWindow(hwnd_, MONITOR_DEFAULTTONEAREST), &mi);
+    SetWindowPos(hwnd_, HWND_TOP, mi.rcMonitor.left, mi.rcMonitor.top, mi.rcMonitor.right - mi.rcMonitor.left, mi.rcMonitor.bottom - mi.rcMonitor.top, SWP_NOACTIVATE | SWP_FRAMECHANGED);
+}
+
+void GameWindow::setBackground(Background b) {
+    background_ = b;
+    if (d3d_) d3d_->setBackground(b);
+    if (hwnd_) InvalidateRect(hwnd_, nullptr, FALSE);
+}
+
 void GameWindow::applyWindowedSize() {
     RECT r{0, 0, kW * scale_, kH * scale_};
-    AdjustWindowRect(&r, static_cast<DWORD>(GetWindowLongW(hwnd_, GWL_STYLE)), FALSE);
+    AdjustWindowRectExForDpi(&r, static_cast<DWORD>(GetWindowLongW(hwnd_, GWL_STYLE)), FALSE, 0, dpi());
     SetWindowPos(hwnd_, nullptr, 0, 0, r.right - r.left, r.bottom - r.top, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
     InvalidateRect(hwnd_, nullptr, FALSE);
 }
@@ -117,12 +140,8 @@ void GameWindow::setFullscreen(bool on) {
         saved_.length = sizeof(saved_);
         GetWindowPlacement(hwnd_, &saved_);
         savedStyle_ = GetWindowLongW(hwnd_, GWL_STYLE);
-        MONITORINFO mi{};
-        mi.cbSize = sizeof(mi);
-        GetMonitorInfoW(MonitorFromWindow(hwnd_, MONITOR_DEFAULTTONEAREST), &mi);
         SetWindowLongW(hwnd_, GWL_STYLE, static_cast<LONG>(WS_POPUP) | (savedStyle_ & WS_VISIBLE));   // WS_VISIBLE must be kept: without it the window disappears (black screen)
-        SetWindowPos(hwnd_, HWND_TOP, mi.rcMonitor.left, mi.rcMonitor.top, mi.rcMonitor.right - mi.rcMonitor.left, mi.rcMonitor.bottom - mi.rcMonitor.top,
-                     SWP_NOACTIVATE | SWP_FRAMECHANGED);
+        fitToMonitor();
         fullscreen_ = true;
     } else {
         SetWindowLongW(hwnd_, GWL_STYLE, savedStyle_);
@@ -205,10 +224,12 @@ void GameWindow::paint() {
     bi.bmiHeader.biCompression = BI_RGB;
     SetStretchBltMode(dc, COLORONCOLOR);
     StretchDIBits(dc, ox, oy, w, h, 0, 0, kW, kH, pixels.data(), &bi, DIB_RGB_COLORS, SRCCOPY);
-    HBRUSH black = static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
+    const BackgroundFill fill = backgroundFill(background_);
+    HBRUSH black = CreateSolidBrush(RGB(static_cast<int>(fill.r * 255.0f + 0.5f), static_cast<int>(fill.g * 255.0f + 0.5f), static_cast<int>(fill.b * 255.0f + 0.5f)));
     const RECT bars[4] = {{0, 0, rc.right, oy}, {0, oy + h, rc.right, rc.bottom}, {0, oy, ox, oy + h}, {ox + w, oy, rc.right, oy + h}};
     for (const RECT& b : bars)
         if (b.right > b.left && b.bottom > b.top) FillRect(dc, &b, black);
+    DeleteObject(black);
     EndPaint(hwnd_, &ps);
 }
 
@@ -216,6 +237,16 @@ LRESULT GameWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
     case WM_PAINT: paint(); return 0;
     case WM_ERASEBKGND: return 1;
+    case WM_DISPLAYCHANGE:   // resolution or monitor layout changed: a full-screen window must cover its monitor again
+        if (fullscreen_) fitToMonitor();
+        return 0;
+    case WM_DPICHANGED:      // moved to a monitor with another scale setting: the window keeps its picture size in real pixels
+        if (!fullscreen_) {
+            const RECT* suggested = reinterpret_cast<const RECT*>(lp);
+            SetWindowPos(hwnd_, nullptr, suggested->left, suggested->top, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+            applyWindowedSize();
+        }
+        return 0;
     case WM_SIZE:
         if (d3d_ && wp != SIZE_MINIMIZED) d3d_->resize(static_cast<int>(LOWORD(lp)), static_cast<int>(HIWORD(lp)));
         return 0;
@@ -233,6 +264,8 @@ LRESULT GameWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
     case WM_SYSKEYDOWN: {
         const bool ctrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
         const bool alt = msg == WM_SYSKEYDOWN || (GetKeyState(VK_MENU) & 0x8000) != 0;
+        const bool repeat = (lp & (1 << 30)) != 0;   // key held down: the full screen switch must not flicker back and forth
+        if (repeat && (wp == VK_F11 || (alt && wp == VK_RETURN))) return 0;
         if (handleHotkey(static_cast<unsigned>(wp), ctrl, alt)) return 0;
         switch (wp) {
         case VK_LEFT: pushKey(0x88); return 0;   // Ctrl-H
