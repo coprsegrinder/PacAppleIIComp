@@ -60,3 +60,6 @@ Rules I would hold: filter **off = picture byte-exact as today** (test); applied
 * https://filthypants.blogspot.com/2017/06/new-ntsc-shaders.html (Flyguy artifact shader with Lottes; per-channel persistence)
 * https://epub.ub.uni-muenchen.de/16122/ , https://webdocs.cs.ualberta.ca/~wfb/publications/abstract24.html (P31 persistence)
 * https://applefritter.com/node/26038 (Monitor III phosphor, forum)
+
+## 7. Decisions (user, 2026-11-04) and what was built
+Follow the recommendations (custom filter, all options as independent switches, defaults off with presets, curvature and afterglow included), with **at least three degrees per option**. Built as TASK-034-9, see docs/MODERNIZATION.md Section 9. One change from the proposal above: the filter is applied to the whole picture including the pause menu (so a change can be seen while it is made), not only to the game picture.

@@ -852,7 +852,7 @@ TEST(pause_menu_keyboard_navigation_pages_and_actions) {
     // Graphics Settings: its page, the toggle, Back and Esc return to the main page on the entry that led there
     m.show();
     m.key(PauseMenu::Key::Down);
-    CHECK(m.key(PauseMenu::Key::Select) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Graphics && m.selected() == 0 && m.itemCount() == 6);
+    CHECK(m.key(PauseMenu::Key::Select) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Graphics && m.selected() == 0 && m.itemCount() == 7);
     CHECK(m.key(PauseMenu::Key::Select) == PauseMenu::Action::NextDisplayMode && m.page() == PauseMenu::Page::Graphics);   // Display Mode: Enter = next
     CHECK(m.key(PauseMenu::Key::Right) == PauseMenu::Action::NextDisplayMode && m.key(PauseMenu::Key::Left) == PauseMenu::Action::PreviousDisplayMode);
     m.key(PauseMenu::Key::Down);
@@ -864,7 +864,24 @@ TEST(pause_menu_keyboard_navigation_pages_and_actions) {
     m.key(PauseMenu::Key::Down);
     CHECK(m.selected() == 4 && m.key(PauseMenu::Key::Select) == PauseMenu::Action::NextColourMode && m.key(PauseMenu::Key::Right) == PauseMenu::Action::NextColourMode && m.key(PauseMenu::Key::Left) == PauseMenu::Action::PreviousColourMode);   // Colour Mode
     m.key(PauseMenu::Key::Down);
-    CHECK(m.selected() == 5 && m.key(PauseMenu::Key::Left) == PauseMenu::Action::None);   // Back: left/right do nothing
+    CHECK(m.selected() == 5 && m.key(PauseMenu::Key::Left) == PauseMenu::Action::PreviousCrtPreset && m.key(PauseMenu::Key::Right) == PauseMenu::Action::NextCrtPreset);   // CRT Filter: left/right = the preset
+    // Enter opens the CRT page: Preset, the nine options (left/right/Enter change one degree) and Back; Esc returns to the graphics page on the CRT entry
+    CHECK(m.key(PauseMenu::Key::Select) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Crt && m.selected() == 0 && m.itemCount() == 11);
+    CHECK(m.key(PauseMenu::Key::Right) == PauseMenu::Action::NextCrtPreset && m.key(PauseMenu::Key::Left) == PauseMenu::Action::PreviousCrtPreset && m.key(PauseMenu::Key::Select) == PauseMenu::Action::NextCrtPreset);
+    for (int i = 0; i < app::kCrtOptionCount; ++i) {
+        m.key(PauseMenu::Key::Down);
+        CHECK(m.selected() == i + 1);
+        CHECK(m.key(PauseMenu::Key::Right) == PauseMenu::Action::CrtOptionStep && m.crtOption() == static_cast<app::CrtOption>(i) && m.crtDir() == 1);
+        CHECK(m.key(PauseMenu::Key::Left) == PauseMenu::Action::CrtOptionStep && m.crtOption() == static_cast<app::CrtOption>(i) && m.crtDir() == -1);
+        CHECK(m.key(PauseMenu::Key::Select) == PauseMenu::Action::CrtOptionStep && m.crtDir() == 1);
+    }
+    m.key(PauseMenu::Key::Down);
+    CHECK(m.selected() == 10 && m.key(PauseMenu::Key::Left) == PauseMenu::Action::None);   // Back
+    CHECK(m.key(PauseMenu::Key::Select) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Graphics && m.selected() == 5);
+    m.key(PauseMenu::Key::Select);
+    CHECK(m.key(PauseMenu::Key::Back) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Graphics && m.selected() == 5);   // Esc from the CRT page
+    m.key(PauseMenu::Key::Down);
+    CHECK(m.selected() == 6 && m.key(PauseMenu::Key::Left) == PauseMenu::Action::None);   // Back: left/right do nothing
     m.key(PauseMenu::Key::Select);   // Back
     CHECK(m.page() == PauseMenu::Page::Main && m.selected() == 1);
     m.key(PauseMenu::Key::Select);
@@ -903,7 +920,14 @@ TEST(pause_menu_mouse_selects_on_hover_activates_on_click_and_ignores_the_rest) 
     CHECK(m.pointerClick(graphicsItem(2).x, graphicsItem(2).y) == PauseMenu::Action::ToggleBorders);
     CHECK(m.pointerClick(graphicsItem(3).x, graphicsItem(3).y) == PauseMenu::Action::NextBackground);
     CHECK(m.pointerClick(graphicsItem(4).x, graphicsItem(4).y) == PauseMenu::Action::NextColourMode);
-    CHECK(m.pointerClick(graphicsItem(5).x, graphicsItem(5).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Main);
+    CHECK(m.pointerClick(graphicsItem(5).x, graphicsItem(5).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Crt);   // CRT Filter opens its page
+    {
+        const auto crtItem = [&](int i) { return m.itemCenter(i); };
+        CHECK(m.pointerClick(crtItem(0).x, crtItem(0).y) == PauseMenu::Action::NextCrtPreset);
+        CHECK(m.pointerClick(crtItem(3).x, crtItem(3).y) == PauseMenu::Action::CrtOptionStep && m.crtOption() == app::CrtOption::Transition);
+        CHECK(m.pointerClick(crtItem(10).x, crtItem(10).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Graphics);
+    }
+    CHECK(m.pointerClick(graphicsItem(6).x, graphicsItem(6).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Main);
     // Quit Game -> Cancel by mouse, Quit Game -> Confirm by mouse
     CHECK(m.pointerClick(mainItem(2).x, mainItem(2).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Confirm);
     CHECK(m.pointerClick(confirmItem(1).x, confirmItem(1).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Main);
@@ -1066,7 +1090,7 @@ TEST(pause_menu_in_the_window_mouse_keyboard_graphics_page_and_quit_with_confirm
     // the mouse works at another window size too (the picture position is mapped through the viewport)
     SetWindowPos(h, nullptr, 0, 0, 1100, 800, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
     pump(20);
-    SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, graphicsItem(5).x, graphicsItem(5).y));   // Back
+    SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, graphicsItem(6).x, graphicsItem(6).y));   // Back
     SendMessageW(h, WM_MOUSEMOVE, 0, clientPos(h, mainItem(2).x, mainItem(2).y));
     SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, mainItem(2).x, mainItem(2).y));    // Quit Game: asks first
     CHECK(w.ok() && w.menuOpen());
@@ -3790,4 +3814,369 @@ TEST(desktop_in_the_window_follows_native_black_and_white_everywhere_and_the_gam
     const app::Viewport bv = w.renderInfo().viewport;
     const std::uint32_t plastic = at(monoShot, cw, bv.x - 9 * bv.scale, bv.y + bv.h / 2);
     CHECK(redOf(plastic) > blueOf(plastic) + 8 && redOf(plastic) > 120);   // warm beige, not green
+}
+
+// ---------------------------------------------------------------- TASK-034-9: the CRT filter
+
+#include "../src/app/crtfilter.h"
+#include "../src/app/d3drenderer.h"
+
+namespace {
+
+using app::CrtFilter;
+using app::CrtOption;
+
+// a picture with everything the filter acts on: lone dots, bars, a white block, colour bands, a dark-to-light ramp
+std::vector<std::uint32_t> crtTestPicture(int texW) {
+    std::vector<std::uint32_t> p(static_cast<std::size_t>(texW) * 192, 0xFF000000u);
+    const int k = texW / 280;   // dot positions per game pixel
+    const auto put = [&](int x, int y, std::uint32_t c) {
+        for (int i = 0; i < k; ++i) p[static_cast<std::size_t>(y) * static_cast<std::size_t>(texW) + static_cast<std::size_t>(x * k + i)] = c;
+    };
+    for (int y = 20; y < 60; ++y)
+        for (int x = 30; x < 70; ++x) put(x, y, 0xFFFFFFFFu);
+    for (int y = 70; y < 90; ++y)
+        for (int x = 20; x < 260; ++x) put(x, y, (x / 20) % 2 ? 0xFF2020FFu : 0xFFFF8000u);
+    for (int y = 100; y < 110; ++y)
+        for (int x = 20; x < 260; x += 2) put(x, y, 0xFF20FF20u);   // dotted line
+    put(140, 130, 0xFFFFFFFFu);                                       // a lone dot
+    for (int x = 0; x < 280; ++x)
+        for (int y = 150; y < 170; ++y) put(x, y, 0xFF000000u | (static_cast<std::uint32_t>(x * 255 / 279) << 8));
+    return p;
+}
+
+int maxChannelDiff(const std::vector<std::uint32_t>& a, const std::vector<std::uint32_t>& b) {
+    int worst = 0;
+    for (std::size_t i = 0; i < a.size() && i < b.size(); ++i)
+        for (int sh = 0; sh <= 16; sh += 8) worst = (std::max)(worst, std::abs(static_cast<int>((a[i] >> sh) & 0xFF) - static_cast<int>((b[i] >> sh) & 0xFF)));
+    return worst;
+}
+
+struct CrtRig {
+    HWND hwnd = nullptr;
+    app::D3dRenderer r;
+    int w = 0, h = 0, scale = 1;
+    explicit CrtRig(int scaleIn) : w(280 * scaleIn), h(192 * scaleIn), scale(scaleIn) {
+        hwnd = CreateWindowExW(0, L"STATIC", L"crt", WS_POPUP, 0, 0, w, h, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
+        if (hwnd && !r.init(hwnd)) {
+            DestroyWindow(hwnd);
+            hwnd = nullptr;
+        }
+        if (hwnd) r.resize(w, h);
+    }
+    ~CrtRig() {
+        if (hwnd) DestroyWindow(hwnd);
+    }
+    bool shot(const std::vector<std::uint32_t>& pic, bool mono, const CrtFilter* f, std::vector<std::uint32_t>& out) {
+        std::vector<std::uint32_t> p280(280 * 192, 0xFF000000u);
+        if (!mono) p280 = pic;
+        app::Viewport vp;
+        vp.w = w;
+        vp.h = h;
+        vp.scale = scale;
+        int cw = 0, ch = 0;
+        return r.draw(p280.data(), vp, app::D3dRenderer::BackgroundFrame{}, mono ? pic.data() : nullptr, f) && r.readBack(out, cw, ch) && cw == w && ch == h;
+    }
+};
+
+}  // namespace
+
+TEST(crt_options_have_several_degrees_each_and_presets_and_the_settings_file) {
+    for (int i = 0; i < app::kCrtOptionCount; ++i) {
+        const CrtOption o = static_cast<CrtOption>(i);
+        CHECK(app::crtLevelCount(o) >= 4);   // at least three degrees to choose besides off / normal
+        CrtFilter f;
+        for (int l = 0; l < app::crtLevelCount(o); ++l) {
+            app::crtSet(f, o, l);
+            CHECK(app::crtGet(f, o) == l && !app::crtLevelLabel(o, l).empty());
+        }
+        app::crtSet(f, o, 99);
+        CHECK(app::crtGet(f, o) == app::crtLevelCount(o) - 1);   // clamped
+        app::crtSet(f, o, 0);
+        for (int k = 0; k < app::crtLevelCount(o); ++k) app::crtStep(f, o, 1);
+        CHECK(app::crtGet(f, o) == 0);   // wraps round
+        app::crtStep(f, o, -1);
+        CHECK(app::crtGet(f, o) == app::crtLevelCount(o) - 1);
+    }
+    const app::CrtParams a = app::crtParams(CrtFilter{});
+    CHECK(a.scan == 0 && a.sigma == 0 && a.tau == 0 && a.glow == 0 && a.blend == 0 && a.curv == 0 && a.gain == 1.0f && a.offset == 0);   // the defaults do nothing
+    // each effect gets stronger with its degree
+    for (int i = 0; i < 7; ++i) {
+        const CrtOption o = static_cast<CrtOption>(i);
+        float prev = -1;
+        for (int l = 0; l < 4; ++l) {
+            CrtFilter f;
+            app::crtSet(f, o, l);
+            const app::CrtParams q = app::crtParams(f);
+            const float v = o == CrtOption::Scanlines ? q.scan : o == CrtOption::Softness ? q.sigma : o == CrtOption::Transition ? q.tau : o == CrtOption::Glow ? q.glow : o == CrtOption::Blend ? q.blend : o == CrtOption::Curvature ? q.curv : app::crtAfterglowDecay(l);
+            CHECK(v > prev);
+            prev = v;
+        }
+    }
+    // presets
+    CHECK(app::crtPresetOf(CrtFilter{}) == app::CrtPreset::Off && app::crtPresetFilter(app::CrtPreset::Off).neutral());
+    CHECK(app::crtPresetOf(app::crtPresetFilter(app::CrtPreset::Subtle)) == app::CrtPreset::Subtle && app::crtPresetOf(app::crtPresetFilter(app::CrtPreset::Classic)) == app::CrtPreset::Classic);
+    CrtFilter custom = app::crtPresetFilter(app::CrtPreset::Subtle);
+    custom.curvature = 2;
+    CHECK(app::crtPresetOf(custom) == app::CrtPreset::Custom && app::crtNextPreset(app::CrtPreset::Custom, 1) == app::CrtPreset::Off);
+    CHECK(app::crtNextPreset(app::CrtPreset::Off, 1) == app::CrtPreset::Subtle && app::crtNextPreset(app::CrtPreset::Classic, 1) == app::CrtPreset::Off && app::crtNextPreset(app::CrtPreset::Off, -1) == app::CrtPreset::Classic);
+    CHECK(!app::crtPresetFilter(app::CrtPreset::Classic).neutral() && app::crtPresetFilter(app::CrtPreset::Classic).curvature == 0 && app::crtPresetFilter(app::CrtPreset::Classic).afterglow == 0);   // the presets do not move pixels or smear in time
+    // the settings file: every option round-trips; bad values and unknown words fall back
+    Settings s;
+    for (int i = 0; i < app::kCrtOptionCount; ++i) app::crtSet(s.crt, static_cast<CrtOption>(i), 1 + i % 3);
+    CHECK(SettingsStore::parse(SettingsStore::format(s)).crt == s.crt);
+    CHECK(SettingsStore::parse("").crt.neutral());
+    const Settings bad = SettingsStore::parse("crt_scanlines=9\ncrt_softness=sharp\ncrt_glow=2\ncrt_brightness=4\ncrt_contrast=5\n");
+    CHECK(bad.crt.scanlines == 0 && bad.crt.softness == 0 && bad.crt.glow == 2 && bad.crt.brightness == 4 && bad.crt.contrast == 2);
+}
+
+TEST(crt_filter_off_leaves_the_picture_exactly_and_the_shader_with_nothing_to_do_gives_the_same) {
+    CrtRig rig(3);
+    CHECK(rig.hwnd != nullptr);
+    if (!rig.hwnd) return;
+    const std::vector<std::uint32_t> pic = crtTestPicture(280);
+    std::vector<std::uint32_t> plain, off, forced;
+    CHECK(rig.shot(pic, false, nullptr, plain));
+    const CrtFilter none;
+    CHECK(rig.shot(pic, false, &none, off));
+    CHECK(plain == off);   // all options off: the very same bytes
+    rig.r.forceCrtShader(true);
+    CHECK(rig.shot(pic, false, &none, forced));
+    rig.r.forceCrtShader(false);
+    std::printf("    CRT shader with every option neutral vs the plain picture: biggest difference %d of 255\n", maxChannelDiff(plain, forced));
+    CHECK(maxChannelDiff(plain, forced) == 0);   // and the filter shader itself adds nothing when nothing is chosen
+    // the same for the monochrome picture
+    const std::vector<std::uint32_t> mono = crtTestPicture(560);
+    CHECK(rig.shot(mono, true, nullptr, plain));
+    rig.r.forceCrtShader(true);
+    CHECK(rig.shot(mono, true, &none, forced));
+    rig.r.forceCrtShader(false);
+    CHECK(maxChannelDiff(plain, forced) == 0);
+}
+
+TEST(crt_shader_on_the_gpu_matches_the_cpu_model_for_every_option_and_degree_at_several_scales_in_both_colour_modes) {
+    for (int scale : {1, 2, 3, 4}) {
+        CrtRig rig(scale);
+        CHECK(rig.hwnd != nullptr);
+        if (!rig.hwnd) return;
+        for (bool mono : {false, true}) {
+            const int texW = mono ? 560 : 280;
+            const std::vector<std::uint32_t> pic = crtTestPicture(texW);
+            std::vector<CrtFilter> cases;
+            for (int i = 0; i < app::kCrtOptionCount; ++i) {
+                if (static_cast<CrtOption>(i) == CrtOption::Afterglow) continue;   // (the afterglow works on the picture before the shader)
+                for (int l = 0; l < app::crtLevelCount(static_cast<CrtOption>(i)); ++l) {
+                    CrtFilter f;
+                    app::crtSet(f, static_cast<CrtOption>(i), l);
+                    if (!f.shaderNeutral()) cases.push_back(f);
+                }
+            }
+            cases.push_back(app::crtPresetFilter(app::CrtPreset::Classic));
+            CrtFilter all;
+            for (int i = 0; i < app::kCrtOptionCount; ++i) app::crtSet(all, static_cast<CrtOption>(i), 2);
+            cases.push_back(all);
+            int worst = 0;
+            for (const CrtFilter& f : cases) {
+                std::vector<std::uint32_t> gpu, cpu;
+                CHECK(rig.shot(pic, mono, &f, gpu));
+                app::renderCrt(f, pic.data(), texW, rig.w, rig.h, rig.scale, cpu);
+                const int d = maxChannelDiff(gpu, cpu);
+                worst = (std::max)(worst, d);
+                // a few pixels may pick the neighbouring source dot when a sample lands within rounding distance of a dot boundary (curvature puts samples anywhere): allow at most 0.05 %
+                std::size_t outliers = 0;
+                for (std::size_t i = 0; i < gpu.size(); ++i) outliers += maxChannelDiff({gpu[i]}, {cpu[i]}) > 4;
+                CHECK(outliers * 2000 <= gpu.size());
+                if (f.curvature == 0) CHECK(d <= 4);   // without curvature the samples are on a regular grid: every pixel agrees
+            }
+            std::printf("    scale %d, %s: %zu filter settings, GPU vs CPU model: biggest difference %d of 255\n", scale, mono ? "Native Black & White" : "Original Colour", cases.size(), worst);
+        }
+    }
+}
+
+TEST(crt_effects_do_what_they_say_scanlines_softness_transition_glow_blend_curvature_brightness_contrast) {
+    const std::vector<std::uint32_t> pic = crtTestPicture(280);
+    const int S = 4, W = 280 * S, H = 192 * S;
+    const auto run = [&](const CrtFilter& f, std::vector<std::uint32_t>& out) { app::renderCrt(f, pic.data(), 280, W, H, S, out); };
+    const auto px = [&](const std::vector<std::uint32_t>& v, int gx, int gy, int sub) { return v[static_cast<std::size_t>(gy * S + sub) * static_cast<std::size_t>(W) + static_cast<std::size_t>(gx * S + S / 2)]; };
+    const auto lum = [](std::uint32_t p) { return static_cast<int>((p >> 8) & 0xFF); };
+    std::vector<std::uint32_t> base, v;
+    run(CrtFilter{}, base);
+    // scanlines: the middle of a picture line stays, the edge of the line darkens, more with each degree; black stays black
+    int prevGap = 256;
+    for (int l = 1; l <= 3; ++l) {
+        CrtFilter f;
+        f.scanlines = static_cast<std::uint8_t>(l);
+        run(f, v);
+        const int mid = lum(px(v, 50, 40, S / 2)), edge = lum(px(v, 50, 40, 0));
+        std::printf("    scanlines %d: line middle %d, line edge %d (picture 255)\n", l, mid, edge);
+        CHECK(mid >= 235 && edge < prevGap && edge < mid);
+        prevGap = edge;
+        CHECK(lum(px(v, 150, 5, 0)) == 0);
+    }
+    // softness: a lone dot spreads sideways, more with each degree; the inside of a solid area stays full
+    int prevSide = 0;
+    for (int l = 1; l <= 3; ++l) {
+        CrtFilter f;
+        f.softness = static_cast<std::uint8_t>(l);
+        run(f, v);
+        const int side = lum(px(v, 141, 130, S / 2)) + lum(px(v, 139, 130, S / 2));
+        std::printf("    softness %d: next to a lone dot %d (dot itself %d)\n", l, side, lum(px(v, 140, 130, S / 2)));
+        CHECK(side > prevSide && lum(px(v, 140, 130, S / 2)) < 255);
+        prevSide = side;
+        CHECK(lum(px(v, 50, 40, S / 2)) >= 254);
+    }
+    // transition: the light trails to the RIGHT of a dot only
+    for (int l = 1; l <= 3; ++l) {
+        CrtFilter f;
+        f.transition = static_cast<std::uint8_t>(l);
+        run(f, v);
+        CHECK(lum(px(v, 141, 130, S / 2)) > 4 && lum(px(v, 139, 130, S / 2)) == 0);
+    }
+    // glow: light appears around a bright area, more with each degree; far away stays black
+    int prevGlow = 0;
+    for (int l = 1; l <= 3; ++l) {
+        CrtFilter f;
+        f.glow = static_cast<std::uint8_t>(l);
+        run(f, v);
+        const int nearLight = lum(px(v, 71, 40, S / 2));
+        CHECK(nearLight > prevGlow && lum(px(v, 130, 5, S / 2)) == 0);
+        prevGlow = nearLight;
+    }
+    // colour blend: the colour at the edge of a band changes (it bleeds into the neighbour)
+    {
+        CrtFilter f;
+        f.blend = 3;
+        run(f, v);
+        CHECK(px(base, 39, 80, S / 2) != px(v, 39, 80, S / 2));
+    }
+    // curvature: the centre is the same picture, the corners go dark
+    for (int l = 1; l <= 3; ++l) {
+        CrtFilter f;
+        f.curvature = static_cast<std::uint8_t>(l);
+        run(f, v);
+        const std::size_t mid = static_cast<std::size_t>(H / 2) * static_cast<std::size_t>(W) + static_cast<std::size_t>(W / 2);
+        CHECK(v[mid] == base[mid]);
+        CHECK((v[0] & 0xFFFFFF) == 0 && (v[static_cast<std::size_t>(W - 1)] & 0xFFFFFF) == 0);
+    }
+    // brightness lifts the black level, contrast scales the white level, both by degrees
+    int prevBlack = -1, prevWhite = -1;
+    for (int l = 0; l < 5; ++l) {
+        CrtFilter f;
+        f.brightness = static_cast<std::uint8_t>(l);
+        run(f, v);
+        const int black = lum(px(v, 150, 5, S / 2));
+        CHECK(black >= prevBlack);
+        prevBlack = black;
+        CrtFilter g;
+        g.contrast = static_cast<std::uint8_t>(l);
+        run(g, v);
+        const int white = lum(px(v, 50, 40, S / 2));
+        CHECK(white >= prevWhite && lum(px(v, 150, 5, S / 2)) == 0);
+        prevWhite = white;
+    }
+    CHECK(prevBlack > 0 && prevWhite == 255);
+}
+
+TEST(crt_afterglow_keeps_a_fading_trail_per_channel_and_stops_when_it_is_gone) {
+    std::vector<std::uint32_t> prev;
+    std::vector<std::uint32_t> pic(4, 0xFF000000u);
+    pic[0] = 0xFFFF8040u;
+    CHECK(!app::applyAfterglow(prev, pic.data(), pic.size(), 0.55f));   // a new bright picture: nothing trails yet
+    CHECK(pic[0] == 0xFFFF8040u);
+    int steps = 0, last = 256;
+    bool monotone = true;
+    for (; steps < 100; ++steps) {
+        std::vector<std::uint32_t> dark(4, 0xFF000000u);
+        const bool trail = app::applyAfterglow(prev, dark.data(), dark.size(), 0.55f);
+        const int r = static_cast<int>((dark[0] >> 16) & 0xFF);
+        monotone = monotone && r < last;
+        last = r;
+        CHECK(dark[1] == 0xFF000000u);   // other pixels untouched
+        if (!trail) break;
+    }
+    CHECK(monotone && steps > 2 && steps < 30);   // it takes a few pictures to fade, and it does end
+    std::vector<std::uint32_t> a(1, 0xFF808080u), b(1, 0xFF804020u);
+    prev.assign(1, 0xFF000000u);
+    app::applyAfterglow(prev, a.data(), 1, 0.5f);
+    app::applyAfterglow(prev, b.data(), 1, 0.5f);
+    CHECK(b[0] == 0xFF804040u);   // red equal, green max(0x40, 0x80/2 = 0x40), blue max(0x20, 0x40)
+    CHECK(app::crtAfterglowDecay(1) < app::crtAfterglowDecay(2) && app::crtAfterglowDecay(2) < app::crtAfterglowDecay(3));
+}
+
+TEST(crt_filter_is_set_from_the_pause_menu_kept_in_the_settings_and_restored_and_shows_in_the_window) {
+    core::CharacterRom rom;
+    const bool haveFont = loadFont(rom);
+    const auto dir = scratchDir("crtfilter");
+    SettingsStore store((dir / "settings.ini").wstring());
+    Settings start;
+    start.displayMode = DisplayMode::Windowed;
+    {
+        GameWindow w(GameWindowOptions{3, true});
+        CHECK(w.ok());
+        if (!w.ok() || !w.usesDirect3d()) return;
+        if (haveFont) w.setMenuFont(rom);
+        w.attachSettings(&store, start);
+        CHECK(w.crt().neutral());
+        const HWND h = w.hwnd();
+        SendMessageW(h, WM_KEYDOWN, VK_ESCAPE, 1);
+        SendMessageW(h, WM_KEYDOWN, VK_DOWN, 1);
+        SendMessageW(h, WM_KEYDOWN, VK_RETURN, 1);                              // Graphics Settings
+        for (int i = 0; i < 5; ++i) SendMessageW(h, WM_KEYDOWN, VK_DOWN, 1);   // CRT Filter
+        SendMessageW(h, WM_KEYDOWN, VK_RIGHT, 1);                               // the quick preset: Subtle
+        CHECK(app::crtPresetOf(w.crt()) == app::CrtPreset::Subtle && store.load().crt == w.crt());
+        SendMessageW(h, WM_KEYDOWN, VK_LEFT, 1);
+        CHECK(w.crt().neutral());
+        SendMessageW(h, WM_KEYDOWN, VK_RETURN, 1);                              // the CRT page
+        SendMessageW(h, WM_KEYDOWN, VK_DOWN, 1);                                // Scanlines
+        SendMessageW(h, WM_KEYDOWN, VK_RIGHT, 1);
+        SendMessageW(h, WM_KEYDOWN, VK_RIGHT, 1);
+        CHECK(w.crt().scanlines == 2 && w.menuOpen());
+        SendMessageW(h, WM_KEYDOWN, VK_DOWN, 1);                                // Softness
+        SendMessageW(h, WM_KEYDOWN, VK_LEFT, 1);                                // round the other way: High
+        CHECK(w.crt().softness == 3 && store.load().crt == w.crt());
+        for (int i = 0; i < 7; ++i) SendMessageW(h, WM_KEYDOWN, VK_DOWN, 1);   // Contrast
+        SendMessageW(h, WM_KEYDOWN, VK_RIGHT, 1);
+        CHECK(w.crt().contrast == 3 && w.crt().brightness == 2);
+        SendMessageW(h, WM_KEYDOWN, VK_ESCAPE, 1);
+        SendMessageW(h, WM_KEYDOWN, VK_ESCAPE, 1);
+        SendMessageW(h, WM_KEYDOWN, VK_ESCAPE, 1);
+        CHECK(!w.menuOpen());
+    }
+    {
+        GameWindow w(GameWindowOptions{3, true});
+        CHECK(w.ok());
+        if (!w.ok()) return;
+        w.attachSettings(&store, store.load());
+        CHECK(w.crt().scanlines == 2 && w.crt().softness == 3 && w.crt().contrast == 3);   // the next start
+        CrtFilter f = w.crt();
+        f.curvature = 1;
+        w.setCrt(f);
+        CHECK(store.load().crt.curvature == 1);
+    }
+    // it shows in the window, and in Native Black & White the picture stays green
+    for (ColourMode mode : {ColourMode::Original, ColourMode::NativeMono}) {
+        GameWindow w(GameWindowOptions{3, true});
+        CHECK(w.ok());
+        if (!w.ok() || !w.usesDirect3d()) return;
+        setClient(w.hwnd(), 1120, 768);
+        pump(30);
+        w.setColourMode(mode);
+        w.setPage(busyPage());
+        std::vector<std::uint32_t> before, after;
+        int cw = 0, ch = 0;
+        CHECK(w.captureFrame(before, cw, ch));
+        w.setCrt(app::crtPresetFilter(app::CrtPreset::Classic));
+        CHECK(w.captureFrame(after, cw, ch));
+        CHECK(before != after);
+        const app::Viewport vp = w.renderInfo().viewport;
+        std::size_t offHue = 0, lit = 0;
+        for (int y = 0; y < vp.h; y += 2)
+            for (int x = 0; x < vp.w; x += 2) {
+                const std::uint32_t p = at(after, cw, vp.x + x, vp.y + y);
+                lit += greenOf(p) > 40;
+                offHue += !(redOf(p) <= greenOf(p) && blueOf(p) <= greenOf(p));
+            }
+        CHECK(lit > 100);
+        if (mode == ColourMode::NativeMono) CHECK(offHue == 0);
+    }
 }

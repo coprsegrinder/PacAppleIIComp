@@ -59,6 +59,68 @@ float4 psbg(VSOut i) : SV_Target {
     float n = frac(sin(dot(p, float2(12.9898, 78.233))) * 43758.5453) - 0.5;          // 1/255 of noise: the slow fades do not show steps
     return float4(saturate(lerp(g, e, w) + n / 255.0), 1.0);
 }
+// The CRT filter (crtfilter.h is the CPU model of exactly this): one pass over the picture's viewport.
+cbuffer Crt : register(b1) { float4 ca; float4 cb; float4 cc; };   // ca = viewport width, height, whole-number scale, texture width; cb = scan, sigma, tau, glow; cc = blend, curvature, gain, offset
+float3 srcLoad(float x, int row) {
+    int ix = clamp((int)floor(x * ca.w / 280.0 + 0.002), 0, (int)ca.w - 1);
+    return tex.Load(int3(ix, row, 0)).rgb;
+}
+float4 pscrt(VSOut i) : SV_Target {
+    float W = ca.x, H = ca.y;
+    float ccx = i.uv.x * 2.0 - 1.0, ccy = i.uv.y * 2.0 - 1.0;
+    if (cc.y > 0.0) {
+        float nx = ccx * (1.0 + cc.y * ccy * ccy), ny = ccy * (1.0 + cc.y * ccx * ccx);
+        ccx = nx;
+        ccy = ny;
+    }
+    float m = saturate((1.0 - abs(ccx)) * W * 0.5 + 0.5) * saturate((1.0 - abs(ccy)) * H * 0.5 + 0.5);
+    if (m <= 0.0) return float4(0.0, 0.0, 0.0, 1.0);
+    float gx = (ccx * 0.5 + 0.5) * 280.0, gy = (ccy * 0.5 + 0.5) * 192.0;
+    int row = clamp((int)floor(gy), 0, 191);
+    float fr = gy - floor(gy);
+    float scan = 1.0;
+    if (ca.z >= 3.0) scan = (1.0 - cb.x) + cb.x * (0.5 - 0.5 * cos(6.2831853 * fr));
+    else if (ca.z >= 2.0) scan = fr < 0.5 ? 1.0 : 1.0 - cb.x;
+    float3 acc = float3(0.0, 0.0, 0.0);
+    float sw = 0.0;
+    for (int t = -8; t <= 8; t++) {
+        float d = (float)t * 0.25;
+        float wt = cb.y > 0.0 ? exp(-d * d / (2.0 * cb.y * cb.y)) : (t == 0 ? 1.0 : 0.0);
+        if (cb.z > 0.0 && t < 0) wt += 0.25 * exp(d / cb.z);
+        if (wt > 0.0) {
+            float3 c = srcLoad(gx + d, row);
+            acc += wt * c * c;
+            sw += wt;
+        }
+    }
+    float3 col = acc / sw;
+    if (cc.x > 0.0) {
+        float3 bl = float3(0.0, 0.0, 0.0);
+        for (int e = -2; e <= 2; e++) {
+            float3 c = srcLoad(gx + (float)e * 0.5, row);
+            float3 l = c * c;
+            float y = dot(l, float3(0.299, 0.587, 0.114));
+            bl += (float)(3 - abs(e)) * (l - y);
+        }
+        float yc = dot(col, float3(0.299, 0.587, 0.114));
+        col += cc.x * (bl / 9.0 - (col - yc));
+    }
+    col *= scan;
+    if (cb.w > 0.0) {
+        float3 g = float3(0.0, 0.0, 0.0);
+        float gw = 0.0;
+        for (int j = -2; j <= 2; j++)
+            for (int k = -2; k <= 2; k++) {
+                float wt = exp(-(float)(k * k + j * j) / (2.0 * 1.44));
+                float3 c = tex.SampleLevel(lin, float2((gx + (float)k) / 280.0, (gy + (float)j) / 192.0), 0).rgb;
+                g += wt * c * c;
+                gw += wt;
+            }
+        col += g / gw * cb.w;
+    }
+    float3 o = saturate(sqrt(max(col, 0.0)) * cc.z + cc.w);
+    return float4(o * m, 1.0);
+}
 )";
 
 }  // namespace
@@ -72,7 +134,9 @@ struct D3dRenderer::Impl {
     ComPtr<ID3D11Texture2D> picture, mono;
     ComPtr<ID3D11ShaderResourceView> pictureView, monoView;
     ComPtr<ID3D11VertexShader> vs;
-    ComPtr<ID3D11PixelShader> ps, psBackground, psArt;
+    ComPtr<ID3D11PixelShader> ps, psBackground, psArt, psCrt;
+    ComPtr<ID3D11Buffer> crtConstants;
+    bool forceCrt = false;
     ComPtr<ID3D11Texture2D> art;
     ComPtr<ID3D11ShaderResourceView> artView;
     int artW = 0, artH = 0;
@@ -154,6 +218,18 @@ bool D3dRenderer::init(HWND hwnd) {
     if (FAILED(D3DCompile(kShader, std::strlen(kShader), nullptr, nullptr, nullptr, "psbg", "ps_4_0", 0, 0, &bgBlob, &err))) return false;
     if (FAILED(d.device->CreatePixelShader(bgBlob->GetBufferPointer(), bgBlob->GetBufferSize(), nullptr, &d.psBackground))) return false;
 
+    ComPtr<ID3DBlob> crtBlob;
+    if (FAILED(D3DCompile(kShader, std::strlen(kShader), nullptr, nullptr, nullptr, "pscrt", "ps_4_0", 0, 0, &crtBlob, &err))) return false;
+    if (FAILED(d.device->CreatePixelShader(crtBlob->GetBufferPointer(), crtBlob->GetBufferSize(), nullptr, &d.psCrt))) return false;
+    {
+        D3D11_BUFFER_DESC kb{};
+        kb.ByteWidth = 48;
+        kb.Usage = D3D11_USAGE_DYNAMIC;
+        kb.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+        kb.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+        if (FAILED(d.device->CreateBuffer(&kb, nullptr, &d.crtConstants))) return false;
+    }
+
     D3D11_TEXTURE2D_DESC td{};
     td.Width = kGameW;
     td.Height = kGameH;
@@ -212,7 +288,9 @@ void D3dRenderer::resize(int clientW, int clientH) {
     if (SUCCEEDED(d.swap->ResizeBuffers(0, static_cast<UINT>(clientW), static_cast<UINT>(clientH), DXGI_FORMAT_UNKNOWN, 0))) d.makeTarget();
 }
 
-bool D3dRenderer::draw(const std::uint32_t* argb, const Viewport& vp, const BackgroundFrame& bg, const std::uint32_t* mono560) {
+void D3dRenderer::forceCrtShader(bool on) { d_->forceCrt = on; }
+
+bool D3dRenderer::draw(const std::uint32_t* argb, const Viewport& vp, const BackgroundFrame& bg, const std::uint32_t* mono560, const CrtFilter* crt) {
     Impl& d = *d_;
     if (!d.swap || !d.rtv) return false;
     D3D11_MAPPED_SUBRESOURCE m{};
@@ -316,7 +394,21 @@ bool D3dRenderer::draw(const std::uint32_t* argb, const Viewport& vp, const Back
         d.context->IASetInputLayout(nullptr);
         d.context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         d.context->VSSetShader(d.vs.Get(), nullptr, 0);
-        d.context->PSSetShader(d.ps.Get(), nullptr, 0);
+        const bool useCrt = crt && (d.forceCrt || !crt->shaderNeutral());   // every option neutral: the plain nearest-neighbour shader, the picture exactly as before
+        d.context->PSSetShader(useCrt ? d.psCrt.Get() : d.ps.Get(), nullptr, 0);
+        if (useCrt) {
+            const CrtParams q = crtParams(*crt);
+            D3D11_MAPPED_SUBRESOURCE km{};
+            if (SUCCEEDED(d.context->Map(d.crtConstants.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &km))) {
+                const float c[12] = {static_cast<float>(vp.w), static_cast<float>(vp.h), static_cast<float>(vp.scale), mono560 ? 560.0f : 280.0f, q.scan, q.sigma, q.tau, q.glow, q.blend, q.curv, q.gain, q.offset};
+                std::memcpy(km.pData, c, sizeof(c));
+                d.context->Unmap(d.crtConstants.Get(), 0);
+            }
+            ID3D11Buffer* kbuf = d.crtConstants.Get();
+            d.context->PSSetConstantBuffers(1, 1, &kbuf);
+            ID3D11SamplerState* lsmp = d.linear.Get();
+            d.context->PSSetSamplers(1, 1, &lsmp);
+        }
         ID3D11ShaderResourceView* srv = mono560 ? d.monoView.Get() : d.pictureView.Get();
         d.context->PSSetShaderResources(0, 1, &srv);
         ID3D11SamplerState* smp = d.sampler.Get();

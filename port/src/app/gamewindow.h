@@ -22,6 +22,7 @@
 #include "display_layout.h"
 #include "background_art.h"
 #include "colourmode.h"
+#include "crtfilter.h"
 #include "framed_layout.h"
 #include "glow.h"
 #include "pausemenu.h"
@@ -97,6 +98,12 @@ public:
     ColourMode colourMode() const noexcept { return colour_; }
     void setColourMode(ColourMode m);
     void cycleColourMode(int dir) { setColourMode(nextColourMode(colour_, dir)); }
+    // CRT filter (TASK-034-9, crtfilter.h): nine independent options with several degrees each, all off by default (then the picture is exactly the program's own). Applied to the whole
+    // 280 x 192 picture including the pause menu (so a change can be seen while it is made); never touches the game, the clock or the sound.
+    const CrtFilter& crt() const noexcept { return crt_; }
+    void setCrt(const CrtFilter& f);
+    void stepCrtOption(CrtOption o, int dir);
+    void stepCrtPreset(int dir) { setCrt(crtPresetFilter(crtNextPreset(crtPresetOf(crt_), dir))); }
     void setBackground(Background b);                  // what is drawn around the picture (window thread); written to the settings
     void cycleBackground(int dir);
     Background background() const noexcept { return background_; }
@@ -141,6 +148,9 @@ private:
     bool scalePending_ = false;         // setScale() was called in full screen: applies when leaving it
     Background background_ = Background::Black;
     ColourMode colour_ = ColourMode::Original;
+    CrtFilter crt_, crtDraw_;
+    std::vector<std::uint32_t> trailPrev_, trailPrevMono_;   // the afterglow: the last pictures shown
+    bool afterglowBusy_ = false;                              // a trail is still fading: keep repainting
     std::vector<std::uint8_t> monoDots_;       // the dot positions of the screen shown by setImage (when the program gave them), guarded by mutex_
     bool monoDotsValid_ = false;
     std::vector<std::uint32_t> mono560_;       // the monochrome picture of the last currentPixels() call (Native Black & White only)

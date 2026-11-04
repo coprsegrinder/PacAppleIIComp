@@ -8,6 +8,7 @@
 
 #include "background.h"
 #include "colourmode.h"
+#include "crtfilter.h"
 
 namespace pacman::app {
 
@@ -21,6 +22,7 @@ struct Settings {
     bool windowBorders = true;                              // windowed mode: title bar and frame
     Background background = Background::Black;              // what is drawn around the picture
     ColourMode colourMode = ColourMode::Original;           // the picture as the colour TV showed it, or as a monochrome Apple II monitor showed it
+    CrtFilter crt;                                          // the CRT filter options (all off = the picture exactly as the program makes it)
     int desktopScale = 0;                                   // the Apple II desktop's window: its picture scale (0 = the largest that fits) and its place (game pixels from the centred place)
     float desktopX = 0.0f, desktopY = 0.0f;
     bool hasWindowRect = false;                             // the picture area of the window as the user left it (screen position and size in pixels)

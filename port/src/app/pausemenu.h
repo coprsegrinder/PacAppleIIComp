@@ -15,9 +15,9 @@ namespace pacman::app {
 
 class PauseMenu {
 public:
-    enum class Page { Closed, Main, Graphics, Confirm };
+    enum class Page { Closed, Main, Graphics, Crt, Confirm };
     enum class Key { Up, Down, Left, Right, Select, Back };
-    enum class Action { None, Resume, Quit, ToggleBorders, NextDisplayMode, PreviousDisplayMode, NextResolution, PreviousResolution, NextBackground, PreviousBackground, NextColourMode, PreviousColourMode };
+    enum class Action { None, Resume, Quit, ToggleBorders, NextDisplayMode, PreviousDisplayMode, NextResolution, PreviousResolution, NextBackground, PreviousBackground, NextColourMode, PreviousColourMode, NextCrtPreset, PreviousCrtPreset, CrtOptionStep };
     struct Point { int x, y; };
     // What the pages show (the program's present state).
     struct View {
@@ -25,6 +25,7 @@ public:
         bool borders = true;
         Background background = Background::Black;
         ColourMode colourMode = ColourMode::Original;
+        CrtFilter crt;
         std::string resolution = "1920X1080 (16:9)";   // the Resolution entry's value: a listed size, CUSTOM WxH, or the desktop WxH in Borderless Fullscreen
     };
 
@@ -35,6 +36,8 @@ public:
     Page page() const noexcept { return page_; }
     int selected() const noexcept { return selected_; }
     int itemCount() const noexcept;
+    CrtOption crtOption() const noexcept { return crtOption_; }   // after Action::CrtOptionStep: which option, and which way (+1 / -1)
+    int crtDir() const noexcept { return crtDir_; }
 
     void show();                                   // opens the main page with "Resume" selected
     void hide();
@@ -53,6 +56,9 @@ private:
     int firstRow() const noexcept;
     Page page_ = Page::Closed;
     int selected_ = 0;
+    CrtOption crtOption_ = CrtOption::Scanlines;
+    int crtDir_ = 1;
+    Action crtStep(int dir);                       // the CRT page entry selected, changed one degree
 };
 
 }  // namespace pacman::app

@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -106,6 +107,19 @@ void GameWindow::setColourMode(ColourMode m) {
     settings_.colourMode = m;
     if (hwnd_) InvalidateRect(hwnd_, nullptr, FALSE);
     saveSettings();
+}
+
+void GameWindow::setCrt(const CrtFilter& f) {
+    crt_ = f;
+    settings_.crt = f;
+    if (hwnd_) InvalidateRect(hwnd_, nullptr, FALSE);
+    saveSettings();
+}
+
+void GameWindow::stepCrtOption(CrtOption o, int dir) {
+    CrtFilter f = crt_;
+    crtStep(f, o, dir);
+    setCrt(f);
 }
 
 std::optional<std::uint8_t> GameWindow::popKey() {
@@ -321,6 +335,7 @@ const Settings& GameWindow::settings() {
     settings_.windowBorders = borders_;
     settings_.background = background_;
     settings_.colourMode = colour_;
+    settings_.crt = crt_;
     settings_.desktopScale = desk_.scale;
     settings_.desktopX = desk_.offX;
     settings_.desktopY = desk_.offY;
@@ -413,6 +428,7 @@ void GameWindow::attachSettings(SettingsStore* store, const Settings& initial) {
     wantedMode_ = initial.displayMode;
     background_ = initial.background;
     colour_ = initial.colourMode;
+    crt_ = initial.crt;
     desk_.scale = initial.desktopScale;
     desk_.offX = initial.desktopX;
     desk_.offY = initial.desktopY;
@@ -541,6 +557,17 @@ void GameWindow::currentPixels(std::uint32_t* out, double glowDtSeconds) {
         video::phosphorImage(level, mono560_);
         video::phosphorImage280(level, pixels);   // the normal-size picture of the same thing, for the glow and the frame's edge colours
     }
+    if (crt_.afterglow > 0) {   // the phosphor's persistence: the old picture fades instead of vanishing (per colour channel, over time)
+        const float f = std::pow(crtAfterglowDecay(crt_.afterglow), static_cast<float>(std::min(glowDtSeconds, 0.25) * 60.0));
+        bool trail = applyAfterglow(trailPrev_, pixels.data(), pixels.size(), f);
+        if (colour_ == ColourMode::NativeMono) trail = applyAfterglow(trailPrevMono_, mono560_.data(), mono560_.size(), f) || trail;
+        else trailPrevMono_.clear();
+        afterglowBusy_ = trail;
+    } else {
+        trailPrev_.clear();
+        trailPrevMono_.clear();
+        afterglowBusy_ = false;
+    }
     glow_.update(pixels.data(), glowDtSeconds, GlowField::kBlurRadius);   // the backdrop of the ambient glow: from the game's own picture, before the menu is put over it
     glow_.updateEdges(pixels.data());
     if (menu_.open()) {   // the game dimmed to a quarter, the menu panel in black with white text
@@ -550,6 +577,7 @@ void GameWindow::currentPixels(std::uint32_t* out, double glowDtSeconds) {
         view.borders = borders_;
         view.background = background_;
         view.colourMode = colour_;
+        view.crt = crt_;
         {
             const RenderInfo ri = renderInfo();
             view.resolution = fullscreen_ ? std::to_string(ri.displayW) + "X" + std::to_string(ri.displayH) : resolutionLabel(ri.displayW, ri.displayH);
@@ -570,6 +598,8 @@ void GameWindow::currentPixels(std::uint32_t* out, double glowDtSeconds) {
                 }
             }
     }
+    crtDraw_ = crt_;
+    if (colour_ == ColourMode::NativeMono) crtDraw_.blend = 0;   // colour blending is about colours: the one phosphor colour has nothing to blend
     std::copy(pixels.begin(), pixels.end(), out);
 }
 
@@ -592,6 +622,9 @@ void GameWindow::menuAction(PauseMenu::Action a) {
         break;
     case PauseMenu::Action::NextColourMode: cycleColourMode(1); break;
     case PauseMenu::Action::PreviousColourMode: cycleColourMode(-1); break;
+    case PauseMenu::Action::NextCrtPreset: stepCrtPreset(1); break;
+    case PauseMenu::Action::PreviousCrtPreset: stepCrtPreset(-1); break;
+    case PauseMenu::Action::CrtOptionStep: stepCrtOption(menu_.crtOption(), menu_.crtDir()); break;
     case PauseMenu::Action::NextBackground: cycleBackground(1); break;
     case PauseMenu::Action::PreviousBackground: cycleBackground(-1); break;
     case PauseMenu::Action::NextResolution: cycleResolution(1); break;
@@ -679,7 +712,7 @@ bool GameWindow::captureFrame(std::vector<std::uint32_t>& argb, int& w, int& h) 
     std::array<std::uint32_t, kW * kH> pixels{};
     currentPixels(pixels.data(), 1e9);   // a test frame: the glow takes the picture as it is, no smoothing in time
     const Viewport vp = viewportFor(d3d_->width(), d3d_->height());
-    if (!d3d_->draw(pixels.data(), vp, backgroundFrame(d3d_->width(), d3d_->height(), vp), colour_ == ColourMode::NativeMono ? mono560_.data() : nullptr)) return false;
+    if (!d3d_->draw(pixels.data(), vp, backgroundFrame(d3d_->width(), d3d_->height(), vp), colour_ == ColourMode::NativeMono ? mono560_.data() : nullptr, &crtDraw_)) return false;
     return d3d_->readBack(argb, w, h);
 }
 
@@ -696,7 +729,7 @@ void GameWindow::paint() {
     if (d3d_) {   // Direct3D 11: same picture, same whole-number scale, same bars
         d3d_->resize(static_cast<int>(rc.right), static_cast<int>(rc.bottom));
         const Viewport vp = viewportFor(d3d_->width(), d3d_->height());
-        if (d3d_->draw(pixels.data(), vp, backgroundFrame(d3d_->width(), d3d_->height(), vp), colour_ == ColourMode::NativeMono ? mono560_.data() : nullptr)) d3d_->present();
+        if (d3d_->draw(pixels.data(), vp, backgroundFrame(d3d_->width(), d3d_->height(), vp), colour_ == ColourMode::NativeMono ? mono560_.data() : nullptr, &crtDraw_)) d3d_->present();
         EndPaint(hwnd_, &ps);
         return;
     }
@@ -813,7 +846,7 @@ LRESULT GameWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
             bool changed;
             {
                 std::lock_guard<std::mutex> lock(mutex_);
-                changed = pageVersion_ != paintedVersion_;
+                changed = pageVersion_ != paintedVersion_ || afterglowBusy_;
             }
             if (changed) InvalidateRect(hwnd_, nullptr, FALSE);
         }

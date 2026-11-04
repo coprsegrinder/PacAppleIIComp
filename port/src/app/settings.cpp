@@ -98,6 +98,7 @@ std::string SettingsStore::format(const Settings& s) {
     o << "window_borders=" << (s.windowBorders ? 1 : 0) << "\n";
     o << "background=" << backgroundKey(s.background) << "\n";
     o << "colour_mode=" << colourModeKey(s.colourMode) << "\n";
+    for (int i = 0; i < kCrtOptionCount; ++i) o << crtOptionKey(static_cast<CrtOption>(i)) << "=" << crtGet(s.crt, static_cast<CrtOption>(i)) << "\n";
     if (s.desktopScale != 0 || s.desktopX != 0.0f || s.desktopY != 0.0f) {
         char buf[64];
         std::snprintf(buf, sizeof(buf), "desktop_x=%.2f\ndesktop_y=%.2f\n", static_cast<double>(s.desktopX), static_cast<double>(s.desktopY));
@@ -139,6 +140,12 @@ Settings SettingsStore::parse(const std::string& text) {
         } else if (key == "background") {
             Background bg;
             if (parseBackground(value, bg)) s.background = bg;
+        } else if (key.rfind("crt_", 0) == 0) {
+            int n;
+            for (int i = 0; i < kCrtOptionCount; ++i) {
+                const CrtOption opt = static_cast<CrtOption>(i);
+                if (key == crtOptionKey(opt) && parseInt(value, n) && n >= 0 && n < crtLevelCount(opt)) crtSet(s.crt, opt, n);
+            }
         } else if (key == "desktop_scale") {
             int n;
             if (parseInt(value, n) && n >= 0 && n <= 64) s.desktopScale = n;

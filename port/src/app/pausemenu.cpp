@@ -18,15 +18,26 @@ constexpr int kHintRow = 19;
 int PauseMenu::itemCount() const noexcept {
     switch (page_) {
     case Page::Main: return 3;       // Resume, Graphics Settings, Quit Game
-    case Page::Graphics: return 6;   // Display Mode, Resolution, Window Borders, Background, Colour Mode, Back
+    case Page::Graphics: return 7;   // Display Mode, Resolution, Window Borders, Background, Colour Mode, CRT Filter, Back
+    case Page::Crt: return 11;       // Preset, the nine options, Back
     case Page::Confirm: return 2;    // Confirm, Cancel
     case Page::Closed: break;
     }
     return 0;
 }
 
-int PauseMenu::rowStep() const noexcept { return page_ == Page::Graphics ? 1 : 2; }
-int PauseMenu::firstRow() const noexcept { return page_ == Page::Graphics ? 8 : 9; }
+int PauseMenu::rowStep() const noexcept { return (page_ == Page::Graphics || page_ == Page::Crt) ? 1 : 2; }
+int PauseMenu::firstRow() const noexcept { return page_ == Page::Graphics ? 8 : page_ == Page::Crt ? 6 : 9; }
+
+PauseMenu::Action PauseMenu::crtStep(int dir) {
+    if (selected_ == 0) return dir > 0 ? Action::NextCrtPreset : Action::PreviousCrtPreset;
+    if (selected_ >= 1 && selected_ <= kCrtOptionCount) {
+        crtOption_ = static_cast<CrtOption>(selected_ - 1);
+        crtDir_ = dir;
+        return Action::CrtOptionStep;
+    }
+    return Action::None;
+}
 
 void PauseMenu::show() {
     page_ = Page::Main;
@@ -59,9 +70,21 @@ PauseMenu::Action PauseMenu::activate() {
         if (selected_ == 2) return Action::ToggleBorders;
         if (selected_ == 3) return Action::NextBackground;
         if (selected_ == 4) return Action::NextColourMode;
+        if (selected_ == 5) {
+            page_ = Page::Crt;
+            selected_ = 0;
+            return Action::None;
+        }
         page_ = Page::Main;
         selected_ = 1;
         return Action::None;
+    case Page::Crt:
+        if (selected_ == kCrtOptionCount + 1) {
+            page_ = Page::Graphics;
+            selected_ = 5;
+            return Action::None;
+        }
+        return crtStep(1);
     case Page::Confirm:
         if (selected_ == 0) return Action::Quit;
         page_ = Page::Main;
@@ -85,12 +108,19 @@ PauseMenu::Action PauseMenu::key(Key k) {
         if (page_ == Page::Graphics && selected_ == 2) return Action::ToggleBorders;
         if (page_ == Page::Graphics && selected_ == 3) return k == Key::Left ? Action::PreviousBackground : Action::NextBackground;
         if (page_ == Page::Graphics && selected_ == 4) return k == Key::Left ? Action::PreviousColourMode : Action::NextColourMode;
+        if (page_ == Page::Graphics && selected_ == 5) return k == Key::Left ? Action::PreviousCrtPreset : Action::NextCrtPreset;
+        if (page_ == Page::Crt) return crtStep(k == Key::Left ? -1 : 1);
         return Action::None;
     case Key::Select: return activate();
     case Key::Back:
         if (page_ == Page::Main) {
             hide();
             return Action::Resume;
+        }
+        if (page_ == Page::Crt) {   // back to the graphics page, on the entry that led here
+            page_ = Page::Graphics;
+            selected_ = 5;
+            return Action::None;
         }
         selected_ = page_ == Page::Graphics ? 1 : 2;   // back to the main page, on the entry that led here
         page_ = Page::Main;
@@ -149,7 +179,18 @@ void PauseMenu::render(const core::CharacterRom& rom, const View& view, std::vec
     case Page::Graphics:
         title = "GRAPHICS SETTINGS";
         items = {std::string("DISPLAY MODE: ") + displayModeLabel(view.displayMode), "RESOLUTION: " + view.resolution, view.borders ? "WINDOW BORDERS: ON" : "WINDOW BORDERS: OFF", std::string("BACKGROUND: ") + backgroundLabel(view.background),
-                 std::string("COLOUR MODE: ") + colourModeLabel(view.colourMode), "BACK"};
+                 std::string("COLOUR MODE: ") + colourModeLabel(view.colourMode),
+                 std::string("CRT FILTER: ") + crtPresetLabel(crtPresetOf(view.crt)) + " >", "BACK"};
+        hint = "UP DOWN  LEFT RIGHT CHANGE  ESC BACK";
+        break;
+    case Page::Crt:
+        title = "CRT FILTER";
+        items.push_back(std::string("PRESET: ") + crtPresetLabel(crtPresetOf(view.crt)));
+        for (int i = 0; i < kCrtOptionCount; ++i) {
+            const CrtOption o = static_cast<CrtOption>(i);
+            items.push_back(std::string(crtOptionLabel(o)) + ": " + crtLevelLabel(o, crtGet(view.crt, o)));
+        }
+        items.push_back("BACK");
         hint = "UP DOWN  LEFT RIGHT CHANGE  ESC BACK";
         break;
     case Page::Confirm:
