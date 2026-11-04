@@ -6,6 +6,7 @@ using System; using System.Runtime.InteropServices;
 public class W5 {
   [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, uint m, IntPtr w, IntPtr l);
   [DllImport("user32.dll")] public static extern int GetSystemMetrics(int i);
+  [DllImport("user32.dll")] public static extern int GetWindowLongW(IntPtr h, int i);
 }
 "@
 $root = Split-Path -Parent $PSScriptRoot
@@ -47,6 +48,15 @@ $size2 = [regex]::Match($line2, "client=(\d+x\d+)").Groups[1].Value
 "Right again gives another listed size ($size2): " + ($listed -contains $size2 -and $size2 -ne $size)
 Key $h 0x25
 "Left goes back to $size : " + ([regex]::Match((LastLog), "client=(\d+x\d+)").Groups[1].Value -eq $size)
+# 2b. Window Borders (TASK-034-6): the title bar and frame of the window itself (its style, read from outside) go and come back, without a restart
+function HasCaption($h) { return (([W5]::GetWindowLongW($h, -16)) -band 0xC00000) -eq 0xC00000 }
+"windowed starts with the title bar: " + (HasCaption $h)
+Key $h 0x28; Key $h 0x0D   # Down (Window Borders), Enter: the frame goes
+"Window Borders off: no title bar, the program keeps running: " + ((-not (HasCaption $h)) -and -not $p.HasExited)
+Key $h 0x0D
+"Window Borders on again: the title bar is back: " + (HasCaption $h)
+Key $h 0x0D   # off again: this is what the next start must keep
+"off again: " + (-not (HasCaption $h))
 Key $h 0x1B; Key $h 0x1B   # back to the game
 $null = Start-Sleep -Milliseconds 500
 $text = Get-Content $settings -Raw
@@ -65,6 +75,9 @@ $w = [int]([regex]::Match($text, "window_w=(\d+)").Groups[1].Value); $hh = [int]
 Remove-Item $log -ErrorAction SilentlyContinue
 $p = Launch ""
 "restart restores windowed ${w}x${hh}: " + ((LastLog) -match "mode=windowed" -and (LastLog) -match "client=${w}x${hh}")
+"restart keeps the frame off (no title bar from the first moment): " + (-not (HasCaption $p.MainWindowHandle))
+Key $p.MainWindowHandle 0x77   # F8
+"F8 brings the title bar back: " + (HasCaption $p.MainWindowHandle)
 Stop-Process -Id $p.Id -Force
 
 # 5. a damaged settings file does not stop the program (defaults: borderless)

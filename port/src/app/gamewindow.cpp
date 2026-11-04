@@ -148,7 +148,8 @@ void GameWindow::setBorders(bool on) {
         saveSettings();
         return;
     }
-    if (IsZoomed(hwnd_)) ShowWindow(hwnd_, SW_RESTORE);
+    const bool wasZoomed = IsZoomed(hwnd_) != FALSE;   // a maximised window stays maximised (it is restored for the change, then maximised again)
+    if (wasZoomed) ShowWindow(hwnd_, SW_RESTORE);
     RECT cr{};
     GetClientRect(hwnd_, &cr);
     POINT origin{0, 0};
@@ -156,8 +157,26 @@ void GameWindow::setBorders(bool on) {
     const bool visible = (GetWindowLongW(hwnd_, GWL_STYLE) & WS_VISIBLE) != 0;
     borders_ = on;
     SetWindowLongW(hwnd_, GWL_STYLE, windowedStyle() | (visible ? static_cast<LONG>(WS_VISIBLE) : 0));
-    const RECT r = outerRect(origin.x, origin.y, static_cast<int>(cr.right), static_cast<int>(cr.bottom));   // the picture stays exactly where it is
-    SetWindowPos(hwnd_, nullptr, r.left, r.top, r.right - r.left, r.bottom - r.top, SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+    // the picture stays exactly where it is; only if the frame makes the window larger than the monitor's work area (a picture area that filled it) the picture area gives way
+    int cw = static_cast<int>(cr.right), ch = static_cast<int>(cr.bottom);
+    RECT r = outerRect(origin.x, origin.y, cw, ch);
+    MONITORINFO mi{};
+    mi.cbSize = sizeof(mi);
+    GetMonitorInfoW(MonitorFromRect(&r, MONITOR_DEFAULTTONEAREST), &mi);
+    const int overW = std::max(0, static_cast<int>(r.right - r.left) - static_cast<int>(mi.rcWork.right - mi.rcWork.left));
+    const int overH = std::max(0, static_cast<int>(r.bottom - r.top) - static_cast<int>(mi.rcWork.bottom - mi.rcWork.top));
+    if (overW > 0 || overH > 0) {
+        cw = std::max(kMinClientW, cw - overW);
+        ch = std::max(kMinClientH, ch - overH);
+        r = outerRect(origin.x, origin.y, cw, ch);
+    }
+    int dx = 0, dy = 0;   // and the window is brought back onto the monitor if the frame pushed it over an edge
+    if (r.right > mi.rcWork.right) dx = static_cast<int>(mi.rcWork.right - r.right);
+    if (r.bottom > mi.rcWork.bottom) dy = static_cast<int>(mi.rcWork.bottom - r.bottom);
+    if (r.left + dx < mi.rcWork.left) dx = static_cast<int>(mi.rcWork.left - r.left);
+    if (r.top + dy < mi.rcWork.top) dy = static_cast<int>(mi.rcWork.top - r.top);
+    SetWindowPos(hwnd_, nullptr, r.left + dx, r.top + dy, r.right - r.left, r.bottom - r.top, SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+    if (wasZoomed) ShowWindow(hwnd_, SW_MAXIMIZE);
     InvalidateRect(hwnd_, nullptr, FALSE);
     saveSettings();
 }

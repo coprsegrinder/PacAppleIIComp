@@ -1806,3 +1806,284 @@ TEST(resolution_entry_in_borderless_fullscreen_shows_the_desktop_size_without_a_
     SendMessageW(w.hwnd(), WM_KEYDOWN, VK_ESCAPE, 1);
     w.setDisplayMode(DisplayMode::Windowed);
 }
+
+// ---- TASK-034-6: Window Borders (title bar and frame of the windowed mode) ----
+namespace {
+
+RECT workAreaOf(HWND h) {
+    MONITORINFO mi{};
+    mi.cbSize = sizeof(mi);
+    GetMonitorInfoW(MonitorFromWindow(h, MONITOR_DEFAULTTONEAREST), &mi);
+    return mi.rcWork;
+}
+
+bool hasCaption(HWND h) { return (GetWindowLongW(h, GWL_STYLE) & WS_CAPTION) == WS_CAPTION; }
+
+}  // namespace
+
+TEST(window_borders_both_states_are_resizable_and_the_switch_needs_no_restart) {
+    GameWindow w(GameWindowOptions{3, true});
+    CHECK(w.ok());
+    if (!w.ok()) return;
+    const HWND h = w.hwnd();
+    const hires::Page page = busyPage();
+    w.setPage(page);
+    setClient(h, 1000, 700);
+    pump(30);
+    const auto hit = [&](int x, int y) { return static_cast<int>(SendMessageW(h, WM_NCHITTEST, 0, MAKELPARAM(static_cast<short>(x), static_cast<short>(y)))); };
+    for (int round = 0; round < 3; ++round) {
+        // frame on: the Windows frame, title bar, maximise button; Windows finds the resize edges itself
+        CHECK(w.borders() && hasCaption(h));
+        CHECK((GetWindowLongW(h, GWL_STYLE) & (WS_THICKFRAME | WS_MAXIMIZEBOX | WS_MINIMIZEBOX | WS_SYSMENU)) == (WS_THICKFRAME | WS_MAXIMIZEBOX | WS_MINIMIZEBOX | WS_SYSMENU));
+        RECT wr{};
+        GetWindowRect(h, &wr);
+        CHECK(hit(wr.left + 1, (wr.top + wr.bottom) / 2) == HTLEFT && hit(wr.right - 2, wr.bottom - 2) == HTBOTTOMRIGHT && hit(wr.left + 100, wr.top + 10) == HTCAPTION);
+        w.setBorders(false);   // no restart: the very same window
+        pump(30);
+        CHECK(!w.borders() && !hasCaption(h) && (GetWindowLongW(h, GWL_STYLE) & WS_THICKFRAME) != 0 && IsWindowVisible(h) != FALSE);
+        GetWindowRect(h, &wr);
+        CHECK(hit(wr.left + 1, (wr.top + wr.bottom) / 2) == HTLEFT && hit(wr.right - 2, wr.bottom - 2) == HTBOTTOMRIGHT && hit(wr.right - 2, wr.top + 1) == HTTOPRIGHT);   // the edges still resize it
+        CHECK(clientSize(h).cx == 1000 && clientSize(h).cy == 700);
+        if (w.usesDirect3d()) {
+            std::vector<std::uint32_t> got;
+            int cw = 0, ch = 0;
+            CHECK(w.captureFrame(got, cw, ch));
+            CHECK(cw == 1000 && ch == 700 && differences(got, expected(page, cw, ch)) == 0);
+        }
+        w.setBorders(true);
+        pump(30);
+    }
+}
+
+TEST(window_borders_a_maximised_window_stays_maximised_when_the_frame_is_switched) {
+    GameWindow w(GameWindowOptions{3, true});
+    CHECK(w.ok());
+    if (!w.ok()) return;
+    const HWND h = w.hwnd();
+    const hires::Page page = busyPage();
+    w.setPage(page);
+    setClient(h, 900, 600);
+    pump(30);
+    ShowWindow(h, SW_MAXIMIZE);
+    pump(60);
+    CHECK(IsZoomed(h) != FALSE);
+    const RECT work = workAreaOf(h);
+    w.setBorders(false);
+    pump(60);
+    CHECK(IsZoomed(h) != FALSE && !hasCaption(h));
+    // a maximised window without frame is exactly the work area (no overhanging frame)
+    CHECK(clientSize(h).cx == work.right - work.left && clientSize(h).cy == work.bottom - work.top);
+    if (w.usesDirect3d()) {
+        std::vector<std::uint32_t> got;
+        int cw = 0, ch = 0;
+        CHECK(w.captureFrame(got, cw, ch));
+        CHECK(cw == work.right - work.left && ch == work.bottom - work.top && differences(got, expected(page, cw, ch)) == 0);
+    }
+    w.setBorders(true);
+    pump(60);
+    CHECK(IsZoomed(h) != FALSE && hasCaption(h) && clientSize(h).cx <= work.right - work.left && clientSize(h).cy < work.bottom - work.top);
+    ShowWindow(h, SW_RESTORE);   // restoring gives the normal window back (not a window the size of the screen)
+    pump(60);
+    CHECK(!IsZoomed(h) && clientSize(h).cx == 900 && clientSize(h).cy == 600);
+}
+
+TEST(window_borders_switching_the_frame_on_never_leaves_the_window_larger_than_the_screen) {
+    GameWindow w(GameWindowOptions{3, true});
+    CHECK(w.ok());
+    if (!w.ok()) return;
+    const HWND h = w.hwnd();
+    const hires::Page page = busyPage();
+    w.setPage(page);
+    w.setBorders(false);
+    pump(30);
+    const RECT work = workAreaOf(h);
+    SetWindowPos(h, nullptr, work.left, work.top, work.right - work.left, work.bottom - work.top, SWP_NOZORDER | SWP_NOACTIVATE);   // a bare window as big as the work area
+    pump(40);
+    CHECK(clientSize(h).cx == work.right - work.left && clientSize(h).cy == work.bottom - work.top);
+    w.setBorders(true);
+    pump(40);
+    RECT wr{};
+    GetWindowRect(h, &wr);
+    CHECK(hasCaption(h));
+    CHECK(wr.left >= work.left && wr.top >= work.top && wr.right <= work.right && wr.bottom <= work.bottom);   // the picture area gave way, the window is all on the monitor
+    CHECK(clientSize(h).cx >= 140 && clientSize(h).cy >= 96 && clientSize(h).cx < work.right - work.left);
+    if (w.usesDirect3d()) {
+        std::vector<std::uint32_t> got;
+        int cw = 0, ch = 0;
+        CHECK(w.captureFrame(got, cw, ch));
+        CHECK(cw == clientSize(h).cx && ch == clientSize(h).cy && differences(got, expected(page, cw, ch)) == 0);
+    }
+    // a window pushed against the right/bottom edge: the frame does not push it off the screen
+    w.setBorders(false);
+    pump(30);
+    setClient(h, 800, 500);
+    SetWindowPos(h, nullptr, work.right - 800, work.bottom - 500, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+    pump(30);
+    w.setBorders(true);
+    pump(30);
+    GetWindowRect(h, &wr);
+    CHECK(wr.right <= work.right && wr.bottom <= work.bottom && wr.left >= work.left && wr.top >= work.top);
+}
+
+TEST(window_borders_apply_to_windowed_mode_only_and_the_menu_says_so) {
+    core::CharacterRom rom;
+    const bool haveFont = loadFont(rom);
+    // the menu's note: only on the Window Borders entry, only while Borderless Fullscreen is active
+    if (haveFont) {
+        PauseMenu m;
+        m.show();
+        m.key(PauseMenu::Key::Down);
+        m.key(PauseMenu::Key::Select);
+        m.key(PauseMenu::Key::Down);
+        m.key(PauseMenu::Key::Down);   // Window Borders
+        PauseMenu::View windowed, borderless;
+        windowed.displayMode = DisplayMode::Windowed;
+        borderless.displayMode = DisplayMode::Borderless;
+        std::vector<std::uint8_t> a, b, c;
+        const auto rowsThatDiffer = [](const std::vector<std::uint8_t>& p, const std::vector<std::uint8_t>& q) {
+            std::vector<int> rows;
+            for (int y = 0; y < 192; ++y) {
+                bool differs = false;
+                for (int x = 0; x < 280; ++x) differs |= p[static_cast<std::size_t>(y) * 280 + static_cast<std::size_t>(x)] != q[static_cast<std::size_t>(y) * 280 + static_cast<std::size_t>(x)];
+                if (differs) rows.push_back(y);
+            }
+            return rows;
+        };
+        m.render(rom, windowed, a);
+        m.render(rom, borderless, b);
+        // the two views differ in the Display Mode entry (text row 8) and, with Window Borders selected, in the note (text row 17); nowhere else
+        int inEntry = 0, inNote = 0, elsewhere = 0;
+        for (int y : rowsThatDiffer(a, b)) (y >= 8 * 8 && y < 9 * 8 ? inEntry : y >= 17 * 8 && y < 18 * 8 ? inNote : elsewhere)++;
+        CHECK(inEntry > 0 && inNote > 0 && elsewhere == 0);
+        m.key(PauseMenu::Key::Up);   // Resolution selected: no note any more
+        m.render(rom, windowed, a);
+        m.render(rom, borderless, c);
+        inEntry = inNote = elsewhere = 0;
+        for (int y : rowsThatDiffer(a, c)) (y >= 8 * 8 && y < 9 * 8 ? inEntry : y >= 17 * 8 && y < 18 * 8 ? inNote : elsewhere)++;
+        CHECK(inEntry > 0 && inNote == 0 && elsewhere == 0);
+    }
+    // in Borderless Fullscreen the entry changes the setting, the window does not change, and the frame is there when the window comes back
+    GameWindow w(GameWindowOptions{3, true});
+    CHECK(w.ok());
+    if (!w.ok()) return;
+    setClient(w.hwnd(), 1000, 700);
+    pump(30);
+    w.setDisplayMode(DisplayMode::Borderless);
+    pump(60);
+    const SIZE full = clientSize(w.hwnd());
+    w.setBorders(false);
+    pump(30);
+    CHECK(!w.borders() && w.fullscreen() && clientSize(w.hwnd()).cx == full.cx && clientSize(w.hwnd()).cy == full.cy);
+    w.setDisplayMode(DisplayMode::Windowed);
+    pump(60);
+    CHECK(!hasCaption(w.hwnd()) && clientSize(w.hwnd()).cx == 1000 && clientSize(w.hwnd()).cy == 700);
+    w.setBorders(true);
+    pump(30);
+    CHECK(hasCaption(w.hwnd()) && clientSize(w.hwnd()).cx == 1000 && clientSize(w.hwnd()).cy == 700);
+}
+
+TEST(window_borders_switching_changes_nothing_in_the_game_or_its_clock) {
+    if (testfw::config().image.empty()) {
+        std::printf("    SKIPPED (needs --image)\n");
+        return;
+    }
+    datapack::Pack pack;
+    CHECK(flowtest::loadPack(pack));
+    constexpr int kTicks = 150000;
+    struct Result { std::vector<std::uint8_t> page; unsigned score = 0, level = 0; int changes = 0; };
+    const auto run = [&](bool disturb) {
+        Result res;
+        core::GameDriver drv;
+        CHECK(drv.init(pack) && drv.newGame());
+        GameWindow w(GameWindowOptions{3, true});
+        CHECK(w.ok());
+        std::atomic<bool> done{false};
+        std::thread worker([&] {
+            for (int t = 0; t < kTicks; ++t) {
+                drv.tick();
+                if (t % 3 == 0) w.setPage(drv.page());
+                if (t % 1000 == 0) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+            done = true;
+        });
+        while (!done) {
+            if (disturb) {
+                w.setBorders(!w.borders());
+                ++res.changes;
+            }
+            pump(5);
+        }
+        worker.join();
+        for (std::size_t i = 0; i < hires::kPageBytes; ++i) res.page.push_back(drv.page().byte(i));
+        res.score = drv.core().state().zp(0x52);
+        res.level = drv.core().state().level();
+        return res;
+    };
+    const Result plain = run(false);
+    const Result disturbed = run(true);
+    std::printf("    %d ticks; %d frame switches while it ran; page equal %d\n", kTicks, disturbed.changes, plain.page == disturbed.page);
+    CHECK(disturbed.changes >= 6);
+    CHECK(plain.page == disturbed.page && plain.score == disturbed.score && plain.level == disturbed.level);
+    GameWindow w(GameWindowOptions{3, true});
+    CHECK(w.ok());
+    core::CycleClock clock;
+    const std::int64_t t0 = core::nowNanoseconds();
+    clock.start(t0);
+    std::atomic<bool> done{false};
+    std::int64_t handed = 0, endNs = 0;
+    std::thread worker([&] {
+        while (core::nowNanoseconds() - t0 < 800'000'000) {
+            handed += clock.cyclesDue(core::nowNanoseconds());
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        endNs = core::nowNanoseconds();
+        handed += clock.cyclesDue(endNs);
+        done = true;
+    });
+    int changes = 0;
+    while (!done) {
+        w.setBorders(!w.borders());
+        ++changes;
+        pump(15);
+    }
+    worker.join();
+    const std::int64_t exact = clock.cyclesIn(endNs - t0);
+    std::printf("    %d frame switches in 0.8 s; cycles handed out %lld, exact %lld, skipped %lld\n", changes, static_cast<long long>(handed), static_cast<long long>(exact), static_cast<long long>(clock.skipped()));
+    CHECK(changes >= 10);
+    CHECK(handed == exact && clock.skipped() == 0);
+}
+
+TEST(window_borders_setting_is_saved_at_once_and_restored_with_the_window) {
+    const auto dir = scratchDir("borders");
+    SettingsStore store((dir / "settings.ini").wstring());
+    Settings start;
+    start.displayMode = DisplayMode::Windowed;
+    {
+        GameWindow w(GameWindowOptions{3, true});
+        CHECK(w.ok());
+        if (!w.ok()) return;
+        w.attachSettings(&store, start);
+        setClient(w.hwnd(), 1000, 700);
+        pump(30);
+        w.setBorders(false);
+        CHECK(!store.load().windowBorders);   // written at the change, not only at the exit
+        w.setBorders(true);
+        CHECK(store.load().windowBorders);
+        w.setBorders(false);
+    }
+    const Settings kept = store.load();
+    CHECK(!kept.windowBorders && kept.hasWindowRect && kept.windowW == 1000 && kept.windowH == 700);
+    {
+        GameWindow w(GameWindowOptions{3, true});
+        CHECK(w.ok());
+        if (!w.ok()) return;
+        w.attachSettings(&store, kept);
+        pump(40);
+        CHECK(!w.borders() && !hasCaption(w.hwnd()) && IsWindowVisible(w.hwnd()) != FALSE);   // the frame is off from the first moment
+        CHECK(clientSize(w.hwnd()).cx == 1000 && clientSize(w.hwnd()).cy == 700);
+        w.handleHotkey(VK_F8, false, false);   // F8 still switches it
+        pump(30);
+        CHECK(w.borders() && hasCaption(w.hwnd()) && store.load().windowBorders);
+    }
+    std::filesystem::remove_all(dir);
+}
