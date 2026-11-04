@@ -116,6 +116,12 @@ void GameWindow::setFps(FpsMode m) {
     saveSettings();
 }
 
+void GameWindow::setGameplaySpeed(GameplaySpeed m) {
+    speed_ = m;
+    settings_.gameplaySpeed = m;
+    saveSettings();
+}
+
 GameWindow::FrameStats GameWindow::frameStats() const {
     FrameStats s;
     s.frames = frames_.load();
@@ -366,6 +372,7 @@ const Settings& GameWindow::settings() {
     settings_.colourMode = colour_;
     settings_.crt = crt_;
     settings_.fps = fps_;
+    settings_.gameplaySpeed = speed_.load();
     settings_.desktopScale = desk_.scale;
     settings_.desktopX = desk_.offX;
     settings_.desktopY = desk_.offY;
@@ -467,6 +474,7 @@ void GameWindow::attachSettings(SettingsStore* store, const Settings& initial) {
     colour_ = initial.colourMode;
     crt_ = initial.crt;
     fps_ = initial.fps;
+    speed_ = initial.gameplaySpeed;
     desk_.scale = initial.desktopScale;
     desk_.offX = initial.desktopX;
     desk_.offY = initial.desktopY;
@@ -622,6 +630,7 @@ void GameWindow::currentPixels(std::uint32_t* out, double glowDtSeconds) {
         view.colourMode = colour_;
         view.crt = crt_;
         view.fps = fps_;
+        view.gameplaySpeed = speed_.load();
         {
             const RenderInfo ri = renderInfo();
             view.resolution = fullscreen_ ? std::to_string(ri.displayW) + "X" + std::to_string(ri.displayH) : resolutionLabel(ri.displayW, ri.displayH);
@@ -669,6 +678,7 @@ void GameWindow::menuAction(PauseMenu::Action a) {
     case PauseMenu::Action::NextCrtPreset: stepCrtPreset(1); break;
     case PauseMenu::Action::PreviousCrtPreset: stepCrtPreset(-1); break;
     case PauseMenu::Action::CrtOptionStep: stepCrtOption(menu_.crtOption(), menu_.crtDir()); break;
+    case PauseMenu::Action::ToggleGameplaySpeed: setGameplaySpeed(nextGameplaySpeed(speed_.load())); break;
     case PauseMenu::Action::NextFps: cycleFps(1); break;
     case PauseMenu::Action::PreviousFps: cycleFps(-1); break;
     case PauseMenu::Action::NextBackground: cycleBackground(1); break;

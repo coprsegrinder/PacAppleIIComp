@@ -31,6 +31,7 @@
 
 #include "audio.h"
 #include "pausegate.h"
+#include "gameplayspeed.h"
 #include "precisesleep.h"
 #include "settings.h"
 #include "../core/attractflow.h"
@@ -175,23 +176,6 @@ struct SoundPlayer {
     }
 };
 
-// How many cycles beyond the ordinary tick cost the game stands still for a sound. The dot sound is part of the measured mean tick cost (kTypicalTickCycles) and the six
-// death steps are part of the measured death sequence (kDeathSequenceCycles); all other sounds are added (INFERRED approximation until the pacing step, M8).
-std::int64_t extraFreeze(core::SoundId id) {
-    switch (id) {
-        case core::SoundId::DotEaten:
-        case core::SoundId::Death1:
-        case core::SoundId::Death2:
-        case core::SoundId::Death3:
-        case core::SoundId::Death4:
-        case core::SoundId::Death5:
-        case core::SoundId::Death6:
-            return 0;
-        default:
-            return core::soundFreezeCycles(id);
-    }
-}
-
 // One game, from the intro jingle to the end of the GAME OVER wait. Returns true when the game is over (the program goes back to the attract loop), false when the window closed.
 bool runGame(core::GameDriver& drv, const datapack::Pack& pack, app::GameWindow& window, std::atomic<bool>& quit, int seconds, std::int64_t begin) {
     struct MenuAllowed {   // Esc opens the pause menu from the start of a game until it is over (and back in the attract loop it does nothing again)
@@ -309,7 +293,7 @@ bool runGame(core::GameDriver& drv, const datapack::Pack& pack, app::GameWindow&
                 const bool deathStep = id >= core::SoundId::Death1 && id <= core::SoundId::Death6;
                 if (dying && deathStep) continue;
                 if (audible) sounds.play(id);
-                soundFreeze += extraFreeze(id);
+                soundFreeze += app::soundStandStill(window.gameplaySpeed(), id);
             }
             if (!audible) sounds.stop();   // Ctrl-S / F9 during a long sound cuts it
             if (dying) {   // the pacman was caught: play the animation, then the next life starts
@@ -325,14 +309,14 @@ bool runGame(core::GameDriver& drv, const datapack::Pack& pack, app::GameWindow&
                 break;
             }
             {
-                const std::int64_t cost = drv.tickCycles() + drv.extraCycles() + soundFreeze;
+                const std::int64_t cost = app::tickCost(window.gameplaySpeed(), drv.tickCycles(), drv.extraCycles(), soundFreeze);
                 tickLog.costSum += cost;
                 tickLog.costMin = (std::min)(tickLog.costMin, cost);
                 tickLog.costMax = (std::max)(tickLog.costMax, cost);
                 tickLog.freezeSum += soundFreeze;
                 tickLog.slow += cost > 2 * core::kTypicalTickCycles;
             }
-            budget -= drv.tickCycles() + drv.extraCycles() + soundFreeze;   // the tick's modelled cost (033-1c), not a flat mean
+            budget -= app::tickCost(window.gameplaySpeed(), drv.tickCycles(), drv.extraCycles(), soundFreeze);   // the tick's modelled cost (033-1c), or the same for every ordinary tick (Steady)
             changed = true;
             tickLog.note(drv.page());
             window.setPage(drv.page());   // every tick is a picture the window may show (the window takes the newest one at its next frame)

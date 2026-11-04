@@ -119,6 +119,10 @@ public:
     FrameStats frameStats() const;
     void resetFrameStats();
     unsigned long long framesShown() const noexcept { return frames_.load(); }
+    // Gameplay Speed (TASK-034-11, user request): Original (the game's own time with its slowdowns) or Steady (every ordinary tick the same length). Read by the game's thread every tick
+    // (any thread); the game's logic never sees it (gameplayspeed.h).
+    GameplaySpeed gameplaySpeed() const noexcept { return speed_.load(); }
+    void setGameplaySpeed(GameplaySpeed m);
     void setBackground(Background b);                  // what is drawn around the picture (window thread); written to the settings
     void cycleBackground(int dir);
     Background background() const noexcept { return background_; }
@@ -167,6 +171,7 @@ private:
     ColourMode colour_ = ColourMode::Original;
     CrtFilter crt_, crtDraw_;
     FpsMode fps_ = FpsMode::Native;
+    std::atomic<GameplaySpeed> speed_{GameplaySpeed::Original};
     bool paced_ = false;                      // run() is the message loop: pictures are paced by fps_ instead of the window timer
     bool inModalLoop_ = false;                // the user is dragging or sizing the window (Windows runs its own loop then)
     std::atomic<unsigned long long> frames_{0};
