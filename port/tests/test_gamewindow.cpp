@@ -2126,23 +2126,6 @@ hires::Page allWhitePage() {
 
 }  // namespace
 
-TEST(background_names_cycle_and_the_settings_file_keeps_the_choice) {
-    CHECK(app::kBackgroundCount == 2);
-    CHECK(std::string(app::backgroundKey(app::Background::Black)) == "black" && std::string(app::backgroundKey(app::Background::AmbientGlow)) == "glow");
-    CHECK(std::string(app::backgroundLabel(app::Background::Black)) == "BLACK" && std::string(app::backgroundLabel(app::Background::AmbientGlow)) == "AMBIENT GLOW");
-    CHECK(app::nextBackground(app::Background::Black, 1) == app::Background::AmbientGlow && app::nextBackground(app::Background::AmbientGlow, 1) == app::Background::Black);
-    CHECK(app::nextBackground(app::Background::Black, -1) == app::Background::AmbientGlow && app::nextBackground(app::Background::AmbientGlow, -1) == app::Background::Black);
-    app::Background b = app::Background::Black;
-    CHECK(app::parseBackground("glow", b) && b == app::Background::AmbientGlow);
-    CHECK(!app::parseBackground("rainbow", b) && b == app::Background::AmbientGlow);   // unchanged on a bad word
-    Settings s;
-    CHECK(s.background == app::Background::Black);   // the default
-    s.background = app::Background::AmbientGlow;
-    CHECK(SettingsStore::parse(SettingsStore::format(s)).background == app::Background::AmbientGlow);
-    CHECK(SettingsStore::parse("background=GLOW\n").background == app::Background::AmbientGlow);
-    CHECK(SettingsStore::parse("background=sideways\n").background == app::Background::Black);   // a bad word: the default
-}
-
 // The picture area of a captured frame equals this 280 x 192 image drawn at the frame's scale.
 static std::size_t insideDiffersFromImage(const std::vector<std::uint32_t>& got, const std::vector<std::uint32_t>& image, int cw, int ch) {
     const app::Viewport vp = app::computeViewport(cw, ch);
@@ -2496,9 +2479,17 @@ TEST(background_is_changed_from_the_pause_menu_kept_in_the_settings_and_restored
         CHECK(w.background() == app::Background::Black && store.load().background == app::Background::Black);
         SendMessageW(h, WM_KEYDOWN, VK_RETURN, 1);   // Enter = next
         CHECK(w.background() == app::Background::AmbientGlow);
-        SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, graphicsItem(3).x, graphicsItem(3).y));   // a click: next (round to black)
+        SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, graphicsItem(3).x, graphicsItem(3).y));   // a click: next (the CRT bezel; its frame moves the picture)
+        CHECK(w.background() == app::Background::CrtBezel);
+        const auto clickNow = [&]() {
+            const app::Viewport v = w.renderInfo().viewport;
+            SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(static_cast<short>(v.x + graphicsItem(3).x * v.w / 280), static_cast<short>(v.y + graphicsItem(3).y * v.h / 192)));
+        };
+        clickNow();
+        CHECK(w.background() == app::Background::Desktop);
+        clickNow();
         CHECK(w.background() == app::Background::Black);
-        SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, graphicsItem(3).x, graphicsItem(3).y));
+        SendMessageW(h, WM_KEYDOWN, VK_RIGHT, 1);   // the entry is still selected: Right = next
         CHECK(w.background() == app::Background::AmbientGlow);
     }
     CHECK(store.load().background == app::Background::AmbientGlow);
@@ -2607,4 +2598,299 @@ TEST(background_changes_while_the_game_runs_leave_the_game_and_its_clock_untouch
     std::printf("    %d background changes in 0.8 s; cycles handed out %lld, exact %lld, skipped %lld\n", changes, static_cast<long long>(handed), static_cast<long long>(exact), static_cast<long long>(clock.skipped()));
     CHECK(changes >= 10);
     CHECK(handed == exact && clock.skipped() == 0);
+}
+
+// ---- TASK-034-7: the framed backgrounds: Apple II CRT monitor bezel and Apple II desktop, drawn in code ----
+#include <chrono>
+
+#include "../src/app/background_art.h"
+#include "../src/app/framed_layout.h"
+
+namespace {
+
+using app::Background;
+
+bool nearColour(std::uint32_t argb, float r, float g, float b, float tol) {
+    const float pr = static_cast<float>((argb >> 16) & 0xFF) / 255.0f, pg = static_cast<float>((argb >> 8) & 0xFF) / 255.0f, pb = static_cast<float>(argb & 0xFF) / 255.0f;
+    return std::fabs(pr - r) <= tol && std::fabs(pg - g) <= tol && std::fabs(pb - b) <= tol;
+}
+
+float lumOf(std::uint32_t argb) { return (0.30f * static_cast<float>((argb >> 16) & 0xFF) + 0.59f * static_cast<float>((argb >> 8) & 0xFF) + 0.11f * static_cast<float>(argb & 0xFF)) / 255.0f; }
+
+// the plastic of the bezel: light, warm (red above blue)
+bool isPlastic(std::uint32_t argb) {
+    const int r = static_cast<int>((argb >> 16) & 0xFF), b = static_cast<int>(argb & 0xFF);
+    return lumOf(argb) > 0.45f && r > b + 8;
+}
+
+struct Art {
+    int w = 0, h = 0;
+    app::Viewport vp;
+    std::vector<std::uint32_t> px;
+    std::uint32_t at(int x, int y) const { return px[static_cast<std::size_t>(y) * static_cast<std::size_t>(w) + static_cast<std::size_t>(x)]; }
+};
+
+Art makeArt(Background kind, int w, int h, const core::CharacterRom* font) {
+    Art a;
+    a.w = w;
+    a.h = h;
+    a.vp = app::computeViewportFor(kind, w, h);
+    app::ArtInput in;
+    in.kind = kind;
+    in.width = w;
+    in.height = h;
+    in.viewport = a.vp;
+    in.font = font;
+    CHECK(app::renderBackgroundArt(in, a.px));
+    return a;
+}
+
+// The extents of the plastic housing along the middle row and middle column of the picture.
+struct Extents { int left = -1, right = -1, top = -1, bottom = -1; };
+Extents housingExtents(const Art& a) {
+    Extents e;
+    const int cy = a.vp.y + a.vp.h / 2, cx = a.vp.x + a.vp.w / 2;
+    for (int x = 0; x < a.w; ++x)
+        if (isPlastic(a.at(x, cy))) { e.left = x; break; }
+    for (int x = a.w - 1; x >= 0; --x)
+        if (isPlastic(a.at(x, cy))) { e.right = x; break; }
+    for (int y = 0; y < a.h; ++y)
+        if (isPlastic(a.at(cx, y))) { e.top = y; break; }
+    for (int y = a.h - 1; y >= 0; --y)
+        if (isPlastic(a.at(cx, y))) { e.bottom = y; break; }
+    return e;
+}
+
+}  // namespace
+
+TEST(framed_layout_the_picture_is_the_largest_whole_scale_that_leaves_room_for_the_frame) {
+    CHECK(app::computeViewportFor(Background::Black, 1920, 1080).scale == 5 && app::computeViewportFor(Background::AmbientGlow, 1920, 1080).scale == 5);   // unframed: as before
+    const SIZE sizes[] = {{1920, 1080}, {1280, 720}, {2560, 1080}, {3440, 1440}, {5120, 1440}, {1024, 768}, {1920, 1200}, {2560, 1440}, {3840, 2160}, {900, 900}, {1000, 1700}};
+    for (Background kind : {Background::CrtBezel, Background::Desktop}) {
+        const app::FrameUnits u = app::frameUnits(kind);
+        for (const SIZE& s : sizes) {
+            const app::Viewport v = app::computeViewportFor(kind, s.cx, s.cy);
+            CHECK(v.scale >= 1 && v.w == 280 * v.scale && v.h == 192 * v.scale);
+            // the whole frame fits at this scale ...
+            CHECK(v.x - u.left * v.scale >= 0 && v.y - u.top * v.scale >= 0 && v.x + v.w + u.right * v.scale <= s.cx && v.y + v.h + u.bottom * v.scale <= s.cy);
+            // ... and would not at the next one
+            const int n = v.scale + 1;
+            CHECK((280 + u.left + u.right) * n > s.cx || (192 + u.top + u.bottom) * n > s.cy);
+            // the frame is centred in the window (the picture sits inside it by the frame's own sizes)
+            const int frameLeft = v.x - u.left * v.scale, frameRight = s.cx - (v.x + v.w + u.right * v.scale);
+            const int frameTop = v.y - u.top * v.scale, frameBottom = s.cy - (v.y + v.h + u.bottom * v.scale);
+            CHECK(std::abs(frameLeft - frameRight) <= 1 && std::abs(frameTop - frameBottom) <= 1);
+        }
+        const app::Viewport tiny = app::computeViewportFor(kind, 200, 140);   // too small for any frame: the picture is shrunk as without one, never invisible
+        CHECK(tiny.scale == 0 && !tiny.empty() && tiny.w <= 200 && tiny.h <= 140);
+    }
+    // the bezel's housing is a fixed shape: the same pixels at the same scale however wide or tall the window is
+    CHECK(app::computeViewportFor(Background::CrtBezel, 1920, 1080).scale == 4 && app::computeViewportFor(Background::CrtBezel, 2560, 1080).scale == 4 && app::computeViewportFor(Background::CrtBezel, 5120, 1080).scale == 4);
+}
+
+TEST(background_names_cycle_and_the_settings_file_keeps_the_choice_all_four) {
+    CHECK(app::kBackgroundCount == 4);
+    const Background all[4] = {Background::Black, Background::AmbientGlow, Background::CrtBezel, Background::Desktop};
+    const char* keys[4] = {"black", "glow", "bezel", "desktop"};
+    const char* labels[4] = {"BLACK", "AMBIENT GLOW", "APPLE II CRT BEZEL", "APPLE II DESKTOP"};
+    for (int i = 0; i < 4; ++i) {
+        CHECK(std::string(app::backgroundKey(all[i])) == keys[i] && std::string(app::backgroundLabel(all[i])) == labels[i]);
+        CHECK(app::nextBackground(all[i], 1) == all[(i + 1) % 4] && app::nextBackground(all[i], -1) == all[(i + 3) % 4]);
+        Background b = Background::Black;
+        CHECK(app::parseBackground(keys[i], b) && b == all[i]);
+        Settings s;
+        s.background = all[i];
+        CHECK(SettingsStore::parse(SettingsStore::format(s)).background == all[i]);
+    }
+    Background b = Background::Desktop;
+    CHECK(!app::parseBackground("rainbow", b) && b == Background::Desktop);
+    CHECK(SettingsStore::parse("background=sideways\n").background == Background::Black);
+    CHECK(app::hasFrame(Background::CrtBezel) && app::hasFrame(Background::Desktop) && !app::hasFrame(Background::Black) && !app::hasFrame(Background::AmbientGlow));
+}
+
+TEST(crt_bezel_art_is_a_43_glass_in_a_fixed_shape_housing_that_never_stretches_with_the_window) {
+    core::CharacterRom rom;
+    const Art a = makeArt(Background::CrtBezel, 1920, 1080, nullptr);
+    const int S = a.vp.scale;
+    CHECK(S == 4);
+    const int cx = a.vp.x + a.vp.w / 2, cy = a.vp.y + a.vp.h / 2;
+    // the glass: black, 4:3, centred on the picture. Scan out from the picture's centre until something that is not black.
+    const auto edgeOfBlack = [&](int dx, int dy) {
+        int x = cx, y = cy, n = 0;
+        while (x >= 0 && y >= 0 && x < a.w && y < a.h && lumOf(a.at(x, y)) < 0.05f) { x += dx; y += dy; ++n; }
+        return n;
+    };
+    const int gl = edgeOfBlack(-1, 0), gr = edgeOfBlack(1, 0), gt = edgeOfBlack(0, -1), gb = edgeOfBlack(0, 1);
+    const double ratio = static_cast<double>(gl + gr) / (gt + gb);
+    std::printf("    glass %d x %d pixels, ratio %.3f (4:3 = 1.333); picture %d x %d inside it\n", gl + gr, gt + gb, ratio, a.vp.w, a.vp.h);
+    CHECK(std::fabs(ratio - 4.0 / 3.0) < 0.012);
+    CHECK(gl + gr > a.vp.w && gt + gb > a.vp.h);   // the glass is a little wider than the picture, and taller (black above and below it)
+    CHECK(gl + gr < a.vp.w + 4 * S);
+    CHECK(std::abs(gl - gr) <= 1 && std::abs(gt - gb) <= 1);   // centred on the picture
+    // black glass directly above and below the picture, inside the 4:3 shape
+    CHECK(lumOf(a.at(cx, a.vp.y - 3)) < 0.05f && lumOf(a.at(cx, a.vp.y + a.vp.h + 2)) < 0.05f);
+    // outside the glass is the dark recess, then the plastic; the wall behind is very dark
+    CHECK(lumOf(a.at(cx - gl - S, cy)) > 0.03f && lumOf(a.at(cx - gl - S, cy)) < 0.22f);
+    CHECK(isPlastic(a.at(cx - gl - 5 * S, cy)));
+    CHECK(lumOf(a.at(4, 4)) < 0.12f && lumOf(a.at(a.w - 5, a.h - 5)) < 0.12f);
+    CHECK(nearColour(a.at(cx - gl - 6 * S, cy), 0.80f, 0.77f, 0.69f, 0.12f));   // platinum beige
+    // the picture's own place is black (it is never shown)
+    CHECK(a.at(a.vp.x, a.vp.y) == 0xFF000000u && a.at(a.vp.x + a.vp.w - 1, a.vp.y + a.vp.h - 1) == 0xFF000000u);
+    // the chin has a green power light
+    bool led = false;
+    for (int y = a.vp.y + a.vp.h; y < a.h && !led; ++y)
+        for (int x = a.w / 2; x < a.w && !led; ++x) {
+            const std::uint32_t p = a.at(x, y);
+            led = ((p >> 8) & 0xFF) > 230 && ((p >> 16) & 0xFF) < 150 && (p & 0xFF) < 190;
+        }
+    CHECK(led);
+    // THE HOUSING NEVER STRETCHES: at the same scale the housing is exactly the same size in a 16:9, a 21:9 and a 32:9 window, only the wall around it grows
+    const Extents e16 = housingExtents(a);
+    const Art wide = makeArt(Background::CrtBezel, 2560, 1080, nullptr), ultra = makeArt(Background::CrtBezel, 5120, 1080, nullptr), tall = makeArt(Background::CrtBezel, 1300, 1080, nullptr);
+    for (const Art* other : {&wide, &ultra, &tall}) {
+        CHECK(other->vp.scale == 4);
+        const Extents e = housingExtents(*other);
+        std::printf("    housing in a %d x %d window: %d x %d\n", other->w, other->h, e.right - e.left + 1, e.bottom - e.top + 1);
+        CHECK(e.right - e.left == e16.right - e16.left && e.bottom - e.top == e16.bottom - e16.top);
+    }
+    const int hw = e16.right - e16.left + 1, hh = e16.bottom - e16.top + 1;
+    std::printf("    housing %d x %d pixels (ratio %.3f) at scale %d\n", hw, hh, static_cast<double>(hw) / hh, S);
+    CHECK(std::fabs(static_cast<double>(hw) / hh - 304.0 / 241.0) < 0.02);   // a fixed shape
+    // fixed shape also from window to window of other sizes at other scales: the ratio is the same
+    const Art big = makeArt(Background::CrtBezel, 3440, 1440, nullptr);
+    const Extents eb = housingExtents(big);
+    CHECK(std::fabs(static_cast<double>(eb.right - eb.left + 1) / (eb.bottom - eb.top + 1) - static_cast<double>(hw) / hh) < 0.02);
+    // the same input gives the same picture, and drawing it is quick enough to follow a window being dragged
+    const auto t0 = std::chrono::steady_clock::now();
+    const Art again = makeArt(Background::CrtBezel, 1920, 1080, nullptr);
+    const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+    std::printf("    drawing the bezel for a 1920 x 1080 window: %.0f ms\n", ms);
+    CHECK(again.px == a.px);
+    CHECK(ms < 600.0);
+}
+
+TEST(desktop_art_spans_the_window_with_a_menu_bar_and_holds_the_game_in_a_titled_window) {
+    core::CharacterRom rom;
+    const bool haveFont = loadFont(rom);
+    for (const SIZE& s : {SIZE{1920, 1080}, SIZE{2560, 1080}, SIZE{5120, 1440}, SIZE{1024, 768}}) {
+        const Art a = makeArt(Background::Desktop, s.cx, s.cy, haveFont ? &rom : nullptr);
+        const int S = a.vp.scale;
+        // the menu bar runs the whole width of the window, the desktop pattern fills everything else: it stretches to the edges
+        int barLight = 0;
+        for (int x = 0; x < a.w; ++x) barLight += lumOf(a.at(x, 2)) > 0.9f;
+        CHECK(barLight >= a.w * 99 / 100);
+        CHECK(lumOf(a.at(3, a.h - 4)) > 0.4f && lumOf(a.at(3, a.h - 4)) < 0.7f && lumOf(a.at(a.w - 4, a.h - 4)) < 0.7f);   // the soft blue-grey pattern at the bottom corners
+        const std::uint32_t c = a.at(3, a.h - 4);
+        CHECK(static_cast<int>(c & 0xFF) > static_cast<int>((c >> 16) & 0xFF) + 10);   // bluish
+        // the window around the picture: white paper, a black outline, the picture's place black
+        CHECK(a.at(a.vp.x, a.vp.y) == 0xFF000000u);
+        CHECK(lumOf(a.at(a.vp.x - 2 * S, a.vp.y + a.vp.h / 2)) > 0.9f);   // white frame beside the picture
+        int blackOutline = 0;
+        for (int x = a.vp.x - 3 * S; x < a.vp.x + a.vp.w + 3 * S; ++x) blackOutline += lumOf(a.at(x, a.vp.y - 11 * S + 0)) < 0.2f;
+        CHECK(blackOutline > a.vp.w);   // the window's top outline
+        if (haveFont) {   // the words: the menu bar and the title
+            int ink = 0;
+            for (int y = 0; y < 8 * S; ++y)
+                for (int x = 0; x < a.w / 2; ++x) ink += lumOf(a.at(x, y)) < 0.3f;
+            CHECK(ink > 200 * S / 4);
+            int titleInk = 0;
+            for (int y = a.vp.y - 11 * S; y < a.vp.y - 2 * S; ++y)
+                for (int x = a.w / 2 - 12 * S; x < a.w / 2 + 12 * S; ++x) titleInk += lumOf(a.at(x, y)) < 0.3f;
+            CHECK(titleInk > 100);
+        }
+        // the window is the same shape in every window: it is the picture's frame, not the window's
+        std::printf("    desktop %d x %d: picture scale %d at %d,%d\n", s.cx, s.cy, S, a.vp.x, a.vp.y);
+    }
+    const Art noFont = makeArt(Background::Desktop, 1280, 720, nullptr);   // without the font the words are left out, everything else is there
+    CHECK(lumOf(noFont.at(5, 2)) > 0.9f && noFont.at(noFont.vp.x, noFont.vp.y) == 0xFF000000u);
+    std::vector<std::uint32_t> none;
+    app::ArtInput bad;
+    bad.kind = Background::Black;
+    bad.width = 100;
+    bad.height = 100;
+    bad.viewport = app::computeViewport(100, 100);
+    CHECK(!app::renderBackgroundArt(bad, none));   // only the framed backgrounds have art
+    bad.kind = Background::CrtBezel;
+    bad.width = 0;
+    CHECK(!app::renderBackgroundArt(bad, none));
+}
+
+TEST(framed_backgrounds_in_the_window_leave_the_picture_exact_and_the_frame_around_it) {
+    core::CharacterRom rom;
+    const bool haveFont = loadFont(rom);
+    GameWindow w(GameWindowOptions{3, true});
+    CHECK(w.ok());
+    if (!w.ok() || !w.usesDirect3d()) return;
+    if (haveFont) w.setMenuFont(rom);
+    const hires::Page page = busyPage();
+    w.setPage(page);
+    setClient(w.hwnd(), 1920, 1080);
+    pump(40);
+    std::vector<std::uint32_t> got;
+    int cw = 0, ch = 0;
+    for (Background kind : {Background::CrtBezel, Background::Desktop}) {
+        w.setBackground(kind);
+        CHECK(w.captureFrame(got, cw, ch) && cw == 1920 && ch == 1080);
+        const GameWindow::RenderInfo ri = w.renderInfo();
+        CHECK(ri.viewport.scale == 4 && ri.gameW == 280 && ri.gameH == 192);   // one scale down from the unframed 5: the frame needs its room
+        // the picture: exactly the game's picture at that place
+        std::array<std::uint32_t, 280 * 192> game{};
+        video::renderArgb(page, game);
+        std::size_t bad = 0;
+        for (int y = 0; y < ri.viewport.h; ++y)
+            for (int x = 0; x < ri.viewport.w; ++x) bad += at(got, cw, ri.viewport.x + x, ri.viewport.y + y) != (game[static_cast<std::size_t>(y / 4) * 280 + static_cast<std::size_t>(x / 4)] & 0xFFFFFF);
+        std::printf("    %s: picture scale %d at %d,%d, %zu picture pixels differ\n", app::backgroundLabel(kind), ri.viewport.scale, ri.viewport.x, ri.viewport.y, bad);
+        CHECK(bad == 0);
+        // and the frame is the art, pixel for pixel
+        Art art;
+        art.w = cw;
+        art.h = ch;
+        art.vp = ri.viewport;
+        app::ArtInput in;
+        in.kind = kind;
+        in.width = cw;
+        in.height = ch;
+        in.viewport = ri.viewport;
+        in.font = haveFont ? &rom : nullptr;
+        CHECK(app::renderBackgroundArt(in, art.px));
+        std::size_t artBad = 0;
+        for (int y = 0; y < ch; ++y)
+            for (int x = 0; x < cw; ++x) {
+                const bool inside = x >= ri.viewport.x && x < ri.viewport.x + ri.viewport.w && y >= ri.viewport.y && y < ri.viewport.y + ri.viewport.h;
+                if (!inside) artBad += (at(got, cw, x, y) != (art.at(x, y) & 0xFFFFFF));
+            }
+        CHECK(artBad == 0);
+    }
+    // the picture and the pause menu's mouse mapping use the framed place: choosing Background in the menu with the mouse (the picture is not where the unframed one would be)
+    w.setBackground(Background::CrtBezel);
+    const HWND h = w.hwnd();
+    const auto click = [&](int px, int py) {   // a click on a picture position, mapped through the picture's place NOW (it moves when the background changes)
+        const app::Viewport v = w.renderInfo().viewport;
+        SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(static_cast<short>(v.x + px * v.w / 280), static_cast<short>(v.y + py * v.h / 192)));
+    };
+    SendMessageW(h, WM_KEYDOWN, VK_ESCAPE, 1);
+    click(mainItem(1).x, mainItem(1).y);
+    CHECK(w.menuOpen());
+    click(graphicsItem(3).x, graphicsItem(3).y);   // the Background entry: next
+    CHECK(w.background() == Background::Desktop);
+    click(graphicsItem(3).x, graphicsItem(3).y);
+    CHECK(w.background() == Background::Black);
+    click(graphicsItem(3).x, graphicsItem(3).y);
+    CHECK(w.background() == Background::AmbientGlow);
+    SendMessageW(h, WM_KEYDOWN, VK_ESCAPE, 1);
+    SendMessageW(h, WM_KEYDOWN, VK_ESCAPE, 1);
+    CHECK(!w.menuOpen());
+    // the monitor is the same size in a very wide window; the picture keeps its scale
+    w.setBackground(Background::CrtBezel);
+    setClient(w.hwnd(), 2560, 1080);
+    pump(40);
+    CHECK(w.captureFrame(got, cw, ch) && cw == 2560 && w.renderInfo().viewport.scale == 4);
+    Art wideShot;
+    wideShot.w = cw;
+    wideShot.h = ch;
+    wideShot.vp = w.renderInfo().viewport;
+    for (std::size_t i = 0; i < got.size(); ++i) wideShot.px.push_back(got[i] | 0xFF000000u);
+    const Art ref = makeArt(Background::CrtBezel, 1920, 1080, nullptr);
+    const Extents a16 = housingExtents(ref), a21 = housingExtents(wideShot);
+    CHECK(a21.right - a21.left == a16.right - a16.left && a21.bottom - a21.top == a16.bottom - a16.top);
 }

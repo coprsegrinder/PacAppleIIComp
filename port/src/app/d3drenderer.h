@@ -31,6 +31,9 @@ public:
     struct BackgroundFrame {
         Background kind = Background::Black;
         const std::uint8_t* backdropBgra = nullptr;   // 280 x 192 x 4 bytes (glow.h): the blurred copy of the picture, for Background::AmbientGlow
+        const std::uint32_t* artArgb = nullptr;   // the picture of a framed background (CRT bezel, desktop): artWidth x artHeight pixels, drawn as it is; artVersion changes when it does
+        std::uint64_t artVersion = 0;
+        int artWidth = 0, artHeight = 0;
         const std::uint8_t* edgeBgra = nullptr;   // kEdgeW x 4 x 4 bytes: the picture's own edge colours (glow.h), so that the picture's border dissolves into the bars
     };
     bool draw(const std::uint32_t* argb280x192, const Viewport& vp, const BackgroundFrame& bg = BackgroundFrame{});   // draws the background, then the picture into vp; nothing is shown until present()

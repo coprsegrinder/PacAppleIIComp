@@ -19,6 +19,8 @@
 #include "background.h"
 #include "d3drenderer.h"
 #include "display_layout.h"
+#include "background_art.h"
+#include "framed_layout.h"
 #include "glow.h"
 #include "pausemenu.h"
 #include "resolutions.h"
@@ -59,7 +61,7 @@ public:
     // The pause menu (TASK-034-3): Esc opens it (the original Esc pause is replaced), the keyboard and the mouse drive it, the game threads stand still while menuOpen() is true.
     bool menuOpen() const noexcept { return menuOpen_.load(); }   // any thread
     void setMenuAllowed(bool on) noexcept { menuAllowed_ = on; }   // any thread: false = Esc does nothing (boot menus, attract loop, prompts); the program allows the menu from the start of a game to its end
-    void setMenuFont(const core::CharacterRom& rom) { font_ = rom; }   // before the window is used: the Apple II character ROM the menu is drawn with
+    void setMenuFont(const core::CharacterRom& rom) { font_ = rom; artKey_.width = 0; }   // before the window is used: the Apple II character ROM the menu is drawn with
     bool borders() const noexcept { return borders_; }
     void setBorders(bool on);
     // Display mode (TASK-034-4): Windowed, or Borderless Fullscreen (a borderless window over the monitor at its own resolution).
@@ -126,7 +128,18 @@ private:
     bool borders_ = true;               // windowed mode only: title bar and frame
     bool scalePending_ = false;         // setScale() was called in full screen: applies when leaving it
     Background background_ = Background::Black;
-    GlowField glow_;                          // the colours of the ambient glow, smoothed over time
+    GlowField glow_;                          // the picture behind the picture of the ambient glow, smoothed over time
+    Viewport viewportFor(int clientW, int clientH) const { return computeViewportFor(background_, clientW, clientH); }   // the picture's place: framed backgrounds need room for their frame
+    struct ArtKey {
+        Background kind = Background::Black;
+        int width = 0, height = 0, x = 0, y = 0, scale = 0;
+        bool font = false;
+        bool operator==(const ArtKey&) const = default;
+    };
+    ArtKey artKey_;                           // what the cached art image was drawn for
+    std::vector<std::uint32_t> art_;          // the picture of the CRT bezel / the desktop for the present window size
+    std::uint64_t artVersion_ = 0;
+    D3dRenderer::BackgroundFrame backgroundFrame(int clientW, int clientH, const Viewport& vp);   // everything the renderer needs for the bars; draws the art again only when something changed
     std::int64_t lastPaintNs_ = 0;
     PauseMenu menu_;
     core::CharacterRom font_;

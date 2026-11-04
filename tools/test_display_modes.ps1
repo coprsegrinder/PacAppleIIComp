@@ -64,6 +64,12 @@ Key $h 0x25
 "Background Left: black: " + ((Get-Content $settings -Raw) -match "background=black")
 Key $h 0x27
 "Background Right again: ambient glow (this is what the restart must keep): " + ((Get-Content $settings -Raw) -match "background=glow")
+Key $h 0x27
+"Background Right: Apple II CRT bezel: " + ((Get-Content $settings -Raw) -match "background=bezel")
+Key $h 0x27
+"Background Right: Apple II desktop: " + ((Get-Content $settings -Raw) -match "background=desktop")
+Key $h 0x25; Key $h 0x25
+"Background Left, Left: back to the ambient glow (the restart must keep it): " + ((Get-Content $settings -Raw) -match "background=glow")
 Key $h 0x1B; Key $h 0x1B   # back to the game
 $null = Start-Sleep -Milliseconds 500
 $text = Get-Content $settings -Raw

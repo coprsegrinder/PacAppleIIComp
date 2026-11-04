@@ -106,7 +106,7 @@ int GameWindow::effectiveScale() const noexcept {
     if (!hwnd_) return scale_;
     RECT rc{};
     GetClientRect(hwnd_, &rc);
-    return std::max(1, computeViewport(static_cast<int>(rc.right - rc.left), static_cast<int>(rc.bottom - rc.top)).scale);
+    return std::max(1, viewportFor(static_cast<int>(rc.right - rc.left), static_cast<int>(rc.bottom - rc.top)).scale);
 }
 
 LONG GameWindow::windowedStyle() const {
@@ -263,7 +263,7 @@ GameWindow::RenderInfo GameWindow::renderInfo() const {
     GetClientRect(hwnd_, &cr);
     r.displayW = cr.right;
     r.displayH = cr.bottom;
-    r.viewport = computeViewport(r.displayW, r.displayH);
+    r.viewport = viewportFor(r.displayW, r.displayH);
     return r;
 }
 
@@ -412,7 +412,7 @@ bool GameWindow::handleHotkey(unsigned vk, bool ctrl, bool alt) {
             RECT cr{};
             GetClientRect(hwnd_, &cr);
             const bool preset = cr.right == kW * scale_ && cr.bottom == kH * scale_;
-            if (!preset) base = std::max(1, computeViewport(static_cast<int>(cr.right), static_cast<int>(cr.bottom)).scale);
+            if (!preset) base = std::max(1, viewportFor(static_cast<int>(cr.right), static_cast<int>(cr.bottom)).scale);
         }
         setScale(base + ((vk == VK_OEM_PLUS || vk == VK_ADD) ? 1 : -1));
         return true;
@@ -517,12 +517,41 @@ bool GameWindow::menuKey(unsigned vk) {
 bool GameWindow::pictureCoords(LPARAM lp, int& px, int& py) const {
     RECT rc{};
     GetClientRect(hwnd_, &rc);
-    const Viewport vp = computeViewport(static_cast<int>(rc.right), static_cast<int>(rc.bottom));
+    const Viewport vp = viewportFor(static_cast<int>(rc.right), static_cast<int>(rc.bottom));
     const int x = GET_X_LPARAM(lp) - vp.x, y = GET_Y_LPARAM(lp) - vp.y;
     if (vp.empty() || x < 0 || y < 0 || x >= vp.w || y >= vp.h) return false;
     px = x * kW / vp.w;
     py = y * kH / vp.h;
     return true;
+}
+
+D3dRenderer::BackgroundFrame GameWindow::backgroundFrame(int cw, int ch, const Viewport& vp) {
+    D3dRenderer::BackgroundFrame bf;
+    bf.kind = background_;
+    bf.backdropBgra = glow_.backdropBytes().data();
+    bf.edgeBgra = glow_.edgeBytes().data();
+    if (hasFrame(background_) && !vp.empty()) {   // the bezel / desktop picture: drawn again only when the window, the picture's place or the font changed
+        const ArtKey key{background_, cw, ch, vp.x, vp.y, vp.scale, font_.loaded};
+        if (!(key == artKey_)) {
+            ArtInput in;
+            in.kind = background_;
+            in.width = cw;
+            in.height = ch;
+            in.viewport = vp;
+            in.font = font_.loaded ? &font_ : nullptr;
+            if (renderBackgroundArt(in, art_)) {
+                artKey_ = key;
+                ++artVersion_;
+            }
+        }
+        if (artKey_ == key) {
+            bf.artArgb = art_.data();
+            bf.artVersion = artVersion_;
+            bf.artWidth = cw;
+            bf.artHeight = ch;
+        }
+    }
+    return bf;
 }
 
 bool GameWindow::captureFrame(std::vector<std::uint32_t>& argb, int& w, int& h) {
@@ -532,7 +561,8 @@ bool GameWindow::captureFrame(std::vector<std::uint32_t>& argb, int& w, int& h) 
     d3d_->resize(static_cast<int>(rc.right), static_cast<int>(rc.bottom));
     std::array<std::uint32_t, kW * kH> pixels{};
     currentPixels(pixels.data(), 1e9);   // a test frame: the glow takes the picture as it is, no smoothing in time
-    if (!d3d_->draw(pixels.data(), computeViewport(d3d_->width(), d3d_->height()), D3dRenderer::BackgroundFrame{background_, glow_.backdropBytes().data(), glow_.edgeBytes().data()})) return false;
+    const Viewport vp = viewportFor(d3d_->width(), d3d_->height());
+    if (!d3d_->draw(pixels.data(), vp, backgroundFrame(d3d_->width(), d3d_->height(), vp))) return false;
     return d3d_->readBack(argb, w, h);
 }
 
@@ -548,13 +578,15 @@ void GameWindow::paint() {
     GetClientRect(hwnd_, &rc);
     if (d3d_) {   // Direct3D 11: same picture, same whole-number scale, same bars
         d3d_->resize(static_cast<int>(rc.right), static_cast<int>(rc.bottom));
-        if (d3d_->draw(pixels.data(), computeViewport(d3d_->width(), d3d_->height()), D3dRenderer::BackgroundFrame{background_, glow_.backdropBytes().data(), glow_.edgeBytes().data()})) d3d_->present();
+        const Viewport vp = viewportFor(d3d_->width(), d3d_->height());
+        if (d3d_->draw(pixels.data(), vp, backgroundFrame(d3d_->width(), d3d_->height(), vp))) d3d_->present();
         EndPaint(hwnd_, &ps);
         return;
     }
     const int s = effectiveScale();
     const int w = kW * s, h = kH * s;
-    const int ox = std::max(0, (static_cast<int>(rc.right) - w) / 2), oy = std::max(0, (static_cast<int>(rc.bottom) - h) / 2);
+    const Viewport gv = viewportFor(static_cast<int>(rc.right), static_cast<int>(rc.bottom));   // (the GDI drawing has no frames, only black bars)
+    const int ox = gv.scale == s ? gv.x : std::max(0, (static_cast<int>(rc.right) - w) / 2), oy = gv.scale == s ? gv.y : std::max(0, (static_cast<int>(rc.bottom) - h) / 2);
     BITMAPINFO bi{};
     bi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
     bi.bmiHeader.biWidth = kW;

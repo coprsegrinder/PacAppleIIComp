@@ -27,3 +27,6 @@ Because the picture sits at a whole-number scale in a window of any shape (16:9 
 
 ## 3. What I need from you
 Which way for the bezel and the desktop: (A) drawn in code as above (recommended), (B) a specific photograph that I first show you the file page of, or (C) your own pictures. Until you decide, the Background setting has the two options that need no artwork, Black and Ambient Glow.
+
+## 4. Decision (user, 2026-11-04)
+Option A: both backgrounds are drawn in code; nothing was downloaded or integrated from outside. Added after that: the CRT bezel must not stretch: it is a fixed 4:3 screen containing the game picture; the desktop may stretch to the edges of the window.

@@ -6,14 +6,16 @@
 
 namespace pacman::app {
 
-enum class Background { Black, AmbientGlow };   // the CRT bezel and the Apple II desktop of the specification follow when their artwork is decided (docs/MODERNIZATION.md section 7)
+enum class Background { Black, AmbientGlow, CrtBezel, Desktop };
 
-inline constexpr int kBackgroundCount = 2;
+inline constexpr int kBackgroundCount = 4;
 
 inline const char* backgroundKey(Background b) noexcept {   // the settings file's words
     switch (b) {
     case Background::Black: return "black";
     case Background::AmbientGlow: return "glow";
+    case Background::CrtBezel: return "bezel";
+    case Background::Desktop: return "desktop";
     }
     return "black";
 }
@@ -22,6 +24,8 @@ inline const char* backgroundLabel(Background b) noexcept {   // the menu's word
     switch (b) {
     case Background::Black: return "BLACK";
     case Background::AmbientGlow: return "AMBIENT GLOW";
+    case Background::CrtBezel: return "APPLE II CRT BEZEL";
+    case Background::Desktop: return "APPLE II DESKTOP";
     }
     return "BLACK";
 }

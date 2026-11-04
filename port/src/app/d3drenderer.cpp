@@ -30,6 +30,10 @@ VSOut vs(uint id : SV_VertexID) {
 }
 float4 ps(VSOut i) : SV_Target { return float4(tex.Sample(smp, i.uv).rgb, 1.0); }
 
+// A background drawn in code (the CRT bezel, the desktop): the image of the window's size, pixel for pixel.
+Texture2D artTex : register(t3);
+float4 psart(VSOut i) : SV_Target { return float4(artTex.Load(int3(i.pos.xy, 0)).rgb, 1.0); }
+
 // The ambient glow of the bars: the colour of the nearest point of the picture's edge (from the coarse grid, smoothly interpolated), faded with the distance from the edge.
 cbuffer Glow : register(b0) { float4 vp; float4 prm; };   // vp = left, top, right, bottom of the picture in pixels; prm = strength, fade length, blend width, zoom (screen pixels per game pixel)
 Texture2D glowTex : register(t1);   // the blurred copy of the game picture (280 x 192)
@@ -68,7 +72,11 @@ struct D3dRenderer::Impl {
     ComPtr<ID3D11Texture2D> picture;
     ComPtr<ID3D11ShaderResourceView> pictureView;
     ComPtr<ID3D11VertexShader> vs;
-    ComPtr<ID3D11PixelShader> ps, psBackground;
+    ComPtr<ID3D11PixelShader> ps, psBackground, psArt;
+    ComPtr<ID3D11Texture2D> art;
+    ComPtr<ID3D11ShaderResourceView> artView;
+    int artW = 0, artH = 0;
+    std::uint64_t artVersion = 0;
     ComPtr<ID3D11Texture2D> glow, edge;
     ComPtr<ID3D11ShaderResourceView> glowView, edgeView;
     ComPtr<ID3D11SamplerState> linear, mirror;
@@ -139,6 +147,9 @@ bool D3dRenderer::init(HWND hwnd) {
     if (FAILED(D3DCompile(kShader, std::strlen(kShader), nullptr, nullptr, nullptr, "ps", "ps_4_0", 0, 0, &psBlob, &err))) return false;
     if (FAILED(d.device->CreateVertexShader(vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), nullptr, &d.vs))) return false;
     if (FAILED(d.device->CreatePixelShader(psBlob->GetBufferPointer(), psBlob->GetBufferSize(), nullptr, &d.ps))) return false;
+    ComPtr<ID3DBlob> artBlob;
+    if (FAILED(D3DCompile(kShader, std::strlen(kShader), nullptr, nullptr, nullptr, "psart", "ps_4_0", 0, 0, &artBlob, &err))) return false;
+    if (FAILED(d.device->CreatePixelShader(artBlob->GetBufferPointer(), artBlob->GetBufferSize(), nullptr, &d.psArt))) return false;
     ComPtr<ID3DBlob> bgBlob;
     if (FAILED(D3DCompile(kShader, std::strlen(kShader), nullptr, nullptr, nullptr, "psbg", "ps_4_0", 0, 0, &bgBlob, &err))) return false;
     if (FAILED(d.device->CreatePixelShader(bgBlob->GetBufferPointer(), bgBlob->GetBufferSize(), nullptr, &d.psBackground))) return false;
@@ -247,6 +258,46 @@ bool D3dRenderer::draw(const std::uint32_t* argb, const Viewport& vp, const Back
         ID3D11SamplerState* lsmp[2] = {d.linear.Get(), d.mirror.Get()};
         d.context->PSSetSamplers(1, 2, lsmp);
         d.context->Draw(3, 0);
+    }
+    if ((bg.kind == Background::CrtBezel || bg.kind == Background::Desktop) && bg.artArgb && bg.artWidth == d.w && bg.artHeight == d.h) {   // a background drawn in code: its image, then the picture over its middle
+        if (!d.art || d.artW != bg.artWidth || d.artH != bg.artHeight) {
+            D3D11_TEXTURE2D_DESC ad{};
+            ad.Width = static_cast<UINT>(bg.artWidth);
+            ad.Height = static_cast<UINT>(bg.artHeight);
+            ad.MipLevels = 1;
+            ad.ArraySize = 1;
+            ad.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+            ad.SampleDesc.Count = 1;
+            ad.Usage = D3D11_USAGE_DYNAMIC;
+            ad.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+            ad.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+            d.art.Reset();
+            d.artView.Reset();
+            d.artVersion = 0;
+            if (SUCCEEDED(d.device->CreateTexture2D(&ad, nullptr, &d.art))) d.device->CreateShaderResourceView(d.art.Get(), nullptr, &d.artView);
+            d.artW = bg.artWidth;
+            d.artH = bg.artHeight;
+        }
+        if (d.art && d.artView) {
+            if (d.artVersion != bg.artVersion) {
+                D3D11_MAPPED_SUBRESOURCE am{};
+                if (SUCCEEDED(d.context->Map(d.art.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &am))) {
+                    for (int y = 0; y < bg.artHeight; ++y) std::memcpy(static_cast<char*>(am.pData) + static_cast<std::size_t>(y) * am.RowPitch, bg.artArgb + static_cast<std::size_t>(y) * static_cast<std::size_t>(bg.artWidth), static_cast<std::size_t>(bg.artWidth) * 4);
+                    d.context->Unmap(d.art.Get(), 0);
+                    d.artVersion = bg.artVersion;
+                }
+            }
+            D3D11_VIEWPORT whole{0.0f, 0.0f, static_cast<float>(d.w), static_cast<float>(d.h), 0.0f, 1.0f};
+            d.context->RSSetViewports(1, &whole);
+            d.context->RSSetState(d.raster.Get());
+            d.context->IASetInputLayout(nullptr);
+            d.context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+            d.context->VSSetShader(d.vs.Get(), nullptr, 0);
+            d.context->PSSetShader(d.psArt.Get(), nullptr, 0);
+            ID3D11ShaderResourceView* asrv = d.artView.Get();
+            d.context->PSSetShaderResources(3, 1, &asrv);
+            d.context->Draw(3, 0);
+        }
     }
     if (!vp.empty()) {
         D3D11_VIEWPORT v{static_cast<float>(vp.x), static_cast<float>(vp.y), static_cast<float>(vp.w), static_cast<float>(vp.h), 0.0f, 1.0f};
