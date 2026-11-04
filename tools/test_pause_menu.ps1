@@ -1,5 +1,5 @@
 # TASK-034-3: real-program test of the pause menu (muted, window-only: keys are POSTED to the game window, pictures come from PrintWindow of that window). Needs scratch\local.pmpk.
-# Run: powershell -ExecutionPolicy Bypass -File tools	est_pause_menu.ps1   (expects five lines ending in True / exit code 0)
+# Run: powershell -ExecutionPolicy Bypass -File tools/test_pause_menu.ps1   (expects five lines ending in True / exit code 0)
 # Real-program test of the pause menu (window-only: keys are POSTED to the game window, the picture is taken with PrintWindow of that window; nothing touches the desktop).
 Add-Type -AssemblyName System.Drawing
 Add-Type -ReferencedAssemblies System.Drawing @"
