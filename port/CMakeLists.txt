@@ -46,6 +46,7 @@ add_library(pacman_core_verify STATIC
   src/core/ghostdecide_gen.cpp
   src/core/gamedriver.cpp
   src/video/colour.cpp
+  src/video/monochrome.cpp
   src/video/screens.cpp)
 target_include_directories(pacman_core_verify PUBLIC src)
 

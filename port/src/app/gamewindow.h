@@ -16,10 +16,12 @@
 #include <vector>
 
 #include "../hires/hires.h"
+#include "../video/monochrome.h"
 #include "background.h"
 #include "d3drenderer.h"
 #include "display_layout.h"
 #include "background_art.h"
+#include "colourmode.h"
 #include "framed_layout.h"
 #include "glow.h"
 #include "pausemenu.h"
@@ -47,7 +49,8 @@ public:
 
     // --- any thread ---
     void setPage(const hires::Page& page);            // copies the 8 KB page under a lock; the window repaints at the next refresh tick
-    void setImage(std::span<const std::uint32_t> argb);   // 280 x 192 ARGB pixels (the lo-res page, the text page): shown instead of the hi-res page until the next setPage
+    void setImage(std::span<const std::uint32_t> argb);   // (a picture without dot data: in Native Black & White a dot with any light is lit)
+    void setImage(std::span<const std::uint32_t> argb, std::span<const std::uint8_t> dots560x192);   // with the dot positions of the screen (src/video/monochrome.h) for Native Black & White   // 280 x 192 ARGB pixels (the lo-res page, the text page): shown instead of the hi-res page until the next setPage
     std::optional<std::uint8_t> popKey();             // next Apple II key code (7-bit ASCII with bit 7 set) or nothing
 
     // --- window thread ---
@@ -89,6 +92,11 @@ public:
     // corner to resize it (whole-number scales); the zoom box in its title bar fits it to the largest size and centres it.
     const FrameState& desktopState() const noexcept { return desk_; }
     void setDesktopState(const FrameState& st);   // programmatic (settings, tests)
+    // Colour mode (TASK-034-8): Original Colour, or Native Black & White (the picture as a monochrome Apple II monitor showed it: green phosphor, 560 dot positions per line with the half-dot shift,
+    // a slight softness). Only the game picture changes; the menu overlay follows (in the phosphor's green).
+    ColourMode colourMode() const noexcept { return colour_; }
+    void setColourMode(ColourMode m);
+    void cycleColourMode(int dir) { setColourMode(nextColourMode(colour_, dir)); }
     void setBackground(Background b);                  // what is drawn around the picture (window thread); written to the settings
     void cycleBackground(int dir);
     Background background() const noexcept { return background_; }
@@ -132,6 +140,10 @@ private:
     bool borders_ = true;               // windowed mode only: title bar and frame
     bool scalePending_ = false;         // setScale() was called in full screen: applies when leaving it
     Background background_ = Background::Black;
+    ColourMode colour_ = ColourMode::Original;
+    std::vector<std::uint8_t> monoDots_;       // the dot positions of the screen shown by setImage (when the program gave them), guarded by mutex_
+    bool monoDotsValid_ = false;
+    std::vector<std::uint32_t> mono560_;       // the monochrome picture of the last currentPixels() call (Native Black & White only)
     FrameState desk_;                         // the desktop window's chosen scale and place
     DeskHit dragKind_ = DeskHit::None;        // a drag or a resize in progress (the mouse is captured)
     POINT dragFrom_{0, 0};

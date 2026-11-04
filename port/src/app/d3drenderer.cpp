@@ -69,8 +69,8 @@ struct D3dRenderer::Impl {
     ComPtr<ID3D11DeviceContext> context;
     ComPtr<IDXGISwapChain1> swap;
     ComPtr<ID3D11RenderTargetView> rtv;
-    ComPtr<ID3D11Texture2D> picture;
-    ComPtr<ID3D11ShaderResourceView> pictureView;
+    ComPtr<ID3D11Texture2D> picture, mono;
+    ComPtr<ID3D11ShaderResourceView> pictureView, monoView;
     ComPtr<ID3D11VertexShader> vs;
     ComPtr<ID3D11PixelShader> ps, psBackground, psArt;
     ComPtr<ID3D11Texture2D> art;
@@ -166,6 +166,10 @@ bool D3dRenderer::init(HWND hwnd) {
     td.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
     if (FAILED(d.device->CreateTexture2D(&td, nullptr, &d.picture))) return false;
     if (FAILED(d.device->CreateShaderResourceView(d.picture.Get(), nullptr, &d.pictureView))) return false;
+    D3D11_TEXTURE2D_DESC md = td;   // the monochrome picture: 560 dot positions across
+    md.Width = 560;
+    if (FAILED(d.device->CreateTexture2D(&md, nullptr, &d.mono))) return false;
+    if (FAILED(d.device->CreateShaderResourceView(d.mono.Get(), nullptr, &d.monoView))) return false;
 
     D3D11_SAMPLER_DESC ss{};
     ss.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT;   // nearest neighbour
@@ -208,13 +212,19 @@ void D3dRenderer::resize(int clientW, int clientH) {
     if (SUCCEEDED(d.swap->ResizeBuffers(0, static_cast<UINT>(clientW), static_cast<UINT>(clientH), DXGI_FORMAT_UNKNOWN, 0))) d.makeTarget();
 }
 
-bool D3dRenderer::draw(const std::uint32_t* argb, const Viewport& vp, const BackgroundFrame& bg) {
+bool D3dRenderer::draw(const std::uint32_t* argb, const Viewport& vp, const BackgroundFrame& bg, const std::uint32_t* mono560) {
     Impl& d = *d_;
     if (!d.swap || !d.rtv) return false;
     D3D11_MAPPED_SUBRESOURCE m{};
     if (FAILED(d.context->Map(d.picture.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &m))) return false;
     for (int y = 0; y < kGameH; ++y) std::memcpy(static_cast<char*>(m.pData) + static_cast<std::size_t>(y) * m.RowPitch, argb + static_cast<std::size_t>(y) * kGameW, kGameW * 4);
     d.context->Unmap(d.picture.Get(), 0);
+    if (mono560) {
+        D3D11_MAPPED_SUBRESOURCE mm{};
+        if (FAILED(d.context->Map(d.mono.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mm))) return false;
+        for (int y = 0; y < kGameH; ++y) std::memcpy(static_cast<char*>(mm.pData) + static_cast<std::size_t>(y) * mm.RowPitch, mono560 + static_cast<std::size_t>(y) * 560, 560 * 4);
+        d.context->Unmap(d.mono.Get(), 0);
+    }
 
     const float black[4] = {0, 0, 0, 1};
     ID3D11RenderTargetView* rt = d.rtv.Get();
@@ -307,7 +317,7 @@ bool D3dRenderer::draw(const std::uint32_t* argb, const Viewport& vp, const Back
         d.context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         d.context->VSSetShader(d.vs.Get(), nullptr, 0);
         d.context->PSSetShader(d.ps.Get(), nullptr, 0);
-        ID3D11ShaderResourceView* srv = d.pictureView.Get();
+        ID3D11ShaderResourceView* srv = mono560 ? d.monoView.Get() : d.pictureView.Get();
         d.context->PSSetShaderResources(0, 1, &srv);
         ID3D11SamplerState* smp = d.sampler.Get();
         d.context->PSSetSamplers(0, 1, &smp);

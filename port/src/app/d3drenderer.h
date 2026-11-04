@@ -36,7 +36,8 @@ public:
         int artWidth = 0, artHeight = 0;
         const std::uint8_t* edgeBgra = nullptr;   // kEdgeW x 4 x 4 bytes: the picture's own edge colours (glow.h), so that the picture's border dissolves into the bars
     };
-    bool draw(const std::uint32_t* argb280x192, const Viewport& vp, const BackgroundFrame& bg = BackgroundFrame{});   // draws the background, then the picture into vp; nothing is shown until present()
+    // `mono560x192` (optional): the picture as a monochrome monitor shows it, 560 dot positions per line (src/video/monochrome.h); drawn instead of the 280 x 192 picture, nearest neighbour.
+    bool draw(const std::uint32_t* argb280x192, const Viewport& vp, const BackgroundFrame& bg = BackgroundFrame{}, const std::uint32_t* mono560x192 = nullptr);   // draws the background, then the picture into vp; nothing is shown until present()
     bool present();                                                  // sync interval 0 for now (VSync is its own section)
     bool readBack(std::vector<std::uint32_t>& argb, int& w, int& h); // the back buffer after draw() (tests)
     bool software() const noexcept;                                  // true when the WARP software device is in use

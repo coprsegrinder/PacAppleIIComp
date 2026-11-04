@@ -38,3 +38,6 @@ Nothing was downloaded, copied or integrated. The search tool gave summaries of 
 * https://en.wikipedia.org/wiki/Monochrome_monitor and https://en.wikipedia.org/wiki/Apple_Monitor_II (phosphor types, Apple's monitors)
 * https://martink-rsa.github.io/bitmapped/concepts/artifact-colors , https://paleotronic.com/2018/10/03/apple-ii-colour-computer-graphics , https://nerdlypleasures.blogspot.com/2021/10/apple-ii-composite-artifact-color-ntsc.html (artifact colour)
 * https://git.applefritter.com/Apple-2-Tools/AppleWin/src/branch/master/help/cfg-config.html (AppleWin's monochrome modes; GPL, reference only)
+
+## 7. Decisions (user, 2026-11-04) and what was built
+1. Phosphor: **green only**, like Apple's own monochrome monitors (no white or amber option; references found online may be used without asking). 2. **The 560-dot picture** with the half-dot shift. 3. **Slight softness**, fixed. Built as TASK-034-8, see docs/MODERNIZATION.md Section 8.

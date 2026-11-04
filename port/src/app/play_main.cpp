@@ -41,6 +41,7 @@
 #include "../core/gamedriver.h"
 #include "../datapack/datapack.h"
 #include "../verify/verify.h"
+#include "../video/monochrome.h"
 #include "../video/screens.h"
 #include "gamewindow.h"
 
@@ -319,6 +320,7 @@ bool runMenus(core::AttractFlow& flow, const core::CharacterRom& rom, const data
     hires::Page cartoonPage;
     std::vector<std::uint8_t> bitmap;
     std::vector<std::uint32_t> argb(280 * 192);
+    std::vector<std::uint8_t> dots(static_cast<std::size_t>(video::kDotsW) * video::kDotsH);
     std::int64_t lastShown = 0, lastCartoonElapsed = 0;
     bool cartoonOn = false;
     int lastKind = -1;
@@ -355,7 +357,8 @@ bool runMenus(core::AttractFlow& flow, const core::CharacterRom& rom, const data
                     const bool flash = ((now / 270'000'000) & 1) != 0;   // the cursor and flashing characters: about 1.9 changes a second (I: video hardware, not measured)
                     core::renderText(flow.text(), rom, flash, -1, -1, bitmap);
                     video::renderBitmapArgb(bitmap, argb);
-                    window.setImage(argb);
+                    video::bitmapDots(bitmap, dots);   // the dot positions for Native Black & White (text: two positions per dot)
+                    window.setImage(argb, dots);
                     lastKind = 2;
                 } else if (flow.mode() == core::AttractFlow::Mode::Attract) {
                     if (flow.turn().hiresVisible()) {
@@ -365,7 +368,8 @@ bool runMenus(core::AttractFlow& flow, const core::CharacterRom& rom, const data
                         std::array<std::uint8_t, 1024> lores{};
                         for (std::size_t i = 0; i < lores.size(); ++i) lores[i] = flow.turn().loresByte(i);
                         video::renderLoresArgb(lores, argb);
-                        window.setImage(argb);
+                        video::loresDots(lores, dots);   // lo-res colours as the 4-position patterns of their bits
+                        window.setImage(argb, dots);
                         lastKind = 1;
                     }
                 }

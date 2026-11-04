@@ -97,6 +97,7 @@ std::string SettingsStore::format(const Settings& s) {
     o << "display_mode=" << displayModeKey(s.displayMode) << "\n";
     o << "window_borders=" << (s.windowBorders ? 1 : 0) << "\n";
     o << "background=" << backgroundKey(s.background) << "\n";
+    o << "colour_mode=" << colourModeKey(s.colourMode) << "\n";
     if (s.desktopScale != 0 || s.desktopX != 0.0f || s.desktopY != 0.0f) {
         char buf[64];
         std::snprintf(buf, sizeof(buf), "desktop_x=%.2f\ndesktop_y=%.2f\n", static_cast<double>(s.desktopX), static_cast<double>(s.desktopY));
@@ -132,6 +133,9 @@ Settings SettingsStore::parse(const std::string& text) {
             if (parseMode(value, m)) s.displayMode = m;
         } else if (key == "window_borders") {
             if (parseBool(value, b)) s.windowBorders = b;
+        } else if (key == "colour_mode") {
+            ColourMode cm;
+            if (parseColourMode(value, cm)) s.colourMode = cm;
         } else if (key == "background") {
             Background bg;
             if (parseBackground(value, bg)) s.background = bg;

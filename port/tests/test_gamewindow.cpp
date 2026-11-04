@@ -852,7 +852,7 @@ TEST(pause_menu_keyboard_navigation_pages_and_actions) {
     // Graphics Settings: its page, the toggle, Back and Esc return to the main page on the entry that led there
     m.show();
     m.key(PauseMenu::Key::Down);
-    CHECK(m.key(PauseMenu::Key::Select) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Graphics && m.selected() == 0 && m.itemCount() == 5);
+    CHECK(m.key(PauseMenu::Key::Select) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Graphics && m.selected() == 0 && m.itemCount() == 6);
     CHECK(m.key(PauseMenu::Key::Select) == PauseMenu::Action::NextDisplayMode && m.page() == PauseMenu::Page::Graphics);   // Display Mode: Enter = next
     CHECK(m.key(PauseMenu::Key::Right) == PauseMenu::Action::NextDisplayMode && m.key(PauseMenu::Key::Left) == PauseMenu::Action::PreviousDisplayMode);
     m.key(PauseMenu::Key::Down);
@@ -862,7 +862,9 @@ TEST(pause_menu_keyboard_navigation_pages_and_actions) {
     m.key(PauseMenu::Key::Down);
     CHECK(m.selected() == 3 && m.key(PauseMenu::Key::Select) == PauseMenu::Action::NextBackground && m.key(PauseMenu::Key::Right) == PauseMenu::Action::NextBackground && m.key(PauseMenu::Key::Left) == PauseMenu::Action::PreviousBackground);   // Background
     m.key(PauseMenu::Key::Down);
-    CHECK(m.selected() == 4 && m.key(PauseMenu::Key::Left) == PauseMenu::Action::None);   // Back: left/right do nothing
+    CHECK(m.selected() == 4 && m.key(PauseMenu::Key::Select) == PauseMenu::Action::NextColourMode && m.key(PauseMenu::Key::Right) == PauseMenu::Action::NextColourMode && m.key(PauseMenu::Key::Left) == PauseMenu::Action::PreviousColourMode);   // Colour Mode
+    m.key(PauseMenu::Key::Down);
+    CHECK(m.selected() == 5 && m.key(PauseMenu::Key::Left) == PauseMenu::Action::None);   // Back: left/right do nothing
     m.key(PauseMenu::Key::Select);   // Back
     CHECK(m.page() == PauseMenu::Page::Main && m.selected() == 1);
     m.key(PauseMenu::Key::Select);
@@ -900,7 +902,8 @@ TEST(pause_menu_mouse_selects_on_hover_activates_on_click_and_ignores_the_rest) 
     CHECK(m.pointerClick(graphicsItem(1).x, graphicsItem(1).y) == PauseMenu::Action::NextResolution);
     CHECK(m.pointerClick(graphicsItem(2).x, graphicsItem(2).y) == PauseMenu::Action::ToggleBorders);
     CHECK(m.pointerClick(graphicsItem(3).x, graphicsItem(3).y) == PauseMenu::Action::NextBackground);
-    CHECK(m.pointerClick(graphicsItem(4).x, graphicsItem(4).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Main);
+    CHECK(m.pointerClick(graphicsItem(4).x, graphicsItem(4).y) == PauseMenu::Action::NextColourMode);
+    CHECK(m.pointerClick(graphicsItem(5).x, graphicsItem(5).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Main);
     // Quit Game -> Cancel by mouse, Quit Game -> Confirm by mouse
     CHECK(m.pointerClick(mainItem(2).x, mainItem(2).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Confirm);
     CHECK(m.pointerClick(confirmItem(1).x, confirmItem(1).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Main);
@@ -1063,7 +1066,7 @@ TEST(pause_menu_in_the_window_mouse_keyboard_graphics_page_and_quit_with_confirm
     // the mouse works at another window size too (the picture position is mapped through the viewport)
     SetWindowPos(h, nullptr, 0, 0, 1100, 800, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
     pump(20);
-    SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, graphicsItem(4).x, graphicsItem(4).y));   // Back
+    SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, graphicsItem(5).x, graphicsItem(5).y));   // Back
     SendMessageW(h, WM_MOUSEMOVE, 0, clientPos(h, mainItem(2).x, mainItem(2).y));
     SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, mainItem(2).x, mainItem(2).y));    // Quit Game: asks first
     CHECK(w.ok() && w.menuOpen());
@@ -3265,5 +3268,416 @@ TEST(desktop_window_moving_and_resizing_change_nothing_in_the_game_or_its_clock)
     const std::int64_t exact = clock.cyclesIn(endNs - t0);
     std::printf("    %d drags in 0.8 s; cycles handed out %lld, exact %lld, skipped %lld\n", moves, static_cast<long long>(handed), static_cast<long long>(exact), static_cast<long long>(clock.skipped()));
     CHECK(moves >= 10);
+    CHECK(handed == exact && clock.skipped() == 0);
+}
+
+// ---- TASK-034-8: Colour Mode: Original Colour / Native Black & White (green phosphor, 560 dot positions, half-dot shift, slight softness) ----
+#include "../src/app/colourmode.h"
+#include "../src/video/monochrome.h"
+
+namespace {
+
+using app::ColourMode;
+
+std::vector<std::uint8_t> dotsOf(const hires::Page& p) {
+    std::vector<std::uint8_t> d(static_cast<std::size_t>(video::kDotsW) * video::kDotsH);
+    video::hiresDots(p, d);
+    return d;
+}
+
+std::size_t dotAt(const std::vector<std::uint8_t>& d, int pos, int y) { return d[static_cast<std::size_t>(y) * video::kDotsW + static_cast<std::size_t>(pos)]; }
+
+}  // namespace
+
+TEST(colour_mode_names_cycle_and_the_settings_file_keeps_the_choice) {
+    CHECK(app::kColourModeCount == 2);
+    CHECK(std::string(app::colourModeKey(ColourMode::Original)) == "original" && std::string(app::colourModeKey(ColourMode::NativeMono)) == "mono");
+    CHECK(std::string(app::colourModeLabel(ColourMode::Original)) == "ORIGINAL COLOUR" && std::string(app::colourModeLabel(ColourMode::NativeMono)) == "NATIVE BLACK & WHITE");
+    CHECK(app::nextColourMode(ColourMode::Original, 1) == ColourMode::NativeMono && app::nextColourMode(ColourMode::NativeMono, 1) == ColourMode::Original);
+    CHECK(app::nextColourMode(ColourMode::Original, -1) == ColourMode::NativeMono);
+    ColourMode m = ColourMode::Original;
+    CHECK(app::parseColourMode("mono", m) && m == ColourMode::NativeMono && !app::parseColourMode("green", m) && m == ColourMode::NativeMono);
+    Settings s;
+    CHECK(s.colourMode == ColourMode::Original);   // the default: nothing changes
+    s.colourMode = ColourMode::NativeMono;
+    CHECK(SettingsStore::parse(SettingsStore::format(s)).colourMode == ColourMode::NativeMono);
+    CHECK(SettingsStore::parse("colour_mode=MONO\n").colourMode == ColourMode::NativeMono && SettingsStore::parse("colour_mode=purple\n").colourMode == ColourMode::Original);
+}
+
+TEST(monochrome_hires_dots_are_two_positions_wide_and_a_palette_byte_is_half_a_dot_to_the_right) {
+    hires::Page p;
+    p.clear(0);
+    const std::size_t row0 = hires::rowOffset(0), row1 = hires::rowOffset(1), row2 = hires::rowOffset(2), row3 = hires::rowOffset(3);
+    p.set(row0, 0x01);        // dot 0, no palette bit
+    p.set(row1, 0x81);        // dot 0, palette bit: half a dot to the right
+    p.set(row2, 0x00);
+    p.set(row2 + 0, 0x7F);    // seven dots in a row: a solid bar of 14 positions
+    p.set(row3 + 5, 0x40);    // dot 6 of byte 5 = dot 41, no palette bit
+    p.set(row3 + 6, 0x81);    // a palette byte after it: its first dot (dot 42) is one position to the right of where it would be, and touches the dot before
+    const auto d = dotsOf(p);
+    CHECK(dotAt(d, 0, 0) == 1 && dotAt(d, 1, 0) == 1 && dotAt(d, 2, 0) == 0);                       // two positions
+    CHECK(dotAt(d, 0, 1) == 0 && dotAt(d, 1, 1) == 1 && dotAt(d, 2, 1) == 1 && dotAt(d, 3, 1) == 0);   // shifted by one
+    for (int pos = 0; pos < 14; ++pos) CHECK(dotAt(d, pos, 2) == 1);
+    CHECK(dotAt(d, 14, 2) == 0);
+    CHECK(dotAt(d, 82, 3) == 1 && dotAt(d, 83, 3) == 1 && dotAt(d, 84, 3) == 0 && dotAt(d, 85, 3) == 1 && dotAt(d, 86, 3) == 1);   // dot 41 at 82-83; dot 42 shifted: 85-86 (a gap of one position)
+    // the last dot of a palette byte at the end of a line is cut at the edge
+    p.clear(0);
+    p.set(row0 + 39, 0xC0);   // dot 279 (bit 6) with the palette bit: positions 559 and 560
+    const auto e = dotsOf(p);
+    CHECK(dotAt(e, 559, 0) == 1 && dotAt(e, 558, 0) == 0);
+    // nothing lit, nothing drawn
+    p.clear(0x80);   // black with the palette bit set (the game's own clear)
+    const auto black = dotsOf(p);
+    for (auto v : black) CHECK(v == 0);
+}
+
+TEST(monochrome_dots_of_a_hires_picture_are_exactly_the_lit_dots_none_lost_none_added) {
+    hires::Page p;
+    std::uint32_t s = 4242;
+    for (std::size_t i = 0; i < hires::kPageBytes; ++i) {
+        s = s * 1664525u + 1013904223u;
+        p.set(i, static_cast<std::uint8_t>(s >> 24));
+    }
+    const auto d = dotsOf(p);
+    // build the expected set of positions independently: for every lit bit, its two positions
+    std::vector<std::uint8_t> want(d.size(), 0);
+    for (int y = 0; y < 192; ++y)
+        for (int col = 0; col < 40; ++col) {
+            const std::uint8_t b = p.byte(hires::rowOffset(y) + static_cast<std::size_t>(col));
+            for (int k = 0; k < 7; ++k)
+                if ((b >> k) & 1) {
+                    const int pos = (col * 7 + k) * 2 + ((b & 0x80) ? 1 : 0);
+                    for (int q = pos; q < pos + 2; ++q)
+                        if (q < 560) want[static_cast<std::size_t>(y) * 560 + static_cast<std::size_t>(q)] = 1;
+                }
+        }
+    CHECK(d == want);
+    // every dot of the colour picture is a dot of the monochrome one (the colour picture's lit pixels are the lit bits)
+    std::array<std::uint32_t, 280 * 192> colour{};
+    video::renderArgb(p, colour);
+    std::size_t lost = 0, litColour = 0;
+    for (int y = 0; y < 192; ++y)
+        for (int x = 0; x < 280; ++x)
+            if ((colour[static_cast<std::size_t>(y) * 280 + static_cast<std::size_t>(x)] & 0xFFFFFF) != 0) {
+                ++litColour;
+                const int shift = (p.byte(hires::rowOffset(y) + static_cast<std::size_t>(x / 7)) & 0x80) ? 1 : 0;
+                const int pos = 2 * x + shift;
+                lost += dotAt(d, pos, y) == 0;
+            }
+    std::printf("    %zu lit dots of the colour picture, %zu of them missing in the monochrome one\n", litColour, lost);
+    CHECK(litColour > 10000 && lost == 0);
+}
+
+TEST(monochrome_text_lores_and_other_pictures_make_their_dots) {
+    std::vector<std::uint8_t> bitmap(280 * 192, 0), dots(static_cast<std::size_t>(video::kDotsW) * video::kDotsH);
+    bitmap[5 * 280 + 10] = 1;
+    video::bitmapDots(bitmap, dots);
+    std::size_t lit = 0;
+    for (auto v : dots) lit += v;
+    CHECK(lit == 2 && dotAt(dots, 20, 5) == 1 && dotAt(dots, 21, 5) == 1);   // text: two positions per dot, no shift
+    // lo-res: colour 0 is dark, colour 15 solid, the others patterns of their four bits; every row of a block is the same
+    std::vector<std::uint8_t> page(1024, 0);
+    page[0] = 0xF0;   // top block colour 0, bottom block colour 15
+    page[1] = 0x55;   // colour 5 in both halves
+    page[2] = 0xAA;   // colour 10
+    video::loresDots(page, dots);
+    int top0 = 0, bottom0 = 0, lit5 = 0, lit10 = 0;
+    for (int p = 0; p < 14; ++p) {
+        top0 += static_cast<int>(dotAt(dots, p, 0));
+        bottom0 += static_cast<int>(dotAt(dots, p, 4));
+        lit5 += static_cast<int>(dotAt(dots, 14 + p, 0));
+        lit10 += static_cast<int>(dotAt(dots, 28 + p, 0));
+    }
+    std::printf("    lo-res blocks of 14 positions: colour 0 -> %d lit, colour 15 -> %d, colour 5 -> %d, colour 10 -> %d\n", top0, bottom0, lit5, lit10);
+    CHECK(top0 == 0 && bottom0 == 14);
+    CHECK(lit5 >= 6 && lit5 <= 8 && lit10 >= 6 && lit10 <= 8 && lit5 + lit10 >= 13);   // about half the positions: a grey of half brightness
+    for (int y = 1; y < 4; ++y)
+        for (int p = 0; p < 14; ++p) CHECK(dotAt(dots, 14 + p, y) == dotAt(dots, 14 + p, 0));
+    CHECK(dotAt(dots, 14, 0) != dotAt(dots, 15, 0) || dotAt(dots, 15, 0) != dotAt(dots, 16, 0));   // a pattern, not a bar
+    // another picture: any light is a dot
+    std::vector<std::uint32_t> argb(280 * 192, 0xFF000000u);
+    argb[7 * 280 + 3] = 0xFF010000u;
+    video::argbDots(argb, dots);
+    lit = 0;
+    for (auto v : dots) lit += v;
+    CHECK(lit == 2 && dotAt(dots, 6, 7) == 1);
+}
+
+TEST(monochrome_softness_phosphor_and_the_two_sizes_of_the_picture) {
+    std::vector<std::uint8_t> dots(static_cast<std::size_t>(video::kDotsW) * video::kDotsH, 0), level(dots.size());
+    // a lone dot (two positions): reaches three quarters of full, spreads one position each side; a solid run stays full inside; black stays black
+    dots[10] = 1;
+    dots[11] = 1;
+    for (int p = 100; p < 120; ++p) dots[static_cast<std::size_t>(p)] = 1;
+    for (int p = 200; p < 600 && p < 560; p += 4) {   // a dotted line: two on, two off
+        dots[static_cast<std::size_t>(p)] = 1;
+        dots[static_cast<std::size_t>(p + 1)] = 1;
+    }
+    video::softenDots(dots, level);
+    std::printf("    a lone dot: %d %d %d %d of 255; inside a solid run %d; a dotted line alternates %d / %d\n", level[9], level[10], level[11], level[12], level[110], level[200], level[202]);
+    CHECK(level[9] == 64 && level[10] == 191 && level[11] == 191 && level[12] == 64);
+    CHECK(level[110] == 255 && level[99] == 64 && level[120] == 64);
+    CHECK(level[150] == 0 && level[50] == 0);
+    CHECK(level[201] > 150 && level[203] < 100 && level[201] - level[203] > 90);   // the gaps of a dotted line stay visible (the maze walls)
+    // the phosphor: green, black exactly black, brightness follows the level
+    CHECK(video::phosphorArgb(0) == 0xFF000000u);
+    const std::uint32_t full = video::phosphorArgb(255), half = video::phosphorArgb(128);
+    const int fr = static_cast<int>((full >> 16) & 0xFF), fg = static_cast<int>((full >> 8) & 0xFF), fb = static_cast<int>(full & 0xFF);
+    std::printf("    the phosphor at full brightness: %d, %d, %d (red, green, blue)\n", fr, fg, fb);
+    CHECK(fg == 255 && fr < fg / 3 && fb < fg / 2 && fb > fr);   // green with a touch of blue
+    CHECK(static_cast<int>((half >> 8) & 0xFF) > 120 && static_cast<int>((half >> 8) & 0xFF) < 136);
+    // the two pictures of the same thing: 560 wide and 280 wide (each pixel the average of its two positions)
+    std::vector<std::uint32_t> wide(level.size()), normal(280 * 192);
+    video::phosphorImage(level, wide);
+    video::phosphorImage280(level, normal);
+    CHECK(wide[11] == video::phosphorArgb(level[11]));
+    CHECK(normal[5] == video::phosphorArgb(static_cast<std::uint8_t>((level[10] + level[11] + 1) / 2)));
+}
+
+TEST(native_black_and_white_in_the_window_is_the_green_dot_picture_and_original_colour_is_untouched) {
+    GameWindow w(GameWindowOptions{3, true});
+    CHECK(w.ok());
+    if (!w.ok() || !w.usesDirect3d()) return;
+    const hires::Page page = busyPage();
+    w.setPage(page);
+    setClient(w.hwnd(), 1440, 900);   // the scale is 4 (even): every dot position is exactly two screen pixels wide
+    pump(40);
+    std::vector<std::uint32_t> colourShot, monoShot;
+    int cw = 0, ch = 0;
+    CHECK(w.colourMode() == ColourMode::Original);
+    CHECK(w.captureFrame(colourShot, cw, ch));
+    CHECK(insideDiffers(colourShot, page, cw, ch) == 0);   // Original Colour: exactly the picture it always was
+    w.setColourMode(ColourMode::NativeMono);
+    CHECK(w.captureFrame(monoShot, cw, ch));
+    const app::Viewport vp = app::computeViewport(cw, ch);
+    CHECK(vp.scale == 4 || vp.scale == 5);
+    if (vp.scale % 2 != 0) {
+        std::printf("    (scale %d is odd: the exact comparison needs an even scale; skipped)\n", vp.scale);
+        return;
+    }
+    // the expected picture, computed independently from the dots: positions, softness, phosphor, nearest neighbour at 2 screen pixels per position (scale 4) or scale/2 in general
+    const auto dots = dotsOf(page);
+    std::vector<std::uint8_t> level(dots.size());
+    video::softenDots(dots, level);
+    std::size_t bad = 0, litPixels = 0;
+    for (int y = 0; y < vp.h; ++y)
+        for (int x = 0; x < vp.w; ++x) {
+            const int pos = x / (vp.scale / 2);
+            const std::uint32_t want = video::phosphorArgb(level[static_cast<std::size_t>(y / vp.scale) * 560 + static_cast<std::size_t>(pos)]) & 0xFFFFFF;
+            const std::uint32_t got = at(monoShot, cw, vp.x + x, vp.y + y);
+            bad += got != want;
+            litPixels += want != 0;
+        }
+    std::printf("    Native Black & White at scale %d: %zu of %d picture pixels differ from the dot picture; %zu pixels lit\n", vp.scale, bad, vp.w * vp.h, litPixels);
+    CHECK(bad == 0 && litPixels > 1000);
+    // every pixel of the picture is a shade of the one green (no other hue anywhere in the picture)
+    std::size_t offHue = 0;
+    for (int y = 0; y < vp.h; ++y)
+        for (int x = 0; x < vp.w; ++x) {
+            const std::uint32_t p = at(monoShot, cw, vp.x + x, vp.y + y);
+            offHue += !(redOf(p) <= greenOf(p) && blueOf(p) <= greenOf(p) && redOf(p) * 3 <= greenOf(p) + 2);
+        }
+    CHECK(offHue == 0);
+    // going back gives exactly the colour picture again
+    w.setColourMode(ColourMode::Original);
+    std::vector<std::uint32_t> again;
+    CHECK(w.captureFrame(again, cw, ch) && again == colourShot);
+}
+
+TEST(native_black_and_white_follows_the_game_the_menu_and_the_backgrounds) {
+    core::CharacterRom rom;
+    const bool haveFont = loadFont(rom);
+    GameWindow w(GameWindowOptions{3, true});
+    CHECK(w.ok());
+    if (!w.ok() || !w.usesDirect3d()) return;
+    if (haveFont) w.setMenuFont(rom);
+    // a text or lo-res screen given with its dots, and one without: both appear in the green
+    std::vector<std::uint32_t> argb(280 * 192, 0xFF000000u);
+    std::vector<std::uint8_t> bits(280 * 192, 0), dots(static_cast<std::size_t>(video::kDotsW) * video::kDotsH);
+    for (int x = 20; x < 120; ++x) {
+        argb[40 * 280 + static_cast<std::size_t>(x)] = 0xFFFFFFFFu;
+        bits[40 * 280 + static_cast<std::size_t>(x)] = 1;
+    }
+    video::bitmapDots(bits, dots);
+    setClient(w.hwnd(), 1440, 900);
+    pump(30);
+    w.setColourMode(ColourMode::NativeMono);
+    std::vector<std::uint32_t> got;
+    int cw = 0, ch = 0;
+    w.setImage(argb, dots);
+    CHECK(w.captureFrame(got, cw, ch));
+    app::Viewport vp = w.renderInfo().viewport;
+    const std::uint32_t lineWith = at(got, cw, vp.x + 60 * vp.scale, vp.y + 40 * vp.scale + 1);
+    CHECK(greenOf(lineWith) > 200 && redOf(lineWith) < 80);   // the text/lo-res line is green
+    w.setImage(argb);                                          // the same without dot data: a dot with any light is lit
+    CHECK(w.captureFrame(got, cw, ch));
+    CHECK(at(got, cw, vp.x + 60 * vp.scale, vp.y + 40 * vp.scale + 1) == lineWith);
+    // the pause menu in the green, and the glow and the frames follow the picture's colour
+    w.setPage(busyPage());
+    SendMessageW(w.hwnd(), WM_KEYDOWN, VK_ESCAPE, 1);
+    CHECK(w.menuOpen() && w.captureFrame(got, cw, ch));
+    std::size_t colourful = 0, white = 0;
+    for (int y = 0; y < vp.h; ++y)
+        for (int x = 0; x < vp.w; ++x) {
+            const std::uint32_t p = at(got, cw, vp.x + x, vp.y + y);
+            colourful += !(redOf(p) <= greenOf(p) && blueOf(p) <= greenOf(p));
+            white += redOf(p) > 200 && greenOf(p) > 200 && blueOf(p) > 200;
+        }
+    CHECK(colourful == 0 && white == 0);   // the menu panel and the dimmed picture are all in the phosphor's green
+    SendMessageW(w.hwnd(), WM_KEYDOWN, VK_ESCAPE, 1);
+    w.setBackground(app::Background::AmbientGlow);
+    CHECK(w.captureFrame(got, cw, ch));
+    vp = w.renderInfo().viewport;
+    const std::uint32_t barPx = at(got, cw, vp.x - 30, vp.y + vp.h / 2);
+    CHECK(redOf(barPx) <= greenOf(barPx) && blueOf(barPx) <= greenOf(barPx));   // the glow is the green too (it is made from the picture)
+    for (app::Background kind : {app::Background::CrtBezel, app::Background::Desktop}) {   // the frames are drawn as they are; the picture inside is the green one
+        w.setBackground(kind);
+        CHECK(w.captureFrame(got, cw, ch));
+        vp = w.renderInfo().viewport;
+        std::size_t offHue = 0;
+        for (int y = 0; y < vp.h; y += 3)
+            for (int x = 0; x < vp.w; x += 3) {
+                const std::uint32_t p = at(got, cw, vp.x + x, vp.y + y);
+                offHue += !(redOf(p) <= greenOf(p) && blueOf(p) <= greenOf(p));
+            }
+        CHECK(offHue == 0);
+    }
+}
+
+TEST(colour_mode_is_changed_from_the_pause_menu_kept_in_the_settings_and_restored) {
+    core::CharacterRom rom;
+    const bool haveFont = loadFont(rom);
+    const auto dir = scratchDir("colourmode");
+    SettingsStore store((dir / "settings.ini").wstring());
+    Settings start;
+    start.displayMode = DisplayMode::Windowed;
+    {
+        GameWindow w(GameWindowOptions{3, true});
+        CHECK(w.ok());
+        if (!w.ok()) return;
+        if (haveFont) w.setMenuFont(rom);
+        w.attachSettings(&store, start);
+        CHECK(w.colourMode() == ColourMode::Original);
+        const HWND h = w.hwnd();
+        SendMessageW(h, WM_KEYDOWN, VK_ESCAPE, 1);
+        SendMessageW(h, WM_KEYDOWN, VK_DOWN, 1);
+        SendMessageW(h, WM_KEYDOWN, VK_RETURN, 1);   // Graphics Settings
+        for (int i = 0; i < 4; ++i) SendMessageW(h, WM_KEYDOWN, VK_DOWN, 1);   // Colour Mode
+        SendMessageW(h, WM_KEYDOWN, VK_RIGHT, 1);
+        CHECK(w.colourMode() == ColourMode::NativeMono && w.menuOpen());
+        CHECK(store.load().colourMode == ColourMode::NativeMono);   // written at once
+        SendMessageW(h, WM_KEYDOWN, VK_LEFT, 1);
+        CHECK(w.colourMode() == ColourMode::Original && store.load().colourMode == ColourMode::Original);
+        SendMessageW(h, WM_KEYDOWN, VK_RETURN, 1);   // Enter = next
+        CHECK(w.colourMode() == ColourMode::NativeMono);
+        SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, graphicsItem(4).x, graphicsItem(4).y));   // a click: next (round to colour)
+        CHECK(w.colourMode() == ColourMode::Original);
+        SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, graphicsItem(4).x, graphicsItem(4).y));
+        CHECK(w.colourMode() == ColourMode::NativeMono);
+    }
+    CHECK(store.load().colourMode == ColourMode::NativeMono);
+    {
+        GameWindow w(GameWindowOptions{3, true});
+        CHECK(w.ok());
+        if (!w.ok()) return;
+        w.attachSettings(&store, store.load());
+        CHECK(w.colourMode() == ColourMode::NativeMono);   // the next start
+    }
+    // the menu entry shows the choice
+    if (haveFont) {
+        PauseMenu m;
+        m.show();
+        m.key(PauseMenu::Key::Down);
+        m.key(PauseMenu::Key::Select);
+        PauseMenu::View original, mono;
+        mono.colourMode = ColourMode::NativeMono;
+        std::vector<std::uint8_t> a, b;
+        m.render(rom, original, a);
+        m.render(rom, mono, b);
+        int rows = 0, elsewhere = 0;
+        for (int y = 0; y < 192; ++y) {
+            bool differs = false;
+            for (int x = 0; x < 280; ++x) differs |= a[static_cast<std::size_t>(y) * 280 + static_cast<std::size_t>(x)] != b[static_cast<std::size_t>(y) * 280 + static_cast<std::size_t>(x)];
+            if (differs) {
+                ++rows;
+                if (y < 12 * 8 || y >= 13 * 8) ++elsewhere;   // the Colour Mode entry is text row 12
+            }
+        }
+        CHECK(rows > 0 && elsewhere == 0);
+    }
+    std::filesystem::remove_all(dir);
+}
+
+TEST(colour_mode_changes_while_the_game_runs_leave_the_game_and_its_clock_untouched) {
+    if (testfw::config().image.empty()) {
+        std::printf("    SKIPPED (needs --image)\n");
+        return;
+    }
+    datapack::Pack pack;
+    CHECK(flowtest::loadPack(pack));
+    constexpr int kTicks = 150000;
+    struct Result { std::vector<std::uint8_t> page; unsigned score = 0, level = 0; int changes = 0; };
+    const auto run = [&](bool disturb) {
+        Result res;
+        core::GameDriver drv;
+        CHECK(drv.init(pack) && drv.newGame());
+        GameWindow w(GameWindowOptions{3, true});
+        CHECK(w.ok());
+        std::atomic<bool> done{false};
+        std::thread worker([&] {
+            for (int t = 0; t < kTicks; ++t) {
+                drv.tick();
+                if (t % 3 == 0) w.setPage(drv.page());
+                if (t % 1000 == 0) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+            done = true;
+        });
+        while (!done) {
+            if (disturb) {
+                w.cycleColourMode(1);
+                std::vector<std::uint32_t> shot;
+                int cw = 0, ch = 0;
+                w.captureFrame(shot, cw, ch);   // the monochrome picture is made from the running game's pages
+                ++res.changes;
+            }
+            pump(5);
+        }
+        worker.join();
+        for (std::size_t i = 0; i < hires::kPageBytes; ++i) res.page.push_back(drv.page().byte(i));
+        res.score = drv.core().state().zp(0x52);
+        res.level = drv.core().state().level();
+        return res;
+    };
+    const Result plain = run(false);
+    const Result disturbed = run(true);
+    std::printf("    %d ticks; %d colour mode changes (each drawing a picture) while it ran; page equal %d\n", kTicks, disturbed.changes, plain.page == disturbed.page);
+    CHECK(disturbed.changes >= 6);
+    CHECK(plain.page == disturbed.page && plain.score == disturbed.score && plain.level == disturbed.level);
+    GameWindow w(GameWindowOptions{3, true});
+    CHECK(w.ok());
+    core::CycleClock clock;
+    const std::int64_t t0 = core::nowNanoseconds();
+    clock.start(t0);
+    std::atomic<bool> done{false};
+    std::int64_t handed = 0, endNs = 0;
+    std::thread worker([&] {
+        while (core::nowNanoseconds() - t0 < 800'000'000) {
+            handed += clock.cyclesDue(core::nowNanoseconds());
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        endNs = core::nowNanoseconds();
+        handed += clock.cyclesDue(endNs);
+        done = true;
+    });
+    int changes = 0;
+    while (!done) {
+        w.cycleColourMode(1);
+        ++changes;
+        pump(10);
+    }
+    worker.join();
+    const std::int64_t exact = clock.cyclesIn(endNs - t0);
+    std::printf("    %d colour mode changes in 0.8 s; cycles handed out %lld, exact %lld, skipped %lld\n", changes, static_cast<long long>(handed), static_cast<long long>(exact), static_cast<long long>(clock.skipped()));
+    CHECK(changes >= 10);
     CHECK(handed == exact && clock.skipped() == 0);
 }

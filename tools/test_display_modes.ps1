@@ -70,6 +70,13 @@ Key $h 0x27
 "Background Right: Apple II desktop: " + ((Get-Content $settings -Raw) -match "background=desktop")
 Key $h 0x25; Key $h 0x25
 "Background Left, Left: back to the ambient glow (the restart must keep it): " + ((Get-Content $settings -Raw) -match "background=glow")
+# 2d. Colour Mode (TASK-034-8): the entry below Background; Right = Native Black & White, Left = Original Colour, written at once
+Key $h 0x28; Key $h 0x27
+"Colour Mode Right: Native Black & White, written at once: " + ((Get-Content $settings -Raw) -match "colour_mode=mono")
+Key $h 0x25
+"Colour Mode Left: Original Colour: " + ((Get-Content $settings -Raw) -match "colour_mode=original")
+Key $h 0x27
+"Colour Mode Right again: Native Black & White (the restart must keep it): " + ((Get-Content $settings -Raw) -match "colour_mode=mono")
 Key $h 0x1B; Key $h 0x1B   # back to the game
 $null = Start-Sleep -Milliseconds 500
 $text = Get-Content $settings -Raw
@@ -92,6 +99,7 @@ $p = Launch ""
 Key $p.MainWindowHandle 0x77   # F8
 "F8 brings the title bar back: " + (HasCaption $p.MainWindowHandle)
 "restart kept the ambient glow (the settings file still says so after the program has written it again): " + ((Get-Content $settings -Raw) -match "background=glow")
+"restart kept Native Black & White: " + ((Get-Content $settings -Raw) -match "colour_mode=mono")
 Stop-Process -Id $p.Id -Force
 
 # 5. a damaged settings file does not stop the program (defaults: borderless)

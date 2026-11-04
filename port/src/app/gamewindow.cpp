@@ -78,6 +78,7 @@ void GameWindow::setPage(const hires::Page& page) {
     std::lock_guard<std::mutex> lock(mutex_);
     page_ = page;
     useImage_ = false;
+    monoDotsValid_ = false;
     ++pageVersion_;
 }
 
@@ -86,7 +87,25 @@ void GameWindow::setImage(std::span<const std::uint32_t> argb) {
     std::lock_guard<std::mutex> lock(mutex_);
     image_.assign(argb.begin(), argb.begin() + static_cast<std::ptrdiff_t>(kW) * kH);
     useImage_ = true;
+    monoDotsValid_ = false;
     ++pageVersion_;
+}
+
+void GameWindow::setImage(std::span<const std::uint32_t> argb, std::span<const std::uint8_t> dots) {
+    if (argb.size() < static_cast<std::size_t>(kW) * kH || dots.size() < static_cast<std::size_t>(video::kDotsW) * video::kDotsH) return;
+    std::lock_guard<std::mutex> lock(mutex_);
+    image_.assign(argb.begin(), argb.begin() + static_cast<std::ptrdiff_t>(kW) * kH);
+    monoDots_.assign(dots.begin(), dots.begin() + static_cast<std::ptrdiff_t>(video::kDotsW) * video::kDotsH);
+    useImage_ = true;
+    monoDotsValid_ = true;
+    ++pageVersion_;
+}
+
+void GameWindow::setColourMode(ColourMode m) {
+    colour_ = m;
+    settings_.colourMode = m;
+    if (hwnd_) InvalidateRect(hwnd_, nullptr, FALSE);
+    saveSettings();
 }
 
 std::optional<std::uint8_t> GameWindow::popKey() {
@@ -301,6 +320,7 @@ const Settings& GameWindow::settings() {
     settings_.displayMode = wantedMode_;
     settings_.windowBorders = borders_;
     settings_.background = background_;
+    settings_.colourMode = colour_;
     settings_.desktopScale = desk_.scale;
     settings_.desktopX = desk_.offX;
     settings_.desktopY = desk_.offY;
@@ -392,6 +412,7 @@ void GameWindow::attachSettings(SettingsStore* store, const Settings& initial) {
     settings_ = initial;
     wantedMode_ = initial.displayMode;
     background_ = initial.background;
+    colour_ = initial.colourMode;
     desk_.scale = initial.desktopScale;
     desk_.offX = initial.desktopX;
     desk_.offY = initial.desktopY;
@@ -494,15 +515,32 @@ bool GameWindow::handleHotkey(unsigned vk, bool ctrl, bool alt) {
 void GameWindow::currentPixels(std::uint32_t* out, double glowDtSeconds) {
     std::array<std::uint32_t, kW * kH> pixels{};
     hires::Page copy;
-    bool image = false;
+    bool image = false, haveDots = false;
+    std::vector<std::uint8_t> dots;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         image = useImage_ && image_.size() >= pixels.size();
         if (image) std::copy(image_.begin(), image_.begin() + static_cast<std::ptrdiff_t>(pixels.size()), pixels.begin());
         else copy = page_;
+        if (image && monoDotsValid_ && colour_ == ColourMode::NativeMono) {
+            haveDots = true;
+            dots = monoDots_;
+        }
         paintedVersion_ = pageVersion_;
     }
     if (!image) video::renderArgb(copy, pixels);
+    if (colour_ == ColourMode::NativeMono) {   // the picture as a monochrome monitor shows it: from the dots, not from the colours
+        std::vector<std::uint8_t> level(static_cast<std::size_t>(video::kDotsW) * video::kDotsH);
+        if (!haveDots) {
+            dots.assign(level.size(), 0);
+            if (image) video::argbDots(pixels, dots);
+            else video::hiresDots(copy, dots);
+        }
+        video::softenDots(dots, level);
+        mono560_.resize(level.size());
+        video::phosphorImage(level, mono560_);
+        video::phosphorImage280(level, pixels);   // the normal-size picture of the same thing, for the glow and the frame's edge colours
+    }
     glow_.update(pixels.data(), glowDtSeconds, GlowField::kBlurRadius);   // the backdrop of the ambient glow: from the game's own picture, before the menu is put over it
     glow_.updateEdges(pixels.data());
     if (menu_.open()) {   // the game dimmed to a quarter, the menu panel in black with white text
@@ -511,6 +549,7 @@ void GameWindow::currentPixels(std::uint32_t* out, double glowDtSeconds) {
         view.displayMode = mode_;
         view.borders = borders_;
         view.background = background_;
+        view.colourMode = colour_;
         {
             const RenderInfo ri = renderInfo();
             view.resolution = fullscreen_ ? std::to_string(ri.displayW) + "X" + std::to_string(ri.displayH) : resolutionLabel(ri.displayW, ri.displayH);
@@ -522,6 +561,13 @@ void GameWindow::currentPixels(std::uint32_t* out, double glowDtSeconds) {
                 const bool inPanel = x >= PauseMenu::kPanelX && x < PauseMenu::kPanelX + PauseMenu::kPanelW && y >= PauseMenu::kPanelY && y < PauseMenu::kPanelY + PauseMenu::kPanelH;
                 if (inPanel) p = lit[static_cast<std::size_t>(y) * kW + static_cast<std::size_t>(x)] ? 0xFFFFFFFFu : 0xFF000000u;
                 else p = ((p & 0x00FCFCFCu) >> 2) | 0xFF000000u;
+                if (colour_ == ColourMode::NativeMono) {   // the same on the monochrome picture (two dot positions per game pixel), the panel text in the phosphor's green
+                    for (int k = 0; k < 2; ++k) {
+                        std::uint32_t& m = mono560_[static_cast<std::size_t>(y) * video::kDotsW + static_cast<std::size_t>(2 * x + k)];
+                        if (inPanel) m = lit[static_cast<std::size_t>(y) * kW + static_cast<std::size_t>(x)] ? video::phosphorArgb(255) : 0xFF000000u;
+                        else m = ((m & 0x00FCFCFCu) >> 2) | 0xFF000000u;
+                    }
+                }
             }
     }
     std::copy(pixels.begin(), pixels.end(), out);
@@ -544,6 +590,8 @@ void GameWindow::menuAction(PauseMenu::Action a) {
     case PauseMenu::Action::PreviousDisplayMode:   // two modes: next and previous are the same
         setDisplayMode(mode_ == DisplayMode::Windowed ? DisplayMode::Borderless : DisplayMode::Windowed);
         break;
+    case PauseMenu::Action::NextColourMode: cycleColourMode(1); break;
+    case PauseMenu::Action::PreviousColourMode: cycleColourMode(-1); break;
     case PauseMenu::Action::NextBackground: cycleBackground(1); break;
     case PauseMenu::Action::PreviousBackground: cycleBackground(-1); break;
     case PauseMenu::Action::NextResolution: cycleResolution(1); break;
@@ -629,7 +677,7 @@ bool GameWindow::captureFrame(std::vector<std::uint32_t>& argb, int& w, int& h) 
     std::array<std::uint32_t, kW * kH> pixels{};
     currentPixels(pixels.data(), 1e9);   // a test frame: the glow takes the picture as it is, no smoothing in time
     const Viewport vp = viewportFor(d3d_->width(), d3d_->height());
-    if (!d3d_->draw(pixels.data(), vp, backgroundFrame(d3d_->width(), d3d_->height(), vp))) return false;
+    if (!d3d_->draw(pixels.data(), vp, backgroundFrame(d3d_->width(), d3d_->height(), vp), colour_ == ColourMode::NativeMono ? mono560_.data() : nullptr)) return false;
     return d3d_->readBack(argb, w, h);
 }
 
@@ -646,7 +694,7 @@ void GameWindow::paint() {
     if (d3d_) {   // Direct3D 11: same picture, same whole-number scale, same bars
         d3d_->resize(static_cast<int>(rc.right), static_cast<int>(rc.bottom));
         const Viewport vp = viewportFor(d3d_->width(), d3d_->height());
-        if (d3d_->draw(pixels.data(), vp, backgroundFrame(d3d_->width(), d3d_->height(), vp))) d3d_->present();
+        if (d3d_->draw(pixels.data(), vp, backgroundFrame(d3d_->width(), d3d_->height(), vp), colour_ == ColourMode::NativeMono ? mono560_.data() : nullptr)) d3d_->present();
         EndPaint(hwnd_, &ps);
         return;
     }
