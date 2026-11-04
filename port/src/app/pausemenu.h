@@ -17,12 +17,13 @@ class PauseMenu {
 public:
     enum class Page { Closed, Main, Graphics, Confirm };
     enum class Key { Up, Down, Left, Right, Select, Back };
-    enum class Action { None, Resume, Quit, ToggleBorders, NextDisplayMode, PreviousDisplayMode };
+    enum class Action { None, Resume, Quit, ToggleBorders, NextDisplayMode, PreviousDisplayMode, NextResolution, PreviousResolution };
     struct Point { int x, y; };
     // What the pages show (the program's present state).
     struct View {
         DisplayMode displayMode = DisplayMode::Borderless;
         bool borders = true;
+        std::string resolution = "1920X1080 (16:9)";   // the Resolution entry's value: a listed size, CUSTOM WxH, or NATIVE WxH in Borderless Fullscreen
     };
 
     // The panel (picture pixels). Everything of the menu is inside it.

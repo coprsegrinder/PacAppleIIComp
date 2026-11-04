@@ -36,6 +36,17 @@ Key $h 0x27
 Key $h 0x25
 "menu Left: borderless again: " + ((LastLog) -match "mode=borderless" -and (LastLog) -match "client=${mw}x${mh}")
 Key $h 0x27   # windowed
+$listed = @("2560x1080","3440x1440","1920x1080","2560x1440","3840x2160","1280x720","1600x900","1366x768","1680x1050","1920x1200","1024x768","1280x960")
+Key $h 0x28; Key $h 0x27   # Down (Resolution), Right: the next size that fits this monitor
+$line = LastLog
+$size = [regex]::Match($line, "client=(\d+x\d+)").Groups[1].Value
+"Resolution entry (Right) sets the picture area to a listed size ($size): " + ($line -match "^resolution:" -and $listed -contains $size)
+Key $h 0x27
+$line2 = LastLog
+$size2 = [regex]::Match($line2, "client=(\d+x\d+)").Groups[1].Value
+"Right again gives another listed size ($size2): " + ($listed -contains $size2 -and $size2 -ne $size)
+Key $h 0x25
+"Left goes back to $size : " + ([regex]::Match((LastLog), "client=(\d+x\d+)").Groups[1].Value -eq $size)
 Key $h 0x1B; Key $h 0x1B   # back to the game
 $null = Start-Sleep -Milliseconds 500
 $text = Get-Content $settings -Raw

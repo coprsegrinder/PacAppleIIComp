@@ -20,6 +20,7 @@
 #include "d3drenderer.h"
 #include "display_layout.h"
 #include "pausemenu.h"
+#include "resolutions.h"
 #include "settings.h"
 
 namespace pacman::app {
@@ -64,6 +65,17 @@ public:
     // Neither touches the game or its clock.
     DisplayMode displayMode() const noexcept { return mode_; }
     void setDisplayMode(DisplayMode m);
+    // Resolution (TASK-034-5): in Windowed mode the size of the picture area (the display resolution the game is shown at); Borderless Fullscreen always uses the desktop's own.
+    // A size the display cannot show (its window would be larger than the monitor's work area) is refused and nothing changes.
+    struct RenderInfo {
+        int displayW = 0, displayH = 0;   // what the picture is shown at: the client area = the Direct3D back buffer
+        int gameW = kGameW, gameH = kGameH;   // what the game draws: always the Apple II's 280 x 192
+        Viewport viewport;                // where the game picture sits inside the display
+    };
+    RenderInfo renderInfo() const;
+    bool resolutionFits(int w, int h) const;      // windowed: a window with this picture area fits the monitor's work area
+    bool setResolution(int w, int h);             // false: Borderless Fullscreen is active (native resolution), or the size does not fit
+    void cycleResolution(int dir);                // the next / previous listed size that fits; from a custom size the first / last that fits
     void setLogFile(const std::wstring& path) { logPath_ = path; }   // appends a line for every display mode change (the mode and the picture area; for tests and reports)
     // Settings: starts with these (display mode, frame, window position and size), and from then on writes every change of them to the store (atomic file); the window's last
     // windowed place is written when the window closes.

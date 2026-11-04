@@ -17,7 +17,7 @@ constexpr int kHintRow = 19;
 int PauseMenu::itemCount() const noexcept {
     switch (page_) {
     case Page::Main: return 3;       // Resume, Graphics Settings, Quit Game
-    case Page::Graphics: return 3;   // Display Mode, Window Borders, Back
+    case Page::Graphics: return 4;   // Display Mode, Resolution, Window Borders, Back
     case Page::Confirm: return 2;    // Confirm, Cancel
     case Page::Closed: break;
     }
@@ -54,7 +54,8 @@ PauseMenu::Action PauseMenu::activate() {
         return Action::None;
     case Page::Graphics:
         if (selected_ == 0) return Action::NextDisplayMode;
-        if (selected_ == 1) return Action::ToggleBorders;
+        if (selected_ == 1) return Action::NextResolution;
+        if (selected_ == 2) return Action::ToggleBorders;
         page_ = Page::Main;
         selected_ = 1;
         return Action::None;
@@ -77,7 +78,8 @@ PauseMenu::Action PauseMenu::key(Key k) {
     case Key::Left:
     case Key::Right:   // on the graphics page the entries are settings: left and right change them
         if (page_ == Page::Graphics && selected_ == 0) return k == Key::Left ? Action::PreviousDisplayMode : Action::NextDisplayMode;
-        if (page_ == Page::Graphics && selected_ == 1) return Action::ToggleBorders;
+        if (page_ == Page::Graphics && selected_ == 1) return k == Key::Left ? Action::PreviousResolution : Action::NextResolution;
+        if (page_ == Page::Graphics && selected_ == 2) return Action::ToggleBorders;
         return Action::None;
     case Key::Select: return activate();
     case Key::Back:
@@ -141,7 +143,7 @@ void PauseMenu::render(const core::CharacterRom& rom, const View& view, std::vec
         break;
     case Page::Graphics:
         title = "GRAPHICS SETTINGS";
-        items = {std::string("DISPLAY MODE: ") + displayModeLabel(view.displayMode), view.borders ? "WINDOW BORDERS: ON" : "WINDOW BORDERS: OFF", "BACK"};
+        items = {std::string("DISPLAY MODE: ") + displayModeLabel(view.displayMode), "RESOLUTION: " + view.resolution, view.borders ? "WINDOW BORDERS: ON" : "WINDOW BORDERS: OFF", "BACK"};
         hint = "UP DOWN  LEFT RIGHT CHANGE  ESC BACK";
         break;
     case Page::Confirm:

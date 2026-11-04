@@ -833,7 +833,7 @@ TEST(pause_menu_keyboard_navigation_pages_and_actions) {
     PauseMenu m;
     CHECK(!m.open() && m.key(PauseMenu::Key::Down) == PauseMenu::Action::None);   // closed: keys do nothing
     m.show();
-    CHECK(m.open() && m.page() == PauseMenu::Page::Main && m.selected() == 0 && m.itemCount() == 3);
+    CHECK(m.open() && m.page() == PauseMenu::Page::Main && m.selected() == 0 && m.itemCount() == 4);
     // the three entries in the specified order, selection wraps round
     m.key(PauseMenu::Key::Down);
     CHECK(m.selected() == 1);
@@ -856,9 +856,11 @@ TEST(pause_menu_keyboard_navigation_pages_and_actions) {
     CHECK(m.key(PauseMenu::Key::Select) == PauseMenu::Action::NextDisplayMode && m.page() == PauseMenu::Page::Graphics);   // Display Mode: Enter = next
     CHECK(m.key(PauseMenu::Key::Right) == PauseMenu::Action::NextDisplayMode && m.key(PauseMenu::Key::Left) == PauseMenu::Action::PreviousDisplayMode);
     m.key(PauseMenu::Key::Down);
-    CHECK(m.selected() == 1 && m.key(PauseMenu::Key::Select) == PauseMenu::Action::ToggleBorders && m.key(PauseMenu::Key::Left) == PauseMenu::Action::ToggleBorders);   // Window Borders
+    CHECK(m.selected() == 1 && m.key(PauseMenu::Key::Select) == PauseMenu::Action::NextResolution && m.key(PauseMenu::Key::Right) == PauseMenu::Action::NextResolution && m.key(PauseMenu::Key::Left) == PauseMenu::Action::PreviousResolution);   // Resolution
     m.key(PauseMenu::Key::Down);
-    CHECK(m.selected() == 2 && m.key(PauseMenu::Key::Left) == PauseMenu::Action::None);   // Back: left/right do nothing
+    CHECK(m.selected() == 2 && m.key(PauseMenu::Key::Select) == PauseMenu::Action::ToggleBorders && m.key(PauseMenu::Key::Left) == PauseMenu::Action::ToggleBorders);   // Window Borders
+    m.key(PauseMenu::Key::Down);
+    CHECK(m.selected() == 3 && m.key(PauseMenu::Key::Left) == PauseMenu::Action::None);   // Back: left/right do nothing
     m.key(PauseMenu::Key::Select);   // Back
     CHECK(m.page() == PauseMenu::Page::Main && m.selected() == 1);
     m.key(PauseMenu::Key::Select);
@@ -893,8 +895,9 @@ TEST(pause_menu_mouse_selects_on_hover_activates_on_click_and_ignores_the_rest) 
     // click Graphics Settings, then the border entry, then Back
     CHECK(m.pointerClick(mainItem(1).x, mainItem(1).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Graphics);
     CHECK(m.pointerClick(graphicsItem(0).x, graphicsItem(0).y) == PauseMenu::Action::NextDisplayMode);
-    CHECK(m.pointerClick(graphicsItem(1).x, graphicsItem(1).y) == PauseMenu::Action::ToggleBorders);
-    CHECK(m.pointerClick(graphicsItem(2).x, graphicsItem(2).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Main);
+    CHECK(m.pointerClick(graphicsItem(1).x, graphicsItem(1).y) == PauseMenu::Action::NextResolution);
+    CHECK(m.pointerClick(graphicsItem(2).x, graphicsItem(2).y) == PauseMenu::Action::ToggleBorders);
+    CHECK(m.pointerClick(graphicsItem(3).x, graphicsItem(3).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Main);
     // Quit Game -> Cancel by mouse, Quit Game -> Confirm by mouse
     CHECK(m.pointerClick(mainItem(2).x, mainItem(2).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Confirm);
     CHECK(m.pointerClick(confirmItem(1).x, confirmItem(1).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Main);
@@ -1050,14 +1053,14 @@ TEST(pause_menu_in_the_window_mouse_keyboard_graphics_page_and_quit_with_confirm
     // mouse: Graphics Settings, then the border entry toggles the window frame
     CHECK(w.borders());
     SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, mainItem(1).x, mainItem(1).y));
-    SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, graphicsItem(1).x, graphicsItem(1).y));
+    SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, graphicsItem(2).x, graphicsItem(2).y));
     CHECK(!w.borders() && w.menuOpen());
-    SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, graphicsItem(1).x, graphicsItem(1).y));
+    SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, graphicsItem(2).x, graphicsItem(2).y));
     CHECK(w.borders());
     // the mouse works at another window size too (the picture position is mapped through the viewport)
     SetWindowPos(h, nullptr, 0, 0, 1100, 800, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
     pump(20);
-    SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, graphicsItem(2).x, graphicsItem(2).y));   // Back
+    SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, graphicsItem(3).x, graphicsItem(3).y));   // Back
     SendMessageW(h, WM_MOUSEMOVE, 0, clientPos(h, mainItem(2).x, mainItem(2).y));
     SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, mainItem(2).x, mainItem(2).y));    // Quit Game: asks first
     CHECK(w.ok() && w.menuOpen());
@@ -1501,5 +1504,255 @@ TEST(display_mode_changes_while_the_game_runs_leave_the_game_and_its_clock_untou
     const std::int64_t exact = clock.cyclesIn(endNs - t0);
     std::printf("    %d display mode changes in 1 s; cycles handed out %lld, exact %lld, skipped %lld\n", changes, static_cast<long long>(handed), static_cast<long long>(exact), static_cast<long long>(clock.skipped()));
     CHECK(changes >= 4);
+    CHECK(handed == exact && clock.skipped() == 0);
+}
+
+// ---- TASK-034-5: Resolution ----
+#include "../src/app/resolutions.h"
+
+TEST(resolution_list_every_size_keeps_the_280_by_192_picture_unstretched_and_centred) {
+    struct Want { int w, h, scale; };
+    // the whole-number scale that fits, from the specification's list (21:9, 16:9, 16:10, 4:3)
+    const Want want[] = {{2560, 1080, 5}, {3440, 1440, 7}, {1920, 1080, 5}, {2560, 1440, 7}, {3840, 2160, 11}, {1280, 720, 3}, {1600, 900, 4}, {1366, 768, 4},
+                         {1680, 1050, 5}, {1920, 1200, 6}, {1024, 768, 3}, {1280, 960, 4}};
+    CHECK(app::kResolutionCount == 12);
+    for (int i = 0; i < app::kResolutionCount; ++i) {
+        const app::Resolution& r = app::kResolutions[i];
+        CHECK(r.w == want[i].w && r.h == want[i].h);
+        const app::Viewport v = app::computeViewport(r.w, r.h);
+        const bool ok = v.scale == want[i].scale && v.w == 280 * v.scale && v.h == 192 * v.scale;   // every Apple pixel an exact block: not stretched
+        if (!ok) std::printf("    %dx%d: scale %d (wanted %d)\n", r.w, r.h, v.scale, want[i].scale);
+        CHECK(ok);
+        CHECK(v.x >= 0 && v.y >= 0 && v.x + v.w <= r.w && v.y + v.h <= r.h);
+        CHECK(std::abs(v.x - (r.w - v.x - v.w)) <= 1 && std::abs(v.y - (r.h - v.y - v.h)) <= 1);   // centred, bars on both sides
+        CHECK(app::resolutionIndex(r.w, r.h) == i);
+    }
+    CHECK(app::resolutionIndex(1920, 1081) == -1 && app::resolutionIndex(0, 0) == -1);
+    CHECK(app::resolutionLabel(1920, 1080) == "1920X1080 (16:9)" && app::resolutionLabel(3440, 1440) == "3440X1440 (21:9)" && app::resolutionLabel(1680, 1050) == "1680X1050 (16:10)" && app::resolutionLabel(1024, 768) == "1024X768 (4:3)");
+    CHECK(app::resolutionLabel(777, 555) == "CUSTOM 777X555");
+    // the cycle: only sizes the display can show, round the list in both directions, from a custom size the first / last that fits
+    const auto all = [](int) { return true; };
+    CHECK(app::nextResolution(0, 1, all) == 1 && app::nextResolution(11, 1, all) == 0 && app::nextResolution(0, -1, all) == 11 && app::nextResolution(5, -1, all) == 4);
+    CHECK(app::nextResolution(-1, 1, all) == 0 && app::nextResolution(-1, -1, all) == 11);
+    const auto narrow = [](int i) { return app::kResolutions[i].w <= 1366; };   // a display that is 1366 wide: 1280x720, 1366x768, 1024x768, 1280x960
+    CHECK(app::nextResolution(-1, 1, narrow) == 5 && app::nextResolution(5, 1, narrow) == 7 && app::nextResolution(7, 1, narrow) == 10 && app::nextResolution(11, 1, narrow) == 5);
+    CHECK(app::nextResolution(5, -1, narrow) == 11 && app::nextResolution(-1, -1, narrow) == 11);
+    CHECK(app::nextResolution(3, 1, [](int) { return false; }) == -1 && app::nextResolution(-1, 1, [](int) { return false; }) == -1);   // nothing fits: nothing chosen
+}
+
+TEST(resolution_in_the_window_each_size_that_fits_is_exact_and_one_that_does_not_is_refused) {
+    GameWindow w(GameWindowOptions{3, true});
+    CHECK(w.ok());
+    if (!w.ok()) return;
+    const hires::Page page = busyPage();
+    w.setPage(page);
+    MONITORINFO mi{};
+    mi.cbSize = sizeof(mi);
+    GetMonitorInfoW(MonitorFromWindow(w.hwnd(), MONITOR_DEFAULTTONEAREST), &mi);
+    int fitted = 0, refused = 0;
+    for (int i = 0; i < app::kResolutionCount; ++i) {
+        const app::Resolution& r = app::kResolutions[i];
+        const SIZE before = clientSize(w.hwnd());
+        const POINT originBefore = clientOrigin(w.hwnd());
+        const bool fits = w.resolutionFits(r.w, r.h);
+        const bool done = w.setResolution(r.w, r.h);
+        pump(20);
+        CHECK(done == fits);
+        if (done) {
+            ++fitted;
+            CHECK(clientSize(w.hwnd()).cx == r.w && clientSize(w.hwnd()).cy == r.h);
+            RECT wr{};
+            GetWindowRect(w.hwnd(), &wr);
+            CHECK(wr.left >= mi.rcWork.left && wr.top >= mi.rcWork.top && wr.right <= mi.rcWork.right && wr.bottom <= mi.rcWork.bottom);   // all of the window on the monitor
+            const GameWindow::RenderInfo ri = w.renderInfo();
+            CHECK(ri.displayW == r.w && ri.displayH == r.h && ri.gameW == 280 && ri.gameH == 192);   // display resolution and game resolution are different things
+            CHECK(ri.viewport.w == 280 * ri.viewport.scale && ri.viewport.h == 192 * ri.viewport.scale);
+            if (w.usesDirect3d()) {
+                std::vector<std::uint32_t> got;
+                int cw = 0, ch = 0;
+                CHECK(w.captureFrame(got, cw, ch));
+                CHECK(cw == r.w && ch == r.h && differences(got, expected(page, cw, ch)) == 0);
+            }
+            std::printf("    %s: picture area %d x %d, scale %d\n", app::resolutionLabel(r.w, r.h).c_str(), r.w, r.h, w.renderInfo().viewport.scale);
+        } else {
+            ++refused;   // the display cannot show it: nothing changed
+            CHECK(clientSize(w.hwnd()).cx == before.cx && clientSize(w.hwnd()).cy == before.cy && clientOrigin(w.hwnd()).x == originBefore.x && clientOrigin(w.hwnd()).y == originBefore.y);
+            std::printf("    %s: does not fit this monitor (work area %ld x %ld): refused, window unchanged\n", app::resolutionLabel(r.w, r.h).c_str(), mi.rcWork.right - mi.rcWork.left, mi.rcWork.bottom - mi.rcWork.top);
+        }
+    }
+    CHECK(fitted + refused == app::kResolutionCount && fitted >= 2);
+    CHECK(!w.setResolution(10, 10) && !w.setResolution(0, 0) && !w.setResolution(-5, 900));   // below a half-size picture / nonsense
+    // Borderless Fullscreen: the desktop's own resolution; a listed one is not forced on it
+    w.setDisplayMode(DisplayMode::Borderless);
+    pump(60);
+    const GameWindow::RenderInfo nat = w.renderInfo();
+    CHECK(nat.displayW == mi.rcMonitor.right - mi.rcMonitor.left && nat.displayH == mi.rcMonitor.bottom - mi.rcMonitor.top);
+    CHECK(!w.setResolution(1280, 720));
+    w.cycleResolution(1);
+    CHECK(w.renderInfo().displayW == nat.displayW && w.renderInfo().displayH == nat.displayH && w.fullscreen());
+    w.setDisplayMode(DisplayMode::Windowed);
+}
+
+TEST(resolution_cycling_goes_round_the_sizes_that_fit_and_a_custom_size_is_labelled) {
+    GameWindow w(GameWindowOptions{3, true});
+    CHECK(w.ok());
+    if (!w.ok()) return;
+    std::vector<int> fits;
+    for (int i = 0; i < app::kResolutionCount; ++i)
+        if (w.resolutionFits(app::kResolutions[i].w, app::kResolutions[i].h)) fits.push_back(i);
+    CHECK(fits.size() >= 2);
+    if (fits.size() < 2) return;
+    setClient(w.hwnd(), 777, 555);   // a size dragged by hand
+    pump(20);
+    const auto current = [&] { return app::resolutionIndex(clientSize(w.hwnd()).cx, clientSize(w.hwnd()).cy); };
+    CHECK(current() == -1);
+    w.cycleResolution(1);
+    pump(20);
+    CHECK(current() == fits.front());   // from a custom size: the first that fits
+    for (std::size_t k = 1; k < fits.size(); ++k) {
+        w.cycleResolution(1);
+        pump(20);
+        CHECK(current() == fits[k]);
+    }
+    w.cycleResolution(1);
+    pump(20);
+    CHECK(current() == fits.front());   // round
+    w.cycleResolution(-1);
+    pump(20);
+    CHECK(current() == fits.back());    // and backwards
+    setClient(w.hwnd(), 777, 555);
+    pump(20);
+    w.cycleResolution(-1);
+    pump(20);
+    CHECK(current() == fits.back());    // from a custom size backwards: the last that fits
+}
+
+TEST(resolution_is_changed_from_the_pause_menu_and_kept_in_the_settings) {
+    core::CharacterRom rom;
+    const bool haveFont = loadFont(rom);
+    const auto dir = scratchDir("resolution");
+    SettingsStore store((dir / "settings.ini").wstring());
+    Settings start;
+    start.displayMode = DisplayMode::Windowed;
+    int chosenW = 0, chosenH = 0;
+    {
+        GameWindow w(GameWindowOptions{3, true});
+        CHECK(w.ok());
+        if (!w.ok()) return;
+        if (haveFont) w.setMenuFont(rom);
+        w.attachSettings(&store, start);
+        const HWND h = w.hwnd();
+        SendMessageW(h, WM_KEYDOWN, VK_ESCAPE, 1);
+        SendMessageW(h, WM_KEYDOWN, VK_DOWN, 1);
+        SendMessageW(h, WM_KEYDOWN, VK_RETURN, 1);   // Graphics Settings
+        SendMessageW(h, WM_KEYDOWN, VK_DOWN, 1);     // Resolution
+        SendMessageW(h, WM_KEYDOWN, VK_RIGHT, 1);
+        pump(40);
+        CHECK(w.menuOpen());
+        const SIZE s1 = clientSize(h);
+        CHECK(app::resolutionIndex(s1.cx, s1.cy) >= 0);
+        SendMessageW(h, WM_KEYDOWN, VK_RETURN, 1);   // Enter = next, too
+        pump(40);
+        const SIZE s2 = clientSize(h);
+        CHECK(app::resolutionIndex(s2.cx, s2.cy) >= 0 && (s2.cx != s1.cx || s2.cy != s1.cy));
+        SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, graphicsItem(1).x, graphicsItem(1).y));   // a click: next
+        pump(40);
+        const SIZE s3 = clientSize(h);
+        CHECK(app::resolutionIndex(s3.cx, s3.cy) >= 0 && (s3.cx != s2.cx || s3.cy != s2.cy));
+        SendMessageW(h, WM_KEYDOWN, VK_LEFT, 1);     // previous: back to the second
+        pump(40);
+        CHECK(clientSize(h).cx == s2.cx && clientSize(h).cy == s2.cy);
+        chosenW = s2.cx;
+        chosenH = s2.cy;
+        CHECK(w.menuOpen());   // the game stays paused behind the menu the whole time
+        // the picture of the menu at the new size is the picture at that size (the menu is drawn into the game picture)
+        if (w.usesDirect3d()) {
+            std::vector<std::uint32_t> got;
+            int cw = 0, ch = 0;
+            CHECK(w.captureFrame(got, cw, ch));
+            CHECK(cw == chosenW && ch == chosenH);
+        }
+        const Settings s = store.load();
+        CHECK(s.hasWindowRect && s.windowW == chosenW && s.windowH == chosenH);   // written at once
+    }
+    {   // the next start comes up at that resolution
+        GameWindow w(GameWindowOptions{3, true});
+        CHECK(w.ok());
+        if (!w.ok()) return;
+        w.attachSettings(&store, store.load());
+        pump(40);
+        CHECK(w.displayMode() == DisplayMode::Windowed && clientSize(w.hwnd()).cx == chosenW && clientSize(w.hwnd()).cy == chosenH);
+    }
+    std::filesystem::remove_all(dir);
+}
+
+TEST(resolution_changes_while_the_game_runs_leave_the_game_and_its_clock_untouched) {
+    if (testfw::config().image.empty()) {
+        std::printf("    SKIPPED (needs --image)\n");
+        return;
+    }
+    datapack::Pack pack;
+    CHECK(flowtest::loadPack(pack));
+    constexpr int kTicks = 150000;
+    struct Result { std::vector<std::uint8_t> page; unsigned score = 0, level = 0; int changes = 0; };
+    const auto run = [&](bool disturb) {
+        Result res;
+        core::GameDriver drv;
+        CHECK(drv.init(pack) && drv.newGame());
+        GameWindow w(GameWindowOptions{3, true});
+        CHECK(w.ok());
+        std::atomic<bool> done{false};
+        std::thread worker([&] {
+            for (int t = 0; t < kTicks; ++t) {
+                drv.tick();
+                if (t % 3 == 0) w.setPage(drv.page());
+                if (t % 1000 == 0) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+            done = true;
+        });
+        while (!done) {
+            if (disturb) {
+                w.cycleResolution(1);
+                ++res.changes;
+            }
+            pump(5);
+        }
+        worker.join();
+        for (std::size_t i = 0; i < hires::kPageBytes; ++i) res.page.push_back(drv.page().byte(i));
+        res.score = drv.core().state().zp(0x52);
+        res.level = drv.core().state().level();
+        return res;
+    };
+    const Result plain = run(false);
+    const Result disturbed = run(true);
+    std::printf("    %d ticks; %d resolution changes while it ran; page equal %d\n", kTicks, disturbed.changes, plain.page == disturbed.page);
+    CHECK(disturbed.changes >= 6);
+    CHECK(plain.page == disturbed.page && plain.score == disturbed.score && plain.level == disturbed.level);
+    GameWindow w(GameWindowOptions{3, true});
+    CHECK(w.ok());
+    core::CycleClock clock;
+    const std::int64_t t0 = core::nowNanoseconds();
+    clock.start(t0);
+    std::atomic<bool> done{false};
+    std::int64_t handed = 0, endNs = 0;
+    std::thread worker([&] {
+        while (core::nowNanoseconds() - t0 < 800'000'000) {
+            handed += clock.cyclesDue(core::nowNanoseconds());
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        endNs = core::nowNanoseconds();
+        handed += clock.cyclesDue(endNs);
+        done = true;
+    });
+    int changes = 0;
+    while (!done) {
+        w.cycleResolution(1);
+        ++changes;
+        pump(15);
+    }
+    worker.join();
+    const std::int64_t exact = clock.cyclesIn(endNs - t0);
+    std::printf("    %d resolution changes in 0.8 s; cycles handed out %lld, exact %lld, skipped %lld\n", changes, static_cast<long long>(handed), static_cast<long long>(exact), static_cast<long long>(clock.skipped()));
+    CHECK(changes >= 10);
     CHECK(handed == exact && clock.skipped() == 0);
 }

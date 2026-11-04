@@ -233,6 +233,59 @@ void GameWindow::logMode(const char* what) {
     f << what << ": mode=" << displayModeKey(mode_) << " client=" << cr.right << "x" << cr.bottom << " renderer=" << (d3d_ ? (d3d_->software() ? "warp" : "hardware") : "gdi") << "\n";
 }
 
+GameWindow::RenderInfo GameWindow::renderInfo() const {
+    RenderInfo r;
+    if (!hwnd_) return r;
+    RECT cr{};
+    GetClientRect(hwnd_, &cr);
+    r.displayW = cr.right;
+    r.displayH = cr.bottom;
+    r.viewport = computeViewport(r.displayW, r.displayH);
+    return r;
+}
+
+bool GameWindow::resolutionFits(int w, int h) const {
+    if (!hwnd_ || w < kMinClientW || h < kMinClientH) return false;
+    MONITORINFO mi{};
+    mi.cbSize = sizeof(mi);
+    if (!GetMonitorInfoW(MonitorFromWindow(hwnd_, MONITOR_DEFAULTTONEAREST), &mi)) return false;
+    const RECT outer = outerRect(0, 0, w, h);
+    return outer.right - outer.left <= mi.rcWork.right - mi.rcWork.left && outer.bottom - outer.top <= mi.rcWork.bottom - mi.rcWork.top;
+}
+
+bool GameWindow::setResolution(int w, int h) {
+    if (!hwnd_ || fullscreen_ || !resolutionFits(w, h)) return false;
+    if (IsZoomed(hwnd_)) ShowWindow(hwnd_, SW_RESTORE);
+    RECT cr{};
+    GetClientRect(hwnd_, &cr);
+    POINT o{0, 0};
+    ClientToScreen(hwnd_, &o);
+    MONITORINFO mi{};
+    mi.cbSize = sizeof(mi);
+    GetMonitorInfoW(MonitorFromWindow(hwnd_, MONITOR_DEFAULTTONEAREST), &mi);
+    // the new picture area is centred on the old one, and the whole window is kept on the monitor
+    RECT r = outerRect(o.x + cr.right / 2 - w / 2, o.y + cr.bottom / 2 - h / 2, w, h);
+    int dx = 0, dy = 0;
+    if (r.right > mi.rcWork.right) dx = mi.rcWork.right - r.right;
+    if (r.bottom > mi.rcWork.bottom) dy = mi.rcWork.bottom - r.bottom;
+    if (r.left + dx < mi.rcWork.left) dx = mi.rcWork.left - r.left;
+    if (r.top + dy < mi.rcWork.top) dy = mi.rcWork.top - r.top;
+    SetWindowPos(hwnd_, nullptr, r.left + dx, r.top + dy, r.right - r.left, r.bottom - r.top, SWP_NOZORDER | SWP_NOACTIVATE);
+    InvalidateRect(hwnd_, nullptr, FALSE);
+    rememberWindowRect();
+    saveSettings();
+    logMode("resolution");
+    return true;
+}
+
+void GameWindow::cycleResolution(int dir) {
+    if (!hwnd_ || fullscreen_) return;
+    RECT cr{};
+    GetClientRect(hwnd_, &cr);
+    const int next = nextResolution(resolutionIndex(cr.right, cr.bottom), dir, [&](int i) { return resolutionFits(kResolutions[i].w, kResolutions[i].h); });
+    if (next >= 0) setResolution(kResolutions[next].w, kResolutions[next].h);
+}
+
 void GameWindow::setDisplayMode(DisplayMode m) {
     if (!hwnd_) return;
     if (m == DisplayMode::Windowed) {
@@ -364,6 +417,10 @@ void GameWindow::currentPixels(std::uint32_t* out) {
         PauseMenu::View view;
         view.displayMode = mode_;
         view.borders = borders_;
+        {
+            const RenderInfo ri = renderInfo();
+            view.resolution = fullscreen_ ? "NATIVE " + std::to_string(ri.displayW) + "X" + std::to_string(ri.displayH) : resolutionLabel(ri.displayW, ri.displayH);
+        }
         menu_.render(font_, view, lit);
         for (int y = 0; y < kH; ++y)
             for (int x = 0; x < kW; ++x) {
@@ -393,6 +450,8 @@ void GameWindow::menuAction(PauseMenu::Action a) {
     case PauseMenu::Action::PreviousDisplayMode:   // two modes: next and previous are the same
         setDisplayMode(mode_ == DisplayMode::Windowed ? DisplayMode::Borderless : DisplayMode::Windowed);
         break;
+    case PauseMenu::Action::NextResolution: cycleResolution(1); break;
+    case PauseMenu::Action::PreviousResolution: cycleResolution(-1); break;
     case PauseMenu::Action::Quit: close(); break;   // the normal way out: the window closes, the game threads end, everything is released in order
     case PauseMenu::Action::None: break;
     }
