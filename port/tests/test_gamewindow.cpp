@@ -2097,24 +2097,14 @@ TEST(window_borders_setting_is_saved_at_once_and_restored_with_the_window) {
 
 namespace {
 
-std::array<std::uint32_t, 280 * 192> solidPicture(std::uint32_t argb) {
-    std::array<std::uint32_t, 280 * 192> p{};
-    p.fill(argb);
-    return p;
+std::vector<std::uint32_t> solidPicture(std::uint32_t argb) {   // on the heap: 215 KB each
+    return std::vector<std::uint32_t>(280 * 192, argb);
 }
 
 int peakOf(std::uint32_t argb) { return static_cast<int>(std::max({(argb >> 16) & 0xFF, (argb >> 8) & 0xFF, argb & 0xFF})); }
 int redOf(std::uint32_t argb) { return static_cast<int>((argb >> 16) & 0xFF); }
 int greenOf(std::uint32_t argb) { return static_cast<int>((argb >> 8) & 0xFF); }
 int blueOf(std::uint32_t argb) { return static_cast<int>(argb & 0xFF); }
-
-// the cell (i, j) of a glow field as r, g, b bytes
-void cellBytes(const app::GlowField& g, int i, int j, int& r, int& gr, int& b) {
-    const std::uint8_t* px = &g.bytes()[static_cast<std::size_t>(j * app::kGlowW + i) * 4];
-    b = px[0];
-    gr = px[1];
-    r = px[2];
-}
 
 std::uint32_t at(const std::vector<std::uint32_t>& frame, int cw, int x, int y) { return frame[static_cast<std::size_t>(y) * static_cast<std::size_t>(cw) + static_cast<std::size_t>(x)] & 0xFFFFFF; }
 
@@ -2153,110 +2143,169 @@ TEST(background_names_cycle_and_the_settings_file_keeps_the_choice) {
     CHECK(SettingsStore::parse("background=sideways\n").background == app::Background::Black);   // a bad word: the default
 }
 
-TEST(glow_field_keeps_the_hue_lifts_dim_content_keeps_empty_cells_black_and_maps_the_grid) {
+// The picture area of a captured frame equals this 280 x 192 image drawn at the frame's scale.
+static std::size_t insideDiffersFromImage(const std::vector<std::uint32_t>& got, const std::vector<std::uint32_t>& image, int cw, int ch) {
+    const app::Viewport vp = app::computeViewport(cw, ch);
+    std::size_t bad = 0;
+    for (int y = 0; y < vp.h; ++y)
+        for (int x = 0; x < vp.w; ++x) bad += at(got, cw, vp.x + x, vp.y + y) != (image[static_cast<std::size_t>(y / vp.scale) * 280 + static_cast<std::size_t>(x / vp.scale)] & 0xFFFFFF);
+    return bad;
+}
+
+TEST(glow_field_backdrop_is_the_blurred_picture_black_stays_black_hue_and_mass_are_kept) {
     app::GlowField g;
-    int r, gr, b;
+    float r, gr, b;
     const auto black = solidPicture(0xFF000000);
-    g.update(black.data(), 1.0);
-    for (int j = 0; j < app::kGlowH; ++j)
-        for (int i = 0; i < app::kGlowW; ++i) {
-            cellBytes(g, i, j, r, gr, b);
-            CHECK(r == 0 && gr == 0 && b == 0);   // nothing in the picture, nothing in the glow
+    g.update(black.data(), 1.0, 4);
+    for (int y = 0; y < 192; y += 17)
+        for (int x = 0; x < 280; x += 13) {
+            g.backdrop(x, y, r, gr, b);
+            CHECK(r == 0.0f && gr == 0.0f && b == 0.0f);   // nothing in the picture, nothing behind it
         }
-    CHECK(g.bytes()[3] == 255);
+    CHECK(g.backdropBytes()[3] == 255);
+    // a solid colour stays that colour whatever the blur (the blur extends the picture's own edges)
     const auto green = solidPicture(0xFF00FF00);
     g.reset();
-    g.update(green.data(), 0.0);   // the first picture is taken as it is
-    cellBytes(g, 3, 4, r, gr, b);
-    CHECK(r == 0 && gr == 255 && b == 0);
-    const auto dimGreen = solidPicture(0xFF004000);   // a quarter of full green: still shown at full brightness (lifted), hue unchanged
+    g.update(green.data(), 0.0, 9);
+    g.backdrop(0, 0, r, gr, b);
+    CHECK(std::abs(r) < 1e-4f && std::abs(gr - 1.0f) < 1e-4f && std::abs(b) < 1e-4f);
+    g.backdrop(140, 96, r, gr, b);
+    CHECK(std::abs(r) < 1e-4f && std::abs(gr - 1.0f) < 1e-4f && std::abs(b) < 1e-4f);
+    // a white patch: without blur it is exactly the patch; with blur it spreads, gets fainter, and keeps its total brightness
+    auto patch = solidPicture(0xFF000000);
+    for (int y = 90; y < 102; ++y)
+        for (int x = 134; x < 146; ++x) patch[static_cast<std::size_t>(y) * 280 + static_cast<std::size_t>(x)] = 0xFFFFFFFF;
     g.reset();
-    g.update(dimGreen.data(), 0.0);
-    cellBytes(g, 0, 0, r, gr, b);
-    CHECK(r == 0 && b == 0 && gr == 255);
-    const auto grey = solidPicture(0xFF1A1A1A);   // about 10 %: lifted to about half, still grey
-    g.reset();
-    g.update(grey.data(), 0.0);
-    cellBytes(g, 5, 5, r, gr, b);
-    CHECK(r == gr && gr == b && gr >= 120 && gr <= 136);
-    const auto nearlyBlack = solidPicture(0xFF040404);   // under the black threshold
-    g.reset();
-    g.update(nearlyBlack.data(), 0.0);
-    cellBytes(g, 5, 5, r, gr, b);
-    CHECK(r == 0 && gr == 0 && b == 0);
-    // left half red, right half blue: the cells follow (cell columns are 20 picture pixels wide: the halves meet at a cell boundary)
-    auto halves = solidPicture(0xFF0000FF);
+    g.update(patch.data(), 0.0, 0);
+    g.backdrop(140, 96, r, gr, b);
+    CHECK(r == 1.0f);
+    g.backdrop(140, 110, r, gr, b);
+    CHECK(r == 0.0f);   // 8 pixels below the patch: nothing without blur
+    double sharp = 0;
     for (int y = 0; y < 192; ++y)
-        for (int x = 0; x < 140; ++x) halves[static_cast<std::size_t>(y) * 280 + static_cast<std::size_t>(x)] = 0xFFFF0000;
+        for (int x = 0; x < 280; ++x) {
+            g.backdrop(x, y, r, gr, b);
+            sharp += r;
+        }
     g.reset();
-    g.update(halves.data(), 0.0);
-    for (int i = 0; i < app::kGlowW; ++i) {
-        cellBytes(g, i, 3, r, gr, b);
-        if (i < 7) CHECK(r == 255 && gr == 0 && b == 0);
-        else CHECK(r == 0 && gr == 0 && b == 255);
-    }
-    // a small lit patch (6 x 6 pixels: about a tenth of a cell; one single pixel is below the black threshold) in each corner lights only its own cell
-    for (int corner = 0; corner < 4; ++corner) {
-        auto one = solidPicture(0xFF000000);
-        const int x = corner % 2 ? 279 : 0, y = corner / 2 ? 191 : 0;
-        for (int dy = 0; dy < 6; ++dy)
-            for (int dx = 0; dx < 6; ++dx) one[static_cast<std::size_t>(y - (corner / 2 ? dy : -dy)) * 280 + static_cast<std::size_t>(x - (corner % 2 ? dx : -dx))] = 0xFFFFFFFF;
-        g.reset();
-        g.update(one.data(), 0.0);
-        int lit = 0;
-        for (int j = 0; j < app::kGlowH; ++j)
-            for (int i = 0; i < app::kGlowW; ++i) {
-                cellBytes(g, i, j, r, gr, b);
-                if (r || gr || b) {
-                    ++lit;
-                    CHECK(i == (corner % 2 ? 13 : 0) && j == (corner / 2 ? 9 : 0));
-                }
-            }
-        CHECK(lit == 1);
-    }
+    g.update(patch.data(), 0.0, 6);
+    double soft = 0;
+    float centre = 0;
+    for (int y = 0; y < 192; ++y)
+        for (int x = 0; x < 280; ++x) {
+            g.backdrop(x, y, r, gr, b);
+            soft += r;
+            if (x == 140 && y == 96) centre = r;
+        }
+    g.backdrop(140, 110, r, gr, b);
+    std::printf("    a 12 x 12 patch, blur radius 6: centre %.2f, 14 px below it %.3f, total brightness %.1f -> %.1f\n", centre, r, sharp, soft);
+    CHECK(centre < 0.6f && centre > 0.05f && r > 0.001f);   // fainter, and spread beyond the patch
+    CHECK(std::abs(soft - sharp) < 0.01 * sharp);           // nothing lost or gained
+    // the first picture is taken as it is; reset starts again
+    g.reset();
+    g.update(green.data(), 0.0, 0);
+    g.backdrop(5, 5, r, gr, b);
+    CHECK(gr == 1.0f);
 }
 
-TEST(glow_field_changes_slowly_so_the_blinking_of_the_game_does_not_flicker_the_background) {
+TEST(glow_field_follows_the_game_within_a_few_frames_so_movement_shows) {
     app::GlowField g;
-    int r, gr, b;
+    float r, gr, b;
     const auto white = solidPicture(0xFFFFFFFF), black = solidPicture(0xFF000000);
-    g.update(white.data(), 0.0);
-    g.update(black.data(), 0.25);   // a quarter second: 63 % of the way, and the lift hides it: still full
-    cellBytes(g, 6, 5, r, gr, b);
-    CHECK(gr == 255);
-    g.update(black.data(), 0.25);   // half a second: fading
-    cellBytes(g, 6, 5, r, gr, b);
-    std::printf("    white -> black: after 0.5 s a cell is at %d / 255\n", gr);
-    CHECK(gr > 150 && gr < 200);
-    g.update(black.data(), 0.5);    // a second: gone
-    cellBytes(g, 6, 5, r, gr, b);
-    CHECK(gr == 0);
-    g.update(white.data(), 1.0 / 60.0);   // one frame of white: a faint start, not a flash
-    cellBytes(g, 6, 5, r, gr, b);
-    std::printf("    black -> white: after one frame a cell is at %d / 255\n", gr);
-    CHECK(gr > 40 && gr < 110);
-    // a picture that flashes on and off every frame (a blinking energizer, the 1UP label): the glow stays calm
-    g.reset();
-    g.update(white.data(), 0.0);
-    int lo = 255, hi = 0;
-    for (int frame = 0; frame < 240; ++frame) {
-        g.update(frame % 2 ? white.data() : black.data(), 1.0 / 60.0);
-        if (frame >= 120) {
-            cellBytes(g, 6, 5, r, gr, b);
-            lo = std::min(lo, gr);
-            hi = std::max(hi, gr);
+    g.update(black.data(), 0.0, 0);
+    for (int frame = 0; frame < 3; ++frame) g.update(white.data(), 1.0 / 60.0, 0);   // three frames at 60 per second
+    g.backdrop(100, 100, r, gr, b);
+    std::printf("    black -> white: after 3 frames the backdrop is at %.2f\n", r);
+    CHECK(r > 0.5f && r < 0.65f);
+    for (int frame = 0; frame < 15; ++frame) g.update(white.data(), 1.0 / 60.0, 0);
+    g.backdrop(100, 100, r, gr, b);
+    CHECK(r > 0.97f);                                                            // a quarter of a second: all the way
+    g.update(black.data(), 0.06, 0);                                             // one time constant back down: 37 %
+    g.backdrop(100, 100, r, gr, b);
+    CHECK(r > 0.34f && r < 0.40f);
+    g.update(black.data(), 0.0, 0);                                              // no time, no change
+    float r2;
+    g.backdrop(100, 100, r2, gr, b);
+    CHECK(r2 == r);
+    // a block that moves from the left to the right: the backdrop follows it
+    const auto blockAt = [](int x0) {
+        auto pic = solidPicture(0xFF000000);
+        for (int y = 82; y < 110; ++y)
+            for (int x = x0; x < x0 + 28; ++x) pic[static_cast<std::size_t>(y) * 280 + static_cast<std::size_t>(x)] = 0xFFFFFFFF;
+        return pic;
+    };
+    app::GlowField m;
+    m.update(blockAt(30).data(), 0.0, 3);
+    for (int frame = 0; frame < 6; ++frame) m.update(blockAt(220).data(), 1.0 / 60.0, 3);   // jumps to the right and stays: 6 frames
+    float left, right;
+    m.backdrop(44, 96, left, gr, b);
+    m.backdrop(234, 96, right, gr, b);
+    std::printf("    a block that jumped from the left to the right: after 6 frames left %.2f, right %.2f\n", left, right);
+    CHECK(right > 0.7f && left < 0.3f);
+}
+
+TEST(glow_field_edge_colours_follow_the_picture_at_once_are_smoothed_along_the_edge_and_cover_all_four_sides) {
+    app::GlowField g;
+    const auto bgra = [&](int row, int i, int& r, int& gr, int& b) {
+        const std::uint8_t* px = &g.edgeBytes()[(static_cast<std::size_t>(row) * app::kEdgeW + static_cast<std::size_t>(i)) * 4];
+        b = px[0];
+        gr = px[1];
+        r = px[2];
+    };
+    int r, gr, b;
+    // a solid colour: every edge texel is that colour (top, bottom: 280; left, right: 192)
+    const auto red = solidPicture(0xFFFF0000);
+    g.update(red.data(), 1.0, 3);
+    g.updateEdges(red.data());
+    for (int row = 0; row < 4; ++row)
+        for (int i = 0; i < (row < 2 ? 280 : 192); i += 13) {
+            bgra(row, i, r, gr, b);
+            CHECK(r == 255 && gr == 0 && b == 0);
+        }
+    // the edges follow the picture immediately (the backdrop is slower): black frame after 1 ms
+    const auto black = solidPicture(0xFF000000);
+    g.update(black.data(), 0.001, 3);
+    g.updateEdges(black.data());
+    bgra(0, 100, r, gr, b);
+    CHECK(r == 0 && gr == 0 && b == 0);
+    // four different sides: top red, bottom green, left blue, right white (the outer three pixels)
+    auto sides = solidPicture(0xFF000000);
+    for (int d = 0; d < 3; ++d)
+        for (int x = 0; x < 280; ++x) {
+            sides[static_cast<std::size_t>(d) * 280 + static_cast<std::size_t>(x)] = 0xFFFF0000;
+            sides[static_cast<std::size_t>(191 - d) * 280 + static_cast<std::size_t>(x)] = 0xFF00FF00;
+        }
+    for (int d = 0; d < 3; ++d)
+        for (int y = 20; y < 172; ++y) {
+            sides[static_cast<std::size_t>(y) * 280 + static_cast<std::size_t>(d)] = 0xFF0000FF;
+            sides[static_cast<std::size_t>(y) * 280 + static_cast<std::size_t>(279 - d)] = 0xFFFFFFFF;
+        }
+    g.updateEdges(sides.data());
+    bgra(0, 140, r, gr, b);
+    CHECK(r == 255 && gr == 0 && b == 0);
+    bgra(1, 140, r, gr, b);
+    CHECK(r == 0 && gr == 255 && b == 0);
+    bgra(2, 96, r, gr, b);
+    CHECK(r == 0 && gr == 0 && b == 255);
+    bgra(3, 96, r, gr, b);
+    CHECK(r == 255 && gr == 255 && b == 255);
+    // one bright pixel is spread over the 11 texels around it and weakened to a thirty-third; nothing beyond them
+    auto speck = solidPicture(0xFF000000);
+    speck[static_cast<std::size_t>(0) * 280 + 140] = 0xFFFFFFFF;   // top edge, x = 140
+    g.updateEdges(speck.data());
+    int lit = 0, peakValue = 0;
+    for (int i = 0; i < 280; ++i) {
+        bgra(0, i, r, gr, b);
+        if (r) {
+            ++lit;
+            peakValue = std::max(peakValue, r);
+            CHECK(i >= 135 && i <= 145);
         }
     }
-    std::printf("    a picture flashing every frame: the glow stays between %d and %d\n", lo, hi);
-    CHECK(hi - lo <= 25);
-    // time that does not pass changes nothing
-    g.update(black.data(), 0.0);
-    int r2, gr2, b2;
-    cellBytes(g, 6, 5, r2, gr2, b2);
-    CHECK(gr2 == gr || std::abs(gr2 - gr) <= 0);
+    CHECK(lit == 11 && peakValue >= 6 && peakValue <= 9);   // 255 / 33 = 7.7
 }
 
-TEST(ambient_glow_in_the_window_surrounds_the_picture_softly_and_never_touches_it) {
+TEST(ambient_glow_in_the_window_is_seamless_at_the_edge_shows_shapes_and_movement_and_stays_faint) {
     GameWindow w(GameWindowOptions{3, true});
     CHECK(w.ok());
     if (!w.ok() || !w.usesDirect3d()) return;
@@ -2275,36 +2324,116 @@ TEST(ambient_glow_in_the_window_surrounds_the_picture_softly_and_never_touches_i
         for (int x = 0; x < cw; ++x)
             if (!(x >= vp.x && x < vp.x + vp.w && y >= vp.y && y < vp.y + vp.h)) lit += at(got, cw, x, y) != 0;
     CHECK(lit == 0 && insideDiffers(got, white, cw, ch) == 0);
-    // Ambient Glow: the picture is exactly the same, the bars have a soft glow
+    // Ambient Glow next to a picture that is white right to its edge: no step, then a faint backdrop that only ever fades
     w.setBackground(app::Background::AmbientGlow);
     CHECK(w.captureFrame(got, cw, ch));
     CHECK(insideDiffers(got, white, cw, ch) == 0);   // no bloom into the game graphics
     const int midY = vp.y + vp.h / 2;
-    const int edge = peakOf(at(got, cw, vp.x - 1, midY)), nearer = peakOf(at(got, cw, vp.x - 1, midY)), farther = peakOf(at(got, cw, vp.x - 130, midY));
-    const int corner = peakOf(at(got, cw, 0, 0)), screenEdge = peakOf(at(got, cw, 0, midY));
-    std::printf("    glow beside a white picture: at its edge %d, 130 px away %d, at the screen's edge %d, far corner %d (of 255)\n", edge, farther, screenEdge, corner);
-    CHECK(edge >= 50 && edge <= 75);   // a quarter of white at the edge: restrained
-    CHECK(farther < edge && screenEdge < farther && corner <= screenEdge + 1);
-    CHECK(corner <= 14);
-    (void)nearer;
-    // the fall-off is smooth and only ever downwards as the distance grows
+    const int next = peakOf(at(got, cw, vp.x - 1, midY)), inside = peakOf(at(got, cw, vp.x, midY));
+    const int d30 = peakOf(at(got, cw, vp.x - 30, midY)), d130 = peakOf(at(got, cw, vp.x - 130, midY)), screenEdge = peakOf(at(got, cw, 0, midY)), corner = peakOf(at(got, cw, 0, 0));
+    std::printf("    white-edged picture: picture edge %d, bar beside it %d, 30 px out %d, 130 px out %d, screen edge %d, far corner %d (of 255)\n", inside, next, d30, d130, screenEdge, corner);
+    CHECK(inside == 255 && next >= 245);   // seamless: the bar next to the picture is the picture's own colour
+    CHECK(d30 < next && d130 < d30 && screenEdge <= d130);
+    CHECK(d130 >= 18 && d130 <= 45);       // faint, far in the background (at most 15 % of a colour)
+    CHECK(screenEdge >= 12 && screenEdge <= 38 && corner <= 38);
     int worstRise = 0;
     for (int x = vp.x - 1; x > 0; --x) worstRise = std::max(worstRise, peakOf(at(got, cw, x - 1, midY)) - peakOf(at(got, cw, x, midY)));
-    CHECK(worstRise <= 1);   // (a level of noise that hides the steps)
-    // above and below the picture as well
-    CHECK(peakOf(at(got, cw, vp.x + vp.w / 2, vp.y - 1)) >= 50 && peakOf(at(got, cw, vp.x + vp.w / 2, vp.y + vp.h)) >= 50);
-    CHECK(peakOf(at(got, cw, vp.x + vp.w, midY)) >= 50);
-    // the colour follows the picture: a green picture gives a green glow, a black one none
-    std::vector<std::uint32_t> greenImage(280 * 192, 0xFF00FF00u), blackImage(280 * 192, 0xFF000000u);
-    w.setImage(greenImage);
+    CHECK(worstRise <= 1);   // it only ever fades outwards (a level of noise hides the steps)
+    // all round the picture: no step on any side or corner (solid green picture, so the edge colour is green everywhere)
+    std::vector<std::uint32_t> green(280 * 192, 0xFF00FF00u), black(280 * 192, 0xFF000000u);
+    w.setImage(green);
     CHECK(w.captureFrame(got, cw, ch));
-    const std::uint32_t gpx = at(got, cw, vp.x - 1, midY);
-    CHECK(greenOf(gpx) >= 50 && redOf(gpx) <= 2 && blueOf(gpx) <= 2);
-    w.setImage(blackImage);
+    int seam = 255;
+    for (int x = vp.x - 1; x <= vp.x + vp.w; ++x) {
+        seam = std::min(seam, greenOf(at(got, cw, x, vp.y - 1)));
+        seam = std::min(seam, greenOf(at(got, cw, x, vp.y + vp.h)));
+    }
+    for (int y = vp.y - 1; y <= vp.y + vp.h; ++y) {
+        seam = std::min(seam, greenOf(at(got, cw, vp.x - 1, y)));
+        seam = std::min(seam, greenOf(at(got, cw, vp.x + vp.w, y)));
+    }
+    std::printf("    green picture: the weakest green of the ring of bar pixels touching the picture: %d (of 255)\n", seam);
+    CHECK(seam >= 240);
+    CHECK(redOf(at(got, cw, vp.x - 1, midY)) <= 4 && blueOf(at(got, cw, vp.x - 1, midY)) <= 4);   // and the hue is the picture's
+    // a black-edged picture (the game's own look: a black border, the maze inside): the bars start black at its edge and rise into a soft halo that then fades
+    std::vector<std::uint32_t> framed(280 * 192, 0xFF000000u);
+    for (int y = 12; y < 180; ++y)
+        for (int x = 12; x < 268; ++x) framed[static_cast<std::size_t>(y) * 280 + static_cast<std::size_t>(x)] = 0xFFFFFFFFu;
+    w.setImage(framed);
+    CHECK(w.captureFrame(got, cw, ch));
+    CHECK(insideDiffersFromImage(got, framed, cw, ch) == 0);
+    int values[240];
+    int peak = 0, peakAt = 0;
+    for (int d = 1; d <= 240; ++d) {
+        values[d - 1] = peakOf(at(got, cw, vp.x - d, midY));
+        if (values[d - 1] > peak) {
+            peak = values[d - 1];
+            peakAt = d;
+        }
+    }
+    std::printf("    black-edged picture: bar beside it %d, halo peak %d at %d px out, 240 px out %d\n", values[0], peak, peakAt, values[239]);
+    CHECK(values[0] <= 4);                                         // no step against the black border
+    CHECK(peak >= values[0] + 8 && peakAt >= 15 && peakAt <= 150);   // a soft halo a little way out ...
+    CHECK(values[239] < peak && peak <= 40);                       // ... that then fades, faint
+    // a single bright pixel on the picture's edge does not streak outwards
+    std::vector<std::uint32_t> speck(280 * 192, 0xFF000000u);
+    speck[static_cast<std::size_t>(96) * 280] = 0xFFFFFFFFu;
+    w.setImage(speck);
+    CHECK(w.captureFrame(got, cw, ch));
+    const int speckMid = (96 * vp.scale) + vp.scale / 2;
+    int streak = 0;
+    for (int d = 1; d <= 60; ++d) streak = std::max(streak, peakOf(at(got, cw, vp.x - d, vp.y + speckMid)));
+    std::printf("    one white pixel on the picture's edge: the strongest bar pixel in line with it: %d (of 255)\n", streak);
+    CHECK(streak <= 12);
+    // a picture with different colours at its two sides: each side takes its own
+    std::vector<std::uint32_t> halves(280 * 192, 0xFF0000FFu);
+    for (int y = 0; y < 192; ++y)
+        for (int x = 0; x < 140; ++x) halves[static_cast<std::size_t>(y) * 280 + static_cast<std::size_t>(x)] = 0xFFFF0000u;
+    w.setImage(halves);
+    CHECK(w.captureFrame(got, cw, ch));
+    const std::uint32_t left = at(got, cw, vp.x - 1, midY), right = at(got, cw, vp.x + vp.w, midY);
+    CHECK(redOf(left) >= 240 && blueOf(left) <= 4 && blueOf(right) >= 240 && redOf(right) <= 4);
+    // no content, no glow
+    w.setImage(black);
     CHECK(w.captureFrame(got, cw, ch));
     int brightest = 0;
     for (int x = 0; x < vp.x; x += 7) brightest = std::max(brightest, peakOf(at(got, cw, x, midY)));
-    CHECK(brightest <= 1);   // no content, no glow (only the 1/255 of noise)
+    CHECK(brightest <= 1);
+    // SHAPES: two white bands (full width) with black between them: the bars show both bands as soft shapes with a dark gap between them
+    std::vector<std::uint32_t> bands(280 * 192, 0xFF000000u);
+    for (int y = 30; y < 60; ++y)
+        for (int x = 0; x < 280; ++x) bands[static_cast<std::size_t>(y) * 280 + static_cast<std::size_t>(x)] = 0xFFFFFFFFu;
+    for (int y = 130; y < 160; ++y)
+        for (int x = 0; x < 280; ++x) bands[static_cast<std::size_t>(y) * 280 + static_cast<std::size_t>(x)] = 0xFFFFFFFFu;
+    w.setImage(bands);
+    CHECK(w.captureFrame(got, cw, ch));
+    const double zoom = app::GlowField::kBackdropScale * vp.scale;   // the backdrop: the picture repeated outwards at 0.8 of its own scale
+    const auto screenY = [&](int gameY) { return static_cast<int>(vp.y + vp.h / 2 + (gameY - 96) * zoom); };
+    const int colX = vp.x - 120;
+    const int upper = peakOf(at(got, cw, colX, screenY(45))), lower = peakOf(at(got, cw, colX, screenY(145))), gap = peakOf(at(got, cw, colX, screenY(96)));
+    std::printf("    two white bands behind the picture: upper %d, lower %d, the gap between them %d (of 255)\n", upper, lower, gap);
+    CHECK(upper >= 20 && lower >= 20 && gap * 3 <= std::min(upper, lower));   // both shapes show, the gap is dark
+    // MOVEMENT: a block on the left of the picture, then the same block on the right: the left bar, then the right bar, lights up
+    const auto blockPicture = [](int x0) {
+        std::vector<std::uint32_t> pic(280 * 192, 0xFF000000u);
+        for (int y = 82; y < 110; ++y)
+            for (int x = x0; x < x0 + 28; ++x) pic[static_cast<std::size_t>(y) * 280 + static_cast<std::size_t>(x)] = 0xFFFFFFFFu;
+        return pic;
+    };
+    const auto barLight = [&](bool leftSide) {
+        long sum = 0;
+        for (int y = midY - 100; y < midY + 100; y += 5)
+            for (int x = leftSide ? 20 : vp.x + vp.w + 20; x < (leftSide ? vp.x - 20 : cw - 20); x += 5) sum += peakOf(at(got, cw, x, y));
+        return sum;
+    };
+    w.setImage(blockPicture(30));
+    CHECK(w.captureFrame(got, cw, ch));
+    const long leftWhenLeft = barLight(true), rightWhenLeft = barLight(false);
+    w.setImage(blockPicture(220));
+    CHECK(w.captureFrame(got, cw, ch));
+    const long leftWhenRight = barLight(true), rightWhenRight = barLight(false);
+    std::printf("    a block on the left of the picture: left bar %ld, right bar %ld; on the right: left bar %ld, right bar %ld\n", leftWhenLeft, rightWhenLeft, leftWhenRight, rightWhenRight);
+    CHECK(leftWhenLeft > 3 * rightWhenLeft && rightWhenRight > 3 * leftWhenRight && leftWhenLeft > 500 && rightWhenRight > 500);
     // the picture area is still the game's whatever the window shape
     w.setPage(white);
     for (const SIZE& s : {SIZE{1000, 700}, SIZE{1280, 720}, SIZE{2560 / 2, 1100}, SIZE{900, 900}}) {

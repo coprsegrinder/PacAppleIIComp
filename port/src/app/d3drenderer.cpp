@@ -31,18 +31,29 @@ VSOut vs(uint id : SV_VertexID) {
 float4 ps(VSOut i) : SV_Target { return float4(tex.Sample(smp, i.uv).rgb, 1.0); }
 
 // The ambient glow of the bars: the colour of the nearest point of the picture's edge (from the coarse grid, smoothly interpolated), faded with the distance from the edge.
-cbuffer Glow : register(b0) { float4 vp; float4 prm; };   // vp = left, top, right, bottom of the picture in pixels; prm = strength, fall-off length in pixels
-Texture2D glowTex : register(t1);
+cbuffer Glow : register(b0) { float4 vp; float4 prm; };   // vp = left, top, right, bottom of the picture in pixels; prm = strength, fade length, blend width, zoom (screen pixels per game pixel)
+Texture2D glowTex : register(t1);   // the blurred copy of the game picture (280 x 192)
+Texture2D edgeTex : register(t2);   // 280 x 4: the picture's own edge colours: top, bottom, left, right
 SamplerState lin : register(s1);
+SamplerState mir : register(s2);   // the backdrop repeats outwards, mirrored at its edges
 float4 psbg(VSOut i) : SV_Target {
     float2 p = i.pos.xy;
     float2 q = clamp(p, vp.xy, vp.zw);
-    float d = length(p - q);
-    float2 uv = saturate((q - vp.xy) / (vp.zw - vp.xy));
-    float3 c = glowTex.Sample(lin, uv).rgb;
-    float a = prm.x * exp(-d / prm.y);
-    float n = frac(sin(dot(p, float2(12.9898, 78.233))) * 43758.5453) - 0.5;   // 1/255 of noise: the slow fade does not show steps
-    return float4(saturate(c * a + n / 255.0), 1.0);
+    float2 dv = p - q;
+    float d = length(dv);
+    // the backdrop: the game picture, repeated outwards (mirrored at its edges) and a little smaller than the picture itself, centred behind it: the shapes and the movement of the game, far in the background
+    float2 bu = float2(0.5, 0.5) + (p - (vp.xy + vp.zw) * 0.5) / (float2(280.0, 192.0) * prm.w);
+    float3 c = glowTex.Sample(mir, bu).rgb;
+    float m = max(c.r, max(c.g, c.b));
+    float lift = min(1.0, m * 5.0) / max(m, 0.0001) * smoothstep(0.004, 0.03, m);   // dim content shows its colour, empty parts stay black
+    float3 g = c * lift * prm.x * (0.35 + 0.65 * exp(-d / prm.y));                    // faint, and a little fainter the further from the picture
+    bool vert = abs(dv.y) >= abs(dv.x);                                               // above or below the picture: its top / bottom edge; at its sides: the left / right edge
+    float row = vert ? (dv.y < 0.0 ? 0.0 : 1.0) : (dv.x < 0.0 ? 2.0 : 3.0);
+    float ex = vert ? lerp(0.5, 279.5, saturate((q.x - vp.x) / (vp.z - vp.x))) : lerp(0.5, 191.5, saturate((q.y - vp.y) / (vp.w - vp.y)));
+    float3 e = edgeTex.Sample(lin, float2(ex / 280.0, (row + 0.5) / 4.0)).rgb;      // what the picture itself has right there
+    float w = exp(-0.5 * d * d / (prm.z * prm.z));                                    // next to the picture: the picture's own colour, so there is no step; further out: the backdrop
+    float n = frac(sin(dot(p, float2(12.9898, 78.233))) * 43758.5453) - 0.5;          // 1/255 of noise: the slow fades do not show steps
+    return float4(saturate(lerp(g, e, w) + n / 255.0), 1.0);
 }
 )";
 
@@ -58,9 +69,9 @@ struct D3dRenderer::Impl {
     ComPtr<ID3D11ShaderResourceView> pictureView;
     ComPtr<ID3D11VertexShader> vs;
     ComPtr<ID3D11PixelShader> ps, psBackground;
-    ComPtr<ID3D11Texture2D> glow;
-    ComPtr<ID3D11ShaderResourceView> glowView;
-    ComPtr<ID3D11SamplerState> linear;
+    ComPtr<ID3D11Texture2D> glow, edge;
+    ComPtr<ID3D11ShaderResourceView> glowView, edgeView;
+    ComPtr<ID3D11SamplerState> linear, mirror;
     ComPtr<ID3D11Buffer> glowConstants;
     ComPtr<ID3D11SamplerState> sampler;
     ComPtr<ID3D11RasterizerState> raster;
@@ -150,14 +161,19 @@ bool D3dRenderer::init(HWND hwnd) {
     ss.AddressU = ss.AddressV = ss.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
     ss.MaxLOD = D3D11_FLOAT32_MAX;
     if (FAILED(d.device->CreateSamplerState(&ss, &d.sampler))) return false;
-    D3D11_TEXTURE2D_DESC gd = td;   // the coarse colours of the ambient glow
-    gd.Width = kGlowW;
-    gd.Height = kGlowH;
+    D3D11_TEXTURE2D_DESC gd = td;   // the blurred copy of the picture behind the picture (ambient glow)
     if (FAILED(d.device->CreateTexture2D(&gd, nullptr, &d.glow))) return false;
     if (FAILED(d.device->CreateShaderResourceView(d.glow.Get(), nullptr, &d.glowView))) return false;
+    D3D11_TEXTURE2D_DESC ed = td;   // the picture's own edge colours
+    ed.Width = kEdgeW;
+    ed.Height = 4;
+    if (FAILED(d.device->CreateTexture2D(&ed, nullptr, &d.edge))) return false;
+    if (FAILED(d.device->CreateShaderResourceView(d.edge.Get(), nullptr, &d.edgeView))) return false;
     D3D11_SAMPLER_DESC ls = ss;
     ls.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;   // smooth between the cells
     if (FAILED(d.device->CreateSamplerState(&ls, &d.linear))) return false;
+    ls.AddressU = ls.AddressV = ls.AddressW = D3D11_TEXTURE_ADDRESS_MIRROR;
+    if (FAILED(d.device->CreateSamplerState(&ls, &d.mirror))) return false;
     D3D11_BUFFER_DESC cb{};
     cb.ByteWidth = 32;
     cb.Usage = D3D11_USAGE_DYNAMIC;
@@ -193,17 +209,27 @@ bool D3dRenderer::draw(const std::uint32_t* argb, const Viewport& vp, const Back
     ID3D11RenderTargetView* rt = d.rtv.Get();
     d.context->OMSetRenderTargets(1, &rt, nullptr);
     d.context->ClearRenderTargetView(d.rtv.Get(), black);
-    if (bg.kind == Background::AmbientGlow && bg.glowBgra && !vp.empty()) {   // the glow: one pass over the whole window; the picture is drawn over its middle afterwards
+    if (bg.kind == Background::AmbientGlow && bg.backdropBgra && !vp.empty()) {   // the glow: one pass over the whole window; the picture is drawn over its middle afterwards
         D3D11_MAPPED_SUBRESOURCE gm{};
         if (SUCCEEDED(d.context->Map(d.glow.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &gm))) {
-            for (int y = 0; y < kGlowH; ++y) std::memcpy(static_cast<char*>(gm.pData) + static_cast<std::size_t>(y) * gm.RowPitch, bg.glowBgra + static_cast<std::size_t>(y) * kGlowW * 4, kGlowW * 4);
+            for (int y = 0; y < kGameH; ++y) std::memcpy(static_cast<char*>(gm.pData) + static_cast<std::size_t>(y) * gm.RowPitch, bg.backdropBgra + static_cast<std::size_t>(y) * kGameW * 4, kGameW * 4);
             d.context->Unmap(d.glow.Get(), 0);
+        }
+        if (bg.edgeBgra) {
+            D3D11_MAPPED_SUBRESOURCE em{};
+            if (SUCCEEDED(d.context->Map(d.edge.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &em))) {
+                for (int y = 0; y < 4; ++y) std::memcpy(static_cast<char*>(em.pData) + static_cast<std::size_t>(y) * em.RowPitch, bg.edgeBgra + static_cast<std::size_t>(y) * kEdgeW * 4, kEdgeW * 4);
+                d.context->Unmap(d.edge.Get(), 0);
+            }
         }
         D3D11_MAPPED_SUBRESOURCE cm{};
         if (SUCCEEDED(d.context->Map(d.glowConstants.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &cm))) {
-            const float strength = 0.25f;                                     // at most a quarter of the cell's colour, right at the picture's edge
-            const float reach = 0.16f * static_cast<float>(std::min(vp.w, vp.h));   // and fading out over about a sixth of the picture's size
-            const float c[8] = {static_cast<float>(vp.x), static_cast<float>(vp.y), static_cast<float>(vp.x + vp.w), static_cast<float>(vp.y + vp.h), strength, reach, 0.0f, 0.0f};
+            const float side = static_cast<float>(std::min(vp.w, vp.h));
+            const float strength = 0.15f;          // far in the background: at most 15 % of the colour
+            const float reach = 0.80f * side;      // a little fainter the further from the picture
+            const float blend = 0.03f * side;      // the picture's own edge colours give way to the backdrop over about this many pixels
+            const float zoom = static_cast<float>(GlowField::kBackdropScale * static_cast<double>(vp.w) / kGameW);   // screen pixels per game pixel of the repeated copies: a little less than the picture's own
+            const float c[8] = {static_cast<float>(vp.x), static_cast<float>(vp.y), static_cast<float>(vp.x + vp.w), static_cast<float>(vp.y + vp.h), strength, reach, blend, zoom};
             std::memcpy(cm.pData, c, sizeof(c));
             d.context->Unmap(d.glowConstants.Get(), 0);
         }
@@ -216,10 +242,10 @@ bool D3dRenderer::draw(const std::uint32_t* argb, const Viewport& vp, const Back
         d.context->PSSetShader(d.psBackground.Get(), nullptr, 0);
         ID3D11Buffer* cbuf = d.glowConstants.Get();
         d.context->PSSetConstantBuffers(0, 1, &cbuf);
-        ID3D11ShaderResourceView* gsrv = d.glowView.Get();
-        d.context->PSSetShaderResources(1, 1, &gsrv);
-        ID3D11SamplerState* lsmp = d.linear.Get();
-        d.context->PSSetSamplers(1, 1, &lsmp);
+        ID3D11ShaderResourceView* gsrv[2] = {d.glowView.Get(), d.edgeView.Get()};
+        d.context->PSSetShaderResources(1, 2, gsrv);
+        ID3D11SamplerState* lsmp[2] = {d.linear.Get(), d.mirror.Get()};
+        d.context->PSSetSamplers(1, 2, lsmp);
         d.context->Draw(3, 0);
     }
     if (!vp.empty()) {

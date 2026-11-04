@@ -27,10 +27,11 @@ public:
 
     bool init(HWND hwnd);                                            // false: no usable Direct3D 11 device (hardware, then the WARP software rasteriser, are tried)
     void resize(int clientW, int clientH);                           // the back buffer follows the client area
-    // What is drawn around the picture: black, or the ambient glow (the colours of a 14 x 10 grid, BGRA bytes, spread over the bars with a fall-off from the picture's edge).
+    // What is drawn around the picture: black, or the ambient glow (a soft, dim, enlarged copy of the game picture behind it, blended into the picture's own edge colours).
     struct BackgroundFrame {
         Background kind = Background::Black;
-        const std::uint8_t* glowBgra = nullptr;   // kGlowW x kGlowH x 4 bytes (glow.h) for Background::AmbientGlow
+        const std::uint8_t* backdropBgra = nullptr;   // 280 x 192 x 4 bytes (glow.h): the blurred copy of the picture, for Background::AmbientGlow
+        const std::uint8_t* edgeBgra = nullptr;   // kEdgeW x 4 x 4 bytes: the picture's own edge colours (glow.h), so that the picture's border dissolves into the bars
     };
     bool draw(const std::uint32_t* argb280x192, const Viewport& vp, const BackgroundFrame& bg = BackgroundFrame{});   // draws the background, then the picture into vp; nothing is shown until present()
     bool present();                                                  // sync interval 0 for now (VSync is its own section)

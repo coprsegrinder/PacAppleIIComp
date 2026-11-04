@@ -436,7 +436,8 @@ void GameWindow::currentPixels(std::uint32_t* out, double glowDtSeconds) {
         paintedVersion_ = pageVersion_;
     }
     if (!image) video::renderArgb(copy, pixels);
-    glow_.update(pixels.data(), glowDtSeconds);   // from the game's own picture, before the menu is put over it
+    glow_.update(pixels.data(), glowDtSeconds, GlowField::kBlurRadius);   // the backdrop of the ambient glow: from the game's own picture, before the menu is put over it
+    glow_.updateEdges(pixels.data());
     if (menu_.open()) {   // the game dimmed to a quarter, the menu panel in black with white text
         std::vector<std::uint8_t> lit;
         PauseMenu::View view;
@@ -531,7 +532,7 @@ bool GameWindow::captureFrame(std::vector<std::uint32_t>& argb, int& w, int& h) 
     d3d_->resize(static_cast<int>(rc.right), static_cast<int>(rc.bottom));
     std::array<std::uint32_t, kW * kH> pixels{};
     currentPixels(pixels.data(), 1e9);   // a test frame: the glow takes the picture as it is, no smoothing in time
-    if (!d3d_->draw(pixels.data(), computeViewport(d3d_->width(), d3d_->height()), D3dRenderer::BackgroundFrame{background_, glow_.bytes().data()})) return false;
+    if (!d3d_->draw(pixels.data(), computeViewport(d3d_->width(), d3d_->height()), D3dRenderer::BackgroundFrame{background_, glow_.backdropBytes().data(), glow_.edgeBytes().data()})) return false;
     return d3d_->readBack(argb, w, h);
 }
 
@@ -547,7 +548,7 @@ void GameWindow::paint() {
     GetClientRect(hwnd_, &rc);
     if (d3d_) {   // Direct3D 11: same picture, same whole-number scale, same bars
         d3d_->resize(static_cast<int>(rc.right), static_cast<int>(rc.bottom));
-        if (d3d_->draw(pixels.data(), computeViewport(d3d_->width(), d3d_->height()), D3dRenderer::BackgroundFrame{background_, glow_.bytes().data()})) d3d_->present();
+        if (d3d_->draw(pixels.data(), computeViewport(d3d_->width(), d3d_->height()), D3dRenderer::BackgroundFrame{background_, glow_.backdropBytes().data(), glow_.edgeBytes().data()})) d3d_->present();
         EndPaint(hwnd_, &ps);
         return;
     }
