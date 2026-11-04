@@ -43,3 +43,5 @@ After TASK-020, 9,147 of the 10,456 static code bytes (87.5%) have run; 1,309 by
 **Update 2026-11-03 (033-4e2):** the hidden menu is ported and checked against the oracle: see docs/M8_PLAN.md (033-4e2 result) for the rank rules (one character: low nibble unless 0; two: nibble x 10 + nibble, below 22) and the cartoon numbers (1, 2, anything else = 3).
 
 Port hotkeys (not game keys): F11 or Alt+Enter = full screen; F8 = title bar and frame on/off (windowed mode); Ctrl+Plus / Ctrl+Minus = window one whole-number scale larger/smaller; F9 = mute. In the borderless window, drag the picture to move it and drag the edges to resize it.
+
+**Esc = pause menu (TASK-034-3):** the original Esc pause (wait for any key) is replaced. Esc opens the menu (Resume / Graphics Settings / Quit Game); Up/Down + Enter or the mouse choose; Esc goes back/closes. The game stands still while it is open.

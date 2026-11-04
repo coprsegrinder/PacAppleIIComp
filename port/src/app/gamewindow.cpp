@@ -32,6 +32,7 @@ GameWindow::GameWindow(const GameWindowOptions& options) {
         if (!(setContext && setContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2))) SetProcessDPIAware();
     }
     scale_ = std::clamp(options.scale, 1, 8);
+    muted_ = options.muted;
     const HINSTANCE inst = GetModuleHandleW(nullptr);
     WNDCLASSW wc{};
     wc.lpfnWndProc = &GameWindow::proc;
@@ -261,7 +262,66 @@ void GameWindow::currentPixels(std::uint32_t* out) {
         paintedVersion_ = pageVersion_;
     }
     if (!image) video::renderArgb(copy, pixels);
+    if (menu_.open()) {   // the game dimmed to a quarter, the menu panel in black with white text
+        std::vector<std::uint8_t> lit;
+        menu_.render(font_, borders_, lit);
+        for (int y = 0; y < kH; ++y)
+            for (int x = 0; x < kW; ++x) {
+                std::uint32_t& p = pixels[static_cast<std::size_t>(y) * kW + static_cast<std::size_t>(x)];
+                const bool inPanel = x >= PauseMenu::kPanelX && x < PauseMenu::kPanelX + PauseMenu::kPanelW && y >= PauseMenu::kPanelY && y < PauseMenu::kPanelY + PauseMenu::kPanelH;
+                if (inPanel) p = lit[static_cast<std::size_t>(y) * kW + static_cast<std::size_t>(x)] ? 0xFFFFFFFFu : 0xFF000000u;
+                else p = ((p & 0x00FCFCFCu) >> 2) | 0xFF000000u;
+            }
+    }
     std::copy(pixels.begin(), pixels.end(), out);
+}
+
+void GameWindow::menuChanged() {
+    menuOpen_ = menu_.open();
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        ++pageVersion_;   // the refresh timer repaints
+    }
+    if (hwnd_) InvalidateRect(hwnd_, nullptr, FALSE);
+}
+
+void GameWindow::menuAction(PauseMenu::Action a) {
+    switch (a) {
+    case PauseMenu::Action::Resume: break;   // the menu hid itself
+    case PauseMenu::Action::ToggleBorders: setBorders(!borders_); break;
+    case PauseMenu::Action::Quit: close(); break;   // the normal way out: the window closes, the game threads end, everything is released in order
+    case PauseMenu::Action::None: break;
+    }
+    menuChanged();
+}
+
+bool GameWindow::menuKey(unsigned vk) {
+    if (vk == VK_ESCAPE) {
+        if (!menu_.open()) menu_.show();
+        else menuAction(menu_.key(PauseMenu::Key::Back));
+        menuChanged();
+        return true;
+    }
+    if (!menu_.open()) return false;
+    switch (vk) {
+    case VK_UP: menuAction(menu_.key(PauseMenu::Key::Up)); break;
+    case VK_DOWN: menuAction(menu_.key(PauseMenu::Key::Down)); break;
+    case VK_RETURN:
+    case VK_SPACE: menuAction(menu_.key(PauseMenu::Key::Select)); break;
+    default: break;   // every other key is for nobody while the menu is open: the game must not see it
+    }
+    return true;
+}
+
+bool GameWindow::pictureCoords(LPARAM lp, int& px, int& py) const {
+    RECT rc{};
+    GetClientRect(hwnd_, &rc);
+    const Viewport vp = computeViewport(static_cast<int>(rc.right), static_cast<int>(rc.bottom));
+    const int x = GET_X_LPARAM(lp) - vp.x, y = GET_Y_LPARAM(lp) - vp.y;
+    if (vp.empty() || x < 0 || y < 0 || x >= vp.w || y >= vp.h) return false;
+    px = x * kW / vp.w;
+    py = y * kH / vp.h;
+    return true;
 }
 
 bool GameWindow::captureFrame(std::vector<std::uint32_t>& argb, int& w, int& h) {
@@ -332,7 +392,35 @@ LRESULT GameWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
         }
         break;
     case WM_NCHITTEST:
-        if (!borders_ && !fullscreen_) return hitTest(lp);
+        if (!borders_ && !fullscreen_) {
+            const LRESULT h = hitTest(lp);
+            return (h == HTCAPTION && menuOpen_.load()) ? HTCLIENT : h;   // the picture moves the window, except while the menu needs the mouse
+        }
+        break;
+    case WM_SETCURSOR:        // full screen without a menu: no mouse pointer over the picture
+        if (LOWORD(lp) == HTCLIENT && fullscreen_ && !menuOpen_.load()) {
+            SetCursor(nullptr);
+            return TRUE;
+        }
+        break;
+    case WM_MOUSEMOVE:
+    case WM_LBUTTONDOWN:
+    case WM_MOUSEWHEEL:
+        if (menu_.open()) {
+            int px = -1, py = -1;
+            if (msg == WM_MOUSEWHEEL) {
+                menuAction(menu_.key(GET_WHEEL_DELTA_WPARAM(wp) > 0 ? PauseMenu::Key::Up : PauseMenu::Key::Down));
+            } else if (pictureCoords(lp, px, py)) {
+                if (msg == WM_MOUSEMOVE) {
+                    const int before = menu_.selected();
+                    menu_.pointerMove(px, py);
+                    if (menu_.selected() != before) menuChanged();
+                } else {
+                    menuAction(menu_.pointerClick(px, py));
+                }
+            }
+            return 0;
+        }
         break;
     case WM_DISPLAYCHANGE:   // resolution or monitor layout changed: a full-screen window must cover its monitor again
         if (fullscreen_) fitToMonitor();
@@ -364,6 +452,9 @@ LRESULT GameWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
         const bool repeat = (lp & (1 << 30)) != 0;   // key held down: the full screen switch must not flicker back and forth
         if (repeat && (wp == VK_F11 || (alt && wp == VK_RETURN))) return 0;
         if (handleHotkey(static_cast<unsigned>(wp), ctrl, alt)) return 0;
+        if (!alt && !(repeat && wp == VK_ESCAPE) && menuKey(static_cast<unsigned>(wp))) return 0;   // a held Ctrl does not matter for the menu keys (Alt+Esc belongs to Windows)   // Esc and the menu keys never reach the game
+        if (repeat && wp == VK_ESCAPE) return 0;
+        if (menu_.open()) return 0;   // nothing else reaches the game while the menu is open
         switch (wp) {
         case VK_LEFT: pushKey(0x88); return 0;   // Ctrl-H
         case VK_RIGHT: pushKey(0x95); return 0;  // Ctrl-U
@@ -376,7 +467,7 @@ LRESULT GameWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
     }
     case WM_CHAR: {
         unsigned c = static_cast<unsigned>(wp);
-        if (c >= 0x80) return 0;
+        if (c >= 0x80 || c == 0x1B || menu_.open()) return 0;   // Esc is the menu key now (the original pause is replaced); nothing reaches the game while the menu is open
         if (c >= 'a' && c <= 'z') c -= 0x20;  // the Apple II keyboard sends capitals
         pushKey(static_cast<std::uint8_t>(0x80 | c));
         return 0;

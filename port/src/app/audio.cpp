@@ -96,18 +96,18 @@ void AudioOutput::run(int sampleRate) {
         auto* out = reinterpret_cast<std::int16_t*>(data);
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            const std::size_t n = std::min<std::size_t>(pending_.size() - readPos_, room);
+            const std::size_t n = paused_.load() ? 0 : std::min<std::size_t>(pending_.size() - readPos_, room);   // paused: silence, nothing consumed
             for (std::size_t i = 0; i < n; ++i) out[i] = static_cast<std::int16_t>(std::max<std::int32_t>(-32767, std::min<std::int32_t>(32767, pending_[readPos_ + i])));
             for (std::size_t i = n; i < room; ++i) out[i] = 0;
             readPos_ += n;
-            if (readPos_ == pending_.size()) {
+            if (!paused_.load() && readPos_ == pending_.size()) {
                 pending_.clear();
                 readPos_ = 0;
             } else if (readPos_ > 65536) {   // compact now and then, not on every pass
                 pending_.erase(pending_.begin(), pending_.begin() + static_cast<std::ptrdiff_t>(readPos_));
                 readPos_ = 0;
             }
-            base_ += room;
+            if (!paused_.load()) base_ += room;   // a paused stream does not move: the sounds keep their place
             buffered_ = padding + room;
         }
         render->ReleaseBuffer(room, 0);
@@ -139,6 +139,10 @@ bool AudioOutput::busy() {
     std::lock_guard<std::mutex> lock(mutex_);
     return scheduledEnd_ > base_ - buffered_;   // what is not yet heard
 }
+
+void AudioOutput::pause() { paused_ = true; }
+
+void AudioOutput::resume() { paused_ = false; }
 
 void AudioOutput::stop() {
     if (!running_) return;

@@ -26,6 +26,8 @@ public:
     bool ok() const noexcept { return running_.load(); }
     void play(const core::Pcm& pcm);     // starts behind the nominal length of what was played before; the ring-out overlaps; ignored if the device is not open
     bool busy();                         // the nominal length of something is still to be heard
+    void pause();                        // silence; what is queued and where the sounds stand is kept exactly
+    void resume();                       // continues from the very sample where it stopped (the device's last 20 ms are the only part that still plays out)
     void stop();                         // drop everything not yet handed to the device (mute)
 
 private:
@@ -33,6 +35,7 @@ private:
     std::thread thread_;
     std::atomic<bool> running_{false};   // the device is open and the thread runs
     std::atomic<bool> quit_{false};
+    std::atomic<bool> paused_{false};
     int rate_ = 0;
     std::mutex mutex_;
     std::vector<std::int32_t> pending_;  // mix of the samples not yet handed to the device; pending_[readPos_] is at position base_

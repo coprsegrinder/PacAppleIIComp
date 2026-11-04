@@ -6,6 +6,7 @@
 #include <windows.h>
 
 #include <cstdint>
+#include <atomic>
 #include <deque>
 #include <memory>
 #include <mutex>
@@ -17,12 +18,14 @@
 #include "background.h"
 #include "d3drenderer.h"
 #include "display_layout.h"
+#include "pausemenu.h"
 
 namespace pacman::app {
 
 struct GameWindowOptions {
     int scale = 3;         // whole-number scale 1..8 for the windowed mode
     bool visible = true;   // false: create hidden (used by tests)
+    bool muted = false;    // start with the sound off (--mute: for tests that run the real program)
 };
 
 class GameWindow {
@@ -48,6 +51,9 @@ public:
     bool setScale(int scale);                          // 1..8; applies at once in windowed mode, remembered in full screen
     // Windowed mode (TASK-034-2): the window can be resized freely; the picture keeps its 280:192 shape, whole-number scale, centred, bars around it (display_layout.h).
     // setBorders(false) removes the title bar and frame; the window is still resizable at its edges and can be moved by dragging the picture. The picture does not move or change size.
+    // The pause menu (TASK-034-3): Esc opens it (the original Esc pause is replaced), the keyboard and the mouse drive it, the game threads stand still while menuOpen() is true.
+    bool menuOpen() const noexcept { return menuOpen_.load(); }   // any thread
+    void setMenuFont(const core::CharacterRom& rom) { font_ = rom; }   // before the window is used: the Apple II character ROM the menu is drawn with
     bool borders() const noexcept { return borders_; }
     void setBorders(bool on);
     void setFullscreen(bool on);                       // never touches the game: only the window style, size and the swap chain change
@@ -72,6 +78,10 @@ private:
     void fitToMonitor();                               // full screen: cover the monitor the window is on (again after a display change)
     UINT dpi() const;
     void paint();
+    void menuAction(PauseMenu::Action a);
+    void menuChanged();                                // repaint, and tell the other threads
+    bool menuKey(unsigned vk);                         // true if the menu used the key
+    bool pictureCoords(LPARAM lp, int& px, int& py) const;   // client position -> picture pixel; false outside the picture
     void currentPixels(std::uint32_t* out);   // the 280 x 192 picture to show (page or image), marks it as painted
 
     HWND hwnd_ = nullptr;
@@ -80,6 +90,9 @@ private:
     bool borders_ = true;               // windowed mode only: title bar and frame
     bool scalePending_ = false;         // setScale() was called in full screen: applies when leaving it
     Background background_ = Background::Black;
+    PauseMenu menu_;
+    core::CharacterRom font_;
+    std::atomic<bool> menuOpen_{false};
     bool muted_ = false;
     unsigned refreshHz_ = 60;
     std::unique_ptr<D3dRenderer> d3d_;

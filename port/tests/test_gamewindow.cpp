@@ -154,7 +154,7 @@ TEST(gamewindow_key_codes) {
     SendMessageW(w.hwnd(), WM_CHAR, 'a', 0);  // lower case becomes capital A = $C1
     SendMessageW(w.hwnd(), WM_CHAR, 'Z', 0);  // $DA
     SendMessageW(w.hwnd(), WM_CHAR, 0x13, 0);  // Ctrl-S = $93
-    SendMessageW(w.hwnd(), WM_CHAR, 0x1B, 0);  // Esc = $9B
+    SendMessageW(w.hwnd(), WM_CHAR, 0x1B, 0);  // Esc is the pause menu key now (TASK-034-3): it is not an Apple II key any more
     SendMessageW(w.hwnd(), WM_CHAR, ' ', 0);   // $A0
     SendMessageW(w.hwnd(), WM_CHAR, '1', 0);   // $B1
     SendMessageW(w.hwnd(), WM_CHAR, 0x0D, 0);  // Return = $8D
@@ -163,7 +163,7 @@ TEST(gamewindow_key_codes) {
     SendMessageW(w.hwnd(), WM_KEYDOWN, VK_UP, 0);     // $C1
     SendMessageW(w.hwnd(), WM_KEYDOWN, VK_DOWN, 0);   // $DA
     SendMessageW(w.hwnd(), WM_CHAR, 0xE9, 0);         // not 7-bit: ignored
-    const unsigned expect[] = {0xC1, 0xDA, 0x93, 0x9B, 0xA0, 0xB1, 0x8D, 0x88, 0x95, 0xC1, 0xDA};
+    const unsigned expect[] = {0xC1, 0xDA, 0x93, 0xA0, 0xB1, 0x8D, 0x88, 0x95, 0xC1, 0xDA};
     for (unsigned e : expect) {
         const auto k = w.popKey();
         CHECK(k.has_value());
@@ -779,4 +779,330 @@ TEST(resizing_does_not_change_the_cycles_the_clock_hands_out) {
     std::printf("    %d size/frame changes in 0.8 s; cycles handed out %lld, exact %lld, skipped %lld\n", changes, static_cast<long long>(handed), static_cast<long long>(exact), static_cast<long long>(clock.skipped()));
     CHECK(changes >= 10);
     CHECK(handed == exact && clock.skipped() == 0);
+}
+
+// ---- TASK-034-3: the pause menu ----
+#include "../src/app/audio.h"
+#include "../src/app/pausegate.h"
+#include "../src/app/pausemenu.h"
+#include "../src/core/textscreen.h"
+
+namespace {
+
+using app::PauseMenu;
+
+const char* charRomPath() { return "Apple II roms/Apple II Character ROM - 341-0036.bin"; }
+
+bool loadFont(core::CharacterRom& rom) {
+    if (rom.load(charRomPath())) return true;
+    std::printf("    (character ROM not found at %s)\n", charRomPath());
+    return false;
+}
+
+// The centre of an item of the menu in picture coordinates.
+POINT itemPoint(int index) { return POINT{140, (11 + 2 * index) * 8 + 4}; }
+
+// A client position (for a window message) of a picture pixel at the window's present scale.
+LPARAM clientPos(HWND h, int px, int py) {
+    RECT rc{};
+    GetClientRect(h, &rc);
+    const app::Viewport vp = app::computeViewport(static_cast<int>(rc.right), static_cast<int>(rc.bottom));
+    return MAKELPARAM(static_cast<short>(vp.x + px * vp.w / 280), static_cast<short>(vp.y + py * vp.h / 192));
+}
+
+}  // namespace
+
+TEST(pause_menu_keyboard_navigation_pages_and_actions) {
+    PauseMenu m;
+    CHECK(!m.open() && m.key(PauseMenu::Key::Down) == PauseMenu::Action::None);   // closed: keys do nothing
+    m.show();
+    CHECK(m.open() && m.page() == PauseMenu::Page::Main && m.selected() == 0 && m.itemCount() == 3);
+    // the three entries in the specified order, selection wraps round
+    m.key(PauseMenu::Key::Down);
+    CHECK(m.selected() == 1);
+    m.key(PauseMenu::Key::Down);
+    CHECK(m.selected() == 2);
+    m.key(PauseMenu::Key::Down);
+    CHECK(m.selected() == 0);
+    m.key(PauseMenu::Key::Up);
+    CHECK(m.selected() == 2);
+    // Resume closes it
+    m.show();
+    CHECK(m.key(PauseMenu::Key::Select) == PauseMenu::Action::Resume && !m.open());
+    // Esc on the main page resumes
+    m.show();
+    CHECK(m.key(PauseMenu::Key::Back) == PauseMenu::Action::Resume && !m.open());
+    // Graphics Settings: its page, the toggle, Back and Esc return to the main page on the entry that led there
+    m.show();
+    m.key(PauseMenu::Key::Down);
+    CHECK(m.key(PauseMenu::Key::Select) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Graphics && m.selected() == 0 && m.itemCount() == 2);
+    CHECK(m.key(PauseMenu::Key::Select) == PauseMenu::Action::ToggleBorders && m.page() == PauseMenu::Page::Graphics);
+    m.key(PauseMenu::Key::Down);
+    m.key(PauseMenu::Key::Select);   // Back
+    CHECK(m.page() == PauseMenu::Page::Main && m.selected() == 1);
+    m.key(PauseMenu::Key::Select);
+    CHECK(m.page() == PauseMenu::Page::Graphics);
+    CHECK(m.key(PauseMenu::Key::Back) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Main && m.selected() == 1 && m.open());
+    // Quit Game asks first; Cancel is selected, so Enter twice does not quit; Esc cancels; Confirm quits
+    m.key(PauseMenu::Key::Down);
+    CHECK(m.selected() == 2);
+    CHECK(m.key(PauseMenu::Key::Select) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Confirm && m.selected() == 1);
+    CHECK(m.key(PauseMenu::Key::Select) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Main && m.selected() == 2);   // Cancel: back to the menu
+    m.key(PauseMenu::Key::Select);
+    CHECK(m.key(PauseMenu::Key::Back) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Main && m.selected() == 2);   // Esc = cancel
+    m.key(PauseMenu::Key::Select);
+    m.key(PauseMenu::Key::Up);
+    CHECK(m.selected() == 0);
+    CHECK(m.key(PauseMenu::Key::Select) == PauseMenu::Action::Quit);
+}
+
+TEST(pause_menu_mouse_selects_on_hover_activates_on_click_and_ignores_the_rest) {
+    PauseMenu m;
+    m.show();
+    for (int i = 0; i < 3; ++i) {
+        const POINT p = itemPoint(i);
+        CHECK(m.itemAt(p.x, p.y) == i);
+        m.pointerMove(p.x, p.y);
+        CHECK(m.selected() == i);
+    }
+    CHECK(m.itemAt(10, 10) == -1 && m.itemAt(140, 60) == -1 && m.itemAt(140, 150) == -1 && m.itemAt(-1, -1) == -1);
+    m.pointerMove(5, 5);
+    CHECK(m.selected() == 2);   // moving over nothing keeps the selection
+    CHECK(m.pointerClick(5, 5) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Main);   // a click outside the entries does nothing
+    // click Graphics Settings, then the border entry, then Back
+    CHECK(m.pointerClick(itemPoint(1).x, itemPoint(1).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Graphics);
+    CHECK(m.pointerClick(itemPoint(0).x, itemPoint(0).y) == PauseMenu::Action::ToggleBorders);
+    CHECK(m.pointerClick(itemPoint(1).x, itemPoint(1).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Main);
+    // Quit Game -> Cancel by mouse, Quit Game -> Confirm by mouse
+    CHECK(m.pointerClick(itemPoint(2).x, itemPoint(2).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Confirm);
+    CHECK(m.pointerClick(itemPoint(1).x, itemPoint(1).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Main);
+    m.pointerClick(itemPoint(2).x, itemPoint(2).y);
+    CHECK(m.pointerClick(itemPoint(0).x, itemPoint(0).y) == PauseMenu::Action::Quit);
+    // Resume by mouse
+    m.show();
+    CHECK(m.pointerClick(itemPoint(0).x, itemPoint(0).y) == PauseMenu::Action::Resume && !m.open());
+}
+
+TEST(pause_menu_draws_inside_its_panel_with_the_apple_ii_font_and_marks_the_selection) {
+    core::CharacterRom rom;
+    if (!loadFont(rom)) return;
+    PauseMenu m;
+    std::vector<std::uint8_t> closed;
+    m.render(rom, true, closed);
+    CHECK(closed.size() == 280u * 192u);
+    std::size_t lit = 0;
+    for (auto v : closed) lit += v;
+    CHECK(lit == 0);   // closed: nothing
+    m.show();
+    std::vector<std::uint8_t> a, b;
+    m.render(rom, true, a);
+    m.key(PauseMenu::Key::Down);
+    m.render(rom, true, b);
+    std::size_t outside = 0, inside = 0, differ = 0;
+    for (int y = 0; y < 192; ++y)
+        for (int x = 0; x < 280; ++x) {
+            const bool in = x >= PauseMenu::kPanelX && x < PauseMenu::kPanelX + PauseMenu::kPanelW && y >= PauseMenu::kPanelY && y < PauseMenu::kPanelY + PauseMenu::kPanelH;
+            const std::uint8_t v = a[static_cast<std::size_t>(y) * 280 + static_cast<std::size_t>(x)];
+            if (!in) outside += v;
+            else inside += v;
+            differ += v != b[static_cast<std::size_t>(y) * 280 + static_cast<std::size_t>(x)];
+        }
+    std::printf("    menu: %zu lit pixels inside the panel, %zu outside, %zu change with the selection\n", inside, outside, differ);
+    CHECK(outside == 0 && inside > 600);
+    CHECK(differ > 200);   // moving the selection redraws two highlighted bands
+    // the graphics page shows the border state
+    PauseMenu g;
+    g.show();
+    g.key(PauseMenu::Key::Down);
+    g.key(PauseMenu::Key::Select);
+    std::vector<std::uint8_t> on, off;
+    g.render(rom, true, on);
+    g.render(rom, false, off);
+    CHECK(on != off);
+}
+
+TEST(pause_gate_holds_the_game_and_no_time_is_made_up_afterwards) {
+    core::CycleClock clock;
+    app::PauseGate gate;
+    int paused = 0, resumed = 0;
+    gate.onPause = [&] { ++paused; };
+    gate.onResume = [&] { ++resumed; };
+    std::int64_t now = 1'000'000'000, ran = 0;
+    clock.start(now);
+    const auto runFor = [&](std::int64_t ms, bool menuOpen) {
+        for (std::int64_t t = 0; t < ms; ++t) {
+            now += 1'000'000;
+            if (gate.update(menuOpen, now, clock)) continue;   // the game loop's "continue"
+            ran += clock.cyclesDue(now);
+        }
+    };
+    runFor(100, false);
+    const std::int64_t before = ran;
+    runFor(5000, true);   // five seconds in the menu
+    CHECK(ran == before && gate.held() && paused == 1 && resumed == 0);   // not one cycle earned
+    runFor(100, false);
+    CHECK(!gate.held() && resumed == 1);
+    // 200 ms of running time in total; the five seconds are not made up (no fast-forward after resume)
+    const std::int64_t exact = clock.cyclesIn(200'000'000);
+    std::printf("    cycles run %lld, exact for 200 ms %lld, skipped %lld\n", static_cast<long long>(ran), static_cast<long long>(exact), static_cast<long long>(clock.skipped()));
+    CHECK(ran >= exact - 2000 && ran <= exact);
+    CHECK(clock.skipped() == 0);
+    runFor(10, false);
+    CHECK(paused == 1 && resumed == 1);   // the hooks fire once per change
+}
+
+TEST(pause_menu_in_the_window_esc_opens_it_the_game_never_sees_the_keys_and_it_closes_again) {
+    core::CharacterRom rom;
+    const bool haveFont = loadFont(rom);
+    GameWindow w(GameWindowOptions{3, false});
+    CHECK(w.ok());
+    if (!w.ok()) return;
+    if (haveFont) w.setMenuFont(rom);
+    const hires::Page page = busyPage();
+    w.setPage(page);
+    CHECK(!w.menuOpen());
+    SendMessageW(w.hwnd(), WM_KEYDOWN, VK_ESCAPE, 1);
+    SendMessageW(w.hwnd(), WM_CHAR, 0x1B, 0);   // the character message that goes with it
+    CHECK(w.menuOpen());
+    CHECK(!w.popKey().has_value());   // Esc is not an Apple II key any more
+    // while open, the game gets nothing, whatever is pressed
+    for (unsigned vk : {unsigned(VK_UP), unsigned(VK_DOWN), unsigned(VK_DOWN), unsigned(VK_UP), unsigned(VK_LEFT), unsigned(VK_RIGHT), unsigned('A'), unsigned('Z')}) SendMessageW(w.hwnd(), WM_KEYDOWN, vk, 1);
+    SendMessageW(w.hwnd(), WM_CHAR, 'a', 0);
+    SendMessageW(w.hwnd(), WM_CHAR, 0x0D, 0);
+    CHECK(!w.popKey().has_value());
+    // the picture while open: the game at a quarter of its brightness outside the panel, the panel black with white text
+    if (w.usesDirect3d()) {
+        std::vector<std::uint32_t> got;
+        int cw = 0, ch = 0;
+        CHECK(w.captureFrame(got, cw, ch));
+        std::array<std::uint32_t, 280 * 192> game{};
+        video::renderArgb(page, game);
+        std::size_t dimmedOk = 0, dimmedTotal = 0, panelWhite = 0;
+        for (int y = 0; y < 192; ++y)
+            for (int x = 0; x < 280; ++x) {
+                const bool in = x >= PauseMenu::kPanelX && x < PauseMenu::kPanelX + PauseMenu::kPanelW && y >= PauseMenu::kPanelY && y < PauseMenu::kPanelY + PauseMenu::kPanelH;
+                const std::uint32_t v = got[static_cast<std::size_t>(y * 3 + 1) * static_cast<std::size_t>(cw) + static_cast<std::size_t>(x * 3 + 1)] & 0xFFFFFF;
+                if (in) {
+                    panelWhite += v == 0xFFFFFF;
+                } else {
+                    ++dimmedTotal;
+                    dimmedOk += v == (((game[static_cast<std::size_t>(y) * 280 + static_cast<std::size_t>(x)] & 0xFCFCFC) >> 2) & 0xFFFFFF);
+                }
+            }
+        std::printf("    open: %zu of %zu pixels outside the panel are the game at 1/4 brightness, %zu white pixels in the panel\n", dimmedOk, dimmedTotal, panelWhite);
+        CHECK(dimmedOk == dimmedTotal);
+        if (haveFont) CHECK(panelWhite > 600);
+    }
+    // Esc closes it again: the picture is exactly the game's, and keys reach the game again
+    SendMessageW(w.hwnd(), WM_KEYDOWN, VK_ESCAPE, 1);
+    CHECK(!w.menuOpen());
+    if (w.usesDirect3d()) {
+        std::vector<std::uint32_t> got;
+        int cw = 0, ch = 0;
+        CHECK(w.captureFrame(got, cw, ch));
+        CHECK(differences(got, expected(page, cw, ch)) == 0);
+    }
+    SendMessageW(w.hwnd(), WM_CHAR, 'a', 0);
+    const auto k = w.popKey();
+    CHECK(k.has_value() && *k == 0xC1);
+    // holding Esc down opens and closes it once, not repeatedly
+    SendMessageW(w.hwnd(), WM_KEYDOWN, VK_ESCAPE, 1);
+    for (int i = 0; i < 5; ++i) SendMessageW(w.hwnd(), WM_KEYDOWN, VK_ESCAPE, (1 << 30) | 1);
+    CHECK(w.menuOpen());
+}
+
+TEST(pause_menu_in_the_window_mouse_keyboard_graphics_page_and_quit_with_confirmation) {
+    GameWindow w(GameWindowOptions{3, true});
+    CHECK(w.ok());
+    if (!w.ok()) return;
+    const HWND h = w.hwnd();
+    SendMessageW(h, WM_KEYDOWN, VK_ESCAPE, 1);
+    CHECK(w.menuOpen());
+    // mouse: Graphics Settings, then the border entry toggles the window frame
+    CHECK(w.borders());
+    SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, itemPoint(1).x, itemPoint(1).y));
+    SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, itemPoint(0).x, itemPoint(0).y));
+    CHECK(!w.borders() && w.menuOpen());
+    SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, itemPoint(0).x, itemPoint(0).y));
+    CHECK(w.borders());
+    // the mouse works at another window size too (the picture position is mapped through the viewport)
+    SetWindowPos(h, nullptr, 0, 0, 1100, 800, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+    pump(20);
+    SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, itemPoint(1).x, itemPoint(1).y));   // Back
+    SendMessageW(h, WM_MOUSEMOVE, 0, clientPos(h, itemPoint(2).x, itemPoint(2).y));
+    SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, itemPoint(2).x, itemPoint(2).y));    // Quit Game: asks first
+    CHECK(w.ok() && w.menuOpen());
+    SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, itemPoint(1).x, itemPoint(1).y));    // Cancel
+    CHECK(w.ok() && w.menuOpen());
+    // keyboard, from a fresh menu: Down, Down, Enter (asks), Enter (Cancel), Up, Up, then Resume by Enter
+    SendMessageW(h, WM_KEYDOWN, VK_ESCAPE, 1);   // back to the game
+    CHECK(!w.menuOpen());
+    SendMessageW(h, WM_KEYDOWN, VK_ESCAPE, 1);   // and open again: Resume is selected
+    CHECK(w.menuOpen());
+    SendMessageW(h, WM_KEYDOWN, VK_DOWN, 1);
+    SendMessageW(h, WM_KEYDOWN, VK_DOWN, 1);
+    CHECK(w.menuOpen());
+    SendMessageW(h, WM_KEYDOWN, VK_RETURN, 1);
+    SendMessageW(h, WM_KEYDOWN, VK_RETURN, 1);
+    CHECK(w.menuOpen() && w.ok());
+    SendMessageW(h, WM_KEYDOWN, VK_UP, 1);
+    SendMessageW(h, WM_KEYDOWN, VK_UP, 1);
+    SendMessageW(h, WM_KEYDOWN, VK_RETURN, 1);   // Resume
+    CHECK(!w.menuOpen());
+    // Esc, Quit Game, Confirm: the window closes (the program then ends in the normal order)
+    SendMessageW(h, WM_KEYDOWN, VK_ESCAPE, 1);
+    SendMessageW(h, WM_KEYDOWN, VK_UP, 1);
+    SendMessageW(h, WM_KEYDOWN, VK_RETURN, 1);   // Quit Game (wrapped round from Resume)
+    SendMessageW(h, WM_KEYDOWN, VK_UP, 1);       // Confirm
+    CHECK(w.ok());
+    SendMessageW(h, WM_KEYDOWN, VK_RETURN, 1);
+    pump(100);
+    CHECK(!w.ok());   // WM_CLOSE was handled: the window is gone
+}
+
+TEST(pause_menu_borderless_window_lets_the_mouse_through_while_open_and_full_screen_hides_the_pointer) {
+    GameWindow w(GameWindowOptions{3, true});
+    CHECK(w.ok());
+    if (!w.ok()) return;
+    w.setBorders(false);
+    pump(20);
+    RECT wr{};
+    GetWindowRect(w.hwnd(), &wr);
+    const LPARAM mid = MAKELPARAM(static_cast<short>((wr.left + wr.right) / 2), static_cast<short>((wr.top + wr.bottom) / 2));
+    CHECK(SendMessageW(w.hwnd(), WM_NCHITTEST, 0, mid) == HTCAPTION);   // the picture moves the window
+    SendMessageW(w.hwnd(), WM_KEYDOWN, VK_ESCAPE, 1);
+    CHECK(SendMessageW(w.hwnd(), WM_NCHITTEST, 0, mid) == HTCLIENT);    // the menu needs the clicks
+    SendMessageW(w.hwnd(), WM_KEYDOWN, VK_ESCAPE, 1);
+    CHECK(SendMessageW(w.hwnd(), WM_NCHITTEST, 0, mid) == HTCAPTION);
+    // full screen: the pointer is hidden until the menu is open
+    w.setFullscreen(true);
+    pump(30);
+    CHECK(SendMessageW(w.hwnd(), WM_SETCURSOR, reinterpret_cast<WPARAM>(w.hwnd()), MAKELPARAM(HTCLIENT, WM_MOUSEMOVE)) == TRUE);
+    SendMessageW(w.hwnd(), WM_KEYDOWN, VK_ESCAPE, 1);
+    CHECK(SendMessageW(w.hwnd(), WM_SETCURSOR, reinterpret_cast<WPARAM>(w.hwnd()), MAKELPARAM(HTCLIENT, WM_MOUSEMOVE)) != TRUE);
+    SendMessageW(w.hwnd(), WM_KEYDOWN, VK_ESCAPE, 1);
+    w.setFullscreen(false);
+}
+
+TEST(pause_audio_stands_still_and_continues_from_the_same_sample) {
+    app::AudioOutput audio;
+    if (!audio.open(44100)) {
+        std::printf("    SKIPPED (no audio device)\n");
+        return;
+    }
+    // one second of a tone, played: after half a second of play and a pause of one second, the sound still has about half a second left
+    core::Pcm tone;
+    tone.sampleRate = 44100;
+    tone.samples.assign(44100, 0);   // silence is enough: the position is what is measured
+    audio.play(tone);
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    audio.pause();
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    CHECK(audio.busy());              // paused: still not finished although 1.5 s have passed
+    audio.resume();
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    CHECK(audio.busy());              // about 200 ms are left
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    CHECK(!audio.busy());             // done: it finished about 1 s later than it would have without the pause
+    audio.close();
 }

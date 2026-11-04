@@ -5,6 +5,7 @@
 // Usage: pacman_play --pack <data.pack> [--scale N] [--seconds N] [--ticks N --dump <page.bin>] [--level N] [--items K]
 //   --scale N      whole-number window scale (default 3)
 //   --seconds N    close the window by itself after N seconds (for tests)
+//   --mute         start with the sound off (F9 toggles it)
 //   --sound-test   play every sound once (to listen to the speaker model) and exit
 //   --level N      test aid: start at level N (1-255)
 //   --items K      test aid: only K dots/energizers left to eat (1-248), so a level end comes quickly
@@ -27,6 +28,7 @@
 #include <vector>
 
 #include "audio.h"
+#include "pausegate.h"
 #include "../core/attractflow.h"
 #include "../core/cartoon.h"
 #include "../core/textscreen.h"
@@ -160,6 +162,12 @@ struct SoundPlayer {
     void stop() {
         if (ready) audio.stop();
     }
+    void pause() {
+        if (ready) audio.pause();
+    }
+    void resume() {
+        if (ready) audio.resume();
+    }
 };
 
 // How many cycles beyond the ordinary tick cost the game stands still for a sound. The dot sound is part of the measured mean tick cost (kTypicalTickCycles) and the six
@@ -188,6 +196,9 @@ bool runGame(core::GameDriver& drv, const datapack::Pack& pack, app::GameWindow&
     core::CycleClock clock;
     clock.start(core::nowNanoseconds());
     std::int64_t budget = 0;
+    app::PauseGate gate;   // the pause menu: nothing runs, nothing sounds, no time is earned while it is open
+    gate.onPause = [&] { sounds.pause(); };
+    gate.onResume = [&] { sounds.resume(); };
     drv.setPlayDeath(true);
     bool startWait = true, readyShown = false;
     std::size_t seqNext = 0;
@@ -202,6 +213,10 @@ bool runGame(core::GameDriver& drv, const datapack::Pack& pack, app::GameWindow&
         if (seconds > 0 && now - begin > static_cast<std::int64_t>(seconds) * 1'000'000'000) {
             window.close();
             return false;
+        }
+        if (gate.update(window.menuOpen(), now, clock)) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            continue;
         }
         budget += clock.cyclesDue(now);
         if (startWait) {   // the jingle, then READY on the screen for 3.05 s (033-2, ready_timing.py: READY is drawn after the jingle)
@@ -299,11 +314,16 @@ bool runMenus(core::AttractFlow& flow, const core::CharacterRom& rom, const data
     std::int64_t lastShown = 0, lastCartoonElapsed = 0;
     bool cartoonOn = false;
     int lastKind = -1;
+    app::PauseGate gate;   // the pause menu stops the screens as well (the boot menus, the attract loop, the prompts)
     while (!quit.load() && window.ok()) {
         const std::int64_t now = core::nowNanoseconds();
         if (seconds > 0 && now - begin > static_cast<std::int64_t>(seconds) * 1'000'000'000) {
             window.close();
             return false;
+        }
+        if (gate.update(window.menuOpen(), now, clock)) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            continue;
         }
         if (const auto key = window.popKey()) flow.keyDown(*key);
         flow.advance(clock.cyclesDue(now));
@@ -400,6 +420,7 @@ void programThread(core::GameDriver& drv, const datapack::Pack& pack, app::GameW
 int wmain(int argc, wchar_t** argv) {
     std::wstring pack, dump;
     int scale = 3, seconds = 0, startLevel = 0, startItems = 0;
+    bool mute = false;
     bool soundTest = false, skipBoot = false;
     std::wstring romsArg;
     long ticks = -1;
@@ -415,6 +436,7 @@ int wmain(int argc, wchar_t** argv) {
         else if (a == L"--items" && i + 1 < argc) startItems = _wtoi(argv[++i]);
         else if (a == L"--roms" && i + 1 < argc) romsArg = argv[++i];
         else if (a == L"--skip-boot") skipBoot = true;
+        else if (a == L"--mute") mute = true;   // no sound (the same as F9 at the start); for running the real program in tests
         else return 64;
     }
     datapack::LoadResult loaded;
@@ -449,8 +471,11 @@ int wmain(int argc, wchar_t** argv) {
     opt.startItems = startItems;
     app::GameWindowOptions options;
     options.scale = scale;
+    options.muted = mute;
     app::GameWindow window(options);
     if (!window.ok()) return 4;
+    core::CharacterRom menuFont;   // the pause menu is drawn with the Apple II character ROM
+    if (menuFont.load(charRom)) window.setMenuFont(menuFont);
     std::atomic<bool> quit{false};
     std::thread worker(programThread, std::ref(drv), std::cref(loaded.pack), std::ref(window), std::ref(quit), seconds, std::cref(opt), std::cref(monitorRom), std::cref(charRom));
     const int code = window.run();
