@@ -60,14 +60,11 @@ public:
     void setMenuFont(const core::CharacterRom& rom) { font_ = rom; }   // before the window is used: the Apple II character ROM the menu is drawn with
     bool borders() const noexcept { return borders_; }
     void setBorders(bool on);
-    // Display mode (TASK-034-4): Windowed, Borderless Fullscreen (a borderless window over the monitor at its own resolution) or exclusive Fullscreen (the swap chain owns the monitor).
-    // None of them touches the game or its clock. Exclusive full screen that Windows or the display refuses falls back to borderless full screen (false is returned, notice() says so).
+    // Display mode (TASK-034-4): Windowed, or Borderless Fullscreen (a borderless window over the monitor at its own resolution).
+    // Neither touches the game or its clock.
     DisplayMode displayMode() const noexcept { return mode_; }
-    bool setDisplayMode(DisplayMode m);
-    bool exclusiveActive() const { return d3d_ && d3d_->exclusive(); }
-    void setLogFile(const std::wstring& path) { logPath_ = path; }   // appends a line for every display mode change (what was asked, what is, why exclusive was refused)
-    const std::string& exclusiveFailure() const { static const std::string none; return d3d_ ? d3d_->failure() : none; }   // why exclusive full screen was refused (tests, log)
-    const std::string& notice() const noexcept { return notice_; }   // shown in the graphics page, e.g. why Fullscreen became Borderless
+    void setDisplayMode(DisplayMode m);
+    void setLogFile(const std::wstring& path) { logPath_ = path; }   // appends a line for every display mode change (the mode and the picture area; for tests and reports)
     // Settings: starts with these (display mode, frame, window position and size), and from then on writes every change of them to the store (atomic file); the window's last
     // windowed place is written when the window closes.
     void attachSettings(SettingsStore* store, const Settings& initial);
@@ -107,9 +104,7 @@ private:
     int scale_ = 3;
     bool fullscreen_ = false;                 // the window covers its monitor (Borderless Fullscreen and Fullscreen)
     DisplayMode mode_ = DisplayMode::Windowed;
-    DisplayMode fullscreenKind_ = DisplayMode::Borderless;   // where F11 / Alt+Enter goes from the window
     DisplayMode wantedMode_ = DisplayMode::Windowed;          // what is written to the settings (what the user chose; see setDisplayMode)
-    std::string notice_;
     std::wstring logPath_;
     void logMode(const char* what);
     SettingsStore* store_ = nullptr;

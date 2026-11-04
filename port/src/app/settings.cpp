@@ -17,7 +17,6 @@ namespace pacman::app {
 
 const char* displayModeKey(DisplayMode m) noexcept {
     switch (m) {
-    case DisplayMode::Fullscreen: return "fullscreen";
     case DisplayMode::Borderless: return "borderless";
     case DisplayMode::Windowed: return "windowed";
     }
@@ -26,7 +25,6 @@ const char* displayModeKey(DisplayMode m) noexcept {
 
 const char* displayModeLabel(DisplayMode m) noexcept {
     switch (m) {
-    case DisplayMode::Fullscreen: return "FULLSCREEN";
     case DisplayMode::Borderless: return "BORDERLESS FULLSCREEN";
     case DisplayMode::Windowed: return "WINDOWED";
     }
@@ -43,7 +41,11 @@ std::string trim(const std::string& s) {
 }
 
 bool parseMode(const std::string& v, DisplayMode& out) {
-    for (DisplayMode m : {DisplayMode::Fullscreen, DisplayMode::Borderless, DisplayMode::Windowed})
+    if (v == "fullscreen") {   // the exclusive full screen mode of an earlier version of the program no longer exists: its users get the borderless one
+        out = DisplayMode::Borderless;
+        return true;
+    }
+    for (DisplayMode m : {DisplayMode::Borderless, DisplayMode::Windowed})
         if (v == displayModeKey(m)) {
             out = m;
             return true;
@@ -93,7 +95,6 @@ std::string SettingsStore::format(const Settings& s) {
     o << "# Pac-Man (Apple II port) settings. Written by the program; you may edit it while the program is closed.\n";
     o << "version=1\n";
     o << "display_mode=" << displayModeKey(s.displayMode) << "\n";
-    o << "fullscreen_kind=" << displayModeKey(s.fullscreenKind) << "\n";
     o << "window_borders=" << (s.windowBorders ? 1 : 0) << "\n";
     if (s.hasWindowRect) {
         o << "window_x=" << s.windowX << "\n";
@@ -123,8 +124,6 @@ Settings SettingsStore::parse(const std::string& text) {
         bool b;
         if (key == "display_mode") {
             if (parseMode(value, m)) s.displayMode = m;
-        } else if (key == "fullscreen_kind") {
-            if (parseMode(value, m) && m != DisplayMode::Windowed) s.fullscreenKind = m;
         } else if (key == "window_borders") {
             if (parseBool(value, b)) s.windowBorders = b;
         } else if (key == "window_x") {

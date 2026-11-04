@@ -10,7 +10,6 @@ namespace {
 constexpr int kItemCol = 2, kItemWidth = 36;   // text columns of an entry's band (centred in the 40-column text page)
 constexpr int kTitleRow = 4;
 constexpr int kNoteRow = 6;                    // the line under the title of the confirmation page
-constexpr int kNoticeRow = 17;                 // the line under the entries of the graphics page
 constexpr int kHintRow = 19;
 
 }  // namespace
@@ -155,7 +154,6 @@ void PauseMenu::render(const core::CharacterRom& rom, const View& view, std::vec
     centred(kTitleRow, title, false);
     if (!note.empty()) centred(kNoteRow, note, false);
     for (int i = 0; i < itemCount(); ++i) centred(firstRow() + rowStep() * i, items[static_cast<std::size_t>(i)], i == selected_);
-    if (page_ == Page::Graphics && !view.notice.empty()) centred(kNoticeRow, view.notice, false);
     centred(kHintRow, hint, false);
     std::vector<std::uint8_t> text;
     core::renderText(screen, rom, false, -1, -1, text);

@@ -8,14 +8,13 @@
 
 namespace pacman::app {
 
-enum class DisplayMode { Fullscreen, Borderless, Windowed };
+enum class DisplayMode { Borderless, Windowed };   // Borderless Fullscreen (the default) and Windowed; the exclusive "Fullscreen" of the first design was removed on the user's decision (2026-11-04)
 
-const char* displayModeKey(DisplayMode m) noexcept;     // "fullscreen" / "borderless" / "windowed" (the file's words)
-const char* displayModeLabel(DisplayMode m) noexcept;   // "FULLSCREEN" / "BORDERLESS FULLSCREEN" / "WINDOWED" (the menu's words)
+const char* displayModeKey(DisplayMode m) noexcept;     // "borderless" / "windowed" (the file's words; an older file's "fullscreen" is read as borderless)
+const char* displayModeLabel(DisplayMode m) noexcept;   // "BORDERLESS FULLSCREEN" / "WINDOWED" (the menu's words)
 
 struct Settings {
     DisplayMode displayMode = DisplayMode::Borderless;      // the default: borderless fullscreen at the desktop's own resolution
-    DisplayMode fullscreenKind = DisplayMode::Borderless;   // which of the two fullscreen modes F11 / Alt+Enter goes to from the window (Fullscreen or Borderless)
     bool windowBorders = true;                              // windowed mode: title bar and frame
     bool hasWindowRect = false;                             // the picture area of the window as the user left it (screen position and size in pixels)
     int windowX = 0, windowY = 0, windowW = 0, windowH = 0;

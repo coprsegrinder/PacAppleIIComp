@@ -47,3 +47,4 @@ Port hotkeys (not game keys): F11 or Alt+Enter = full screen; F8 = title bar and
 **Esc = pause menu (TASK-034-3):** the original Esc pause (wait for any key) is replaced. Esc opens the menu (Resume / Graphics Settings / Quit Game); Up/Down + Enter or the mouse choose; Esc goes back/closes. The game stands still while it is open.
 
 **Display mode (TASK-034-4):** pause menu (Esc) > Graphics Settings > Display Mode (Enter or Right = next, Left = previous): Fullscreen, Borderless Fullscreen (default), Windowed. F11 / Alt+Enter switch between the window and the full screen mode last used. The choice, the window size and place and the window frame setting are remembered in %LOCALAPPDATA%\PacmanAppleIIPort\settings.ini.
+**Display mode (corrected):** only two modes exist: Borderless Fullscreen (default) and Windowed (pause menu > Graphics Settings > Display Mode, or F11 / Alt+Enter). The exclusive "Fullscreen" mode was removed.

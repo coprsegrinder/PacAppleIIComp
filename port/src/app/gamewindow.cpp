@@ -197,7 +197,7 @@ bool GameWindow::setScale(int scale) {
 }
 
 void GameWindow::setFullscreen(bool on) {
-    setDisplayMode(on ? fullscreenKind_ : DisplayMode::Windowed);
+    setDisplayMode(on ? DisplayMode::Borderless : DisplayMode::Windowed);
 }
 
 void GameWindow::rememberWindowRect() {
@@ -216,7 +216,6 @@ void GameWindow::rememberWindowRect() {
 
 const Settings& GameWindow::settings() {
     settings_.displayMode = wantedMode_;
-    settings_.fullscreenKind = fullscreenKind_;
     settings_.windowBorders = borders_;
     rememberWindowRect();
     return settings_;
@@ -231,48 +230,26 @@ void GameWindow::logMode(const char* what) {
     std::ofstream f{std::filesystem::path(logPath_), std::ios::app};
     RECT cr{};
     if (hwnd_) GetClientRect(hwnd_, &cr);
-    f << what << ": foreground=" << (hwnd_ && GetForegroundWindow() == hwnd_ ? 1 : 0) << " mode=" << displayModeKey(mode_) << " exclusive=" << (exclusiveActive() ? 1 : 0) << " client=" << cr.right << "x" << cr.bottom << " renderer=" << (d3d_ ? (d3d_->software() ? "warp" : "hardware") : "gdi")
-      << (d3d_ && !d3d_->failure().empty() ? " refused: " + d3d_->failure() : std::string()) << "\n";
+    f << what << ": mode=" << displayModeKey(mode_) << " client=" << cr.right << "x" << cr.bottom << " renderer=" << (d3d_ ? (d3d_->software() ? "warp" : "hardware") : "gdi") << "\n";
 }
 
-bool GameWindow::setDisplayMode(DisplayMode m) {
-    if (!hwnd_) return false;
-    bool ok = true;
-    notice_.clear();
-    if (m == DisplayMode::Fullscreen) {   // exclusive full screen belongs to the active window: ask for it (a program may take the focus for its own window)
-        SetForegroundWindow(hwnd_);
-        SetFocus(hwnd_);
-    }
+void GameWindow::setDisplayMode(DisplayMode m) {
+    if (!hwnd_) return;
     if (m == DisplayMode::Windowed) {
-        if (d3d_) d3d_->setExclusive(false);   // leaving exclusive full screen first: always allowed
         if (fullscreen_) applyFullscreenWindow(false);
         mode_ = DisplayMode::Windowed;
     } else {
         if (!fullscreen_) applyFullscreenWindow(true);
-        if (m == DisplayMode::Fullscreen) {
-            if (d3d_ && d3d_->setExclusive(true)) {
-                mode_ = DisplayMode::Fullscreen;
-            } else {   // no exclusive full screen here (software or GDI drawing, the display or Windows said no): the borderless window does the job
-                mode_ = DisplayMode::Borderless;
-                notice_ = "FULLSCREEN NOT AVAILABLE: BORDERLESS USED";
-                ok = false;
-            }
-        } else {
-            if (d3d_) d3d_->setExclusive(false);
-            mode_ = DisplayMode::Borderless;
-        }
-        fullscreenKind_ = mode_;
+        mode_ = DisplayMode::Borderless;
     }
     wantedMode_ = mode_;
     saveSettings();
     logMode("set");
-    return ok;
 }
 
 void GameWindow::attachSettings(SettingsStore* store, const Settings& initial) {
     store_ = store;
     settings_ = initial;
-    fullscreenKind_ = initial.fullscreenKind == DisplayMode::Windowed ? DisplayMode::Borderless : initial.fullscreenKind;
     wantedMode_ = initial.displayMode;
     if (!hwnd_) return;
     // the frame setting and the window as the user left it
@@ -304,10 +281,8 @@ void GameWindow::attachSettings(SettingsStore* store, const Settings& initial) {
         SetWindowPos(hwnd_, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
     }
     rememberWindowRect();
-    // the display mode; a refusal at start-up (the window may not be active yet) is not written over what the user chose
-    const DisplayMode wanted = initial.displayMode;
-    setDisplayMode(wanted);
-    wantedMode_ = wanted;
+    // the display mode
+    setDisplayMode(initial.displayMode);
 }
 
 void GameWindow::applyFullscreenWindow(bool on) {
@@ -345,7 +320,7 @@ void GameWindow::applyFullscreenWindow(bool on) {
 
 bool GameWindow::handleHotkey(unsigned vk, bool ctrl, bool alt) {
     if (vk == VK_F11 || (alt && vk == VK_RETURN)) {
-        setDisplayMode(mode_ == DisplayMode::Windowed ? fullscreenKind_ : DisplayMode::Windowed);
+        setDisplayMode(mode_ == DisplayMode::Windowed ? DisplayMode::Borderless : DisplayMode::Windowed);
         return true;
     }
     if (vk == VK_F8) {   // title bar and frame on/off (windowed mode)
@@ -389,7 +364,6 @@ void GameWindow::currentPixels(std::uint32_t* out) {
         PauseMenu::View view;
         view.displayMode = mode_;
         view.borders = borders_;
-        view.notice = notice_;
         menu_.render(font_, view, lit);
         for (int y = 0; y < kH; ++y)
             for (int x = 0; x < kW; ++x) {
@@ -416,15 +390,9 @@ void GameWindow::menuAction(PauseMenu::Action a) {
     case PauseMenu::Action::Resume: break;   // the menu hid itself
     case PauseMenu::Action::ToggleBorders: setBorders(!borders_); break;
     case PauseMenu::Action::NextDisplayMode:
-    case PauseMenu::Action::PreviousDisplayMode: {   // Fullscreen -> Borderless Fullscreen -> Windowed -> (round)
-        const int order[3] = {static_cast<int>(DisplayMode::Fullscreen), static_cast<int>(DisplayMode::Borderless), static_cast<int>(DisplayMode::Windowed)};
-        int at = 0;
-        for (int i = 0; i < 3; ++i)
-            if (order[i] == static_cast<int>(mode_)) at = i;
-        at = (at + (a == PauseMenu::Action::NextDisplayMode ? 1 : 2)) % 3;
-        setDisplayMode(static_cast<DisplayMode>(order[at]));
+    case PauseMenu::Action::PreviousDisplayMode:   // two modes: next and previous are the same
+        setDisplayMode(mode_ == DisplayMode::Windowed ? DisplayMode::Borderless : DisplayMode::Windowed);
         break;
-    }
     case PauseMenu::Action::Quit: close(); break;   // the normal way out: the window closes, the game threads end, everything is released in order
     case PauseMenu::Action::None: break;
     }
@@ -584,28 +552,6 @@ LRESULT GameWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
     case WM_MOVE:
         rememberWindowRect();
         return 0;
-    case WM_ACTIVATEAPP:   // exclusive full screen belongs to the active program: Alt+Tab away leaves it (and minimises the window), coming back enters it again
-        if (wp && wantedMode_ == DisplayMode::Fullscreen && mode_ == DisplayMode::Borderless && d3d_ && !d3d_->exclusive()) {   // asked for at start-up, refused while the window was not active yet: now it is
-            if (d3d_->setExclusive(true)) {
-                mode_ = DisplayMode::Fullscreen;
-                fullscreenKind_ = DisplayMode::Fullscreen;
-                notice_.clear();
-            }
-            logMode("activated");
-        } else if (mode_ == DisplayMode::Fullscreen && d3d_) {
-            if (!wp) {
-                d3d_->setExclusive(false);
-                ShowWindow(hwnd_, SW_MINIMIZE);
-            } else {
-                ShowWindow(hwnd_, SW_RESTORE);
-                fitToMonitor();
-                if (!d3d_->setExclusive(true)) {
-                    mode_ = DisplayMode::Borderless;
-                    notice_ = "FULLSCREEN NOT AVAILABLE: BORDERLESS USED";
-                }
-            }
-        }
-        break;
     case WM_TIMER:
         if (wp == kRefreshTimer) {
             bool changed;
@@ -646,7 +592,6 @@ LRESULT GameWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
     case WM_DESTROY:
         KillTimer(hwnd_, kRefreshTimer);
         saveSettings();   // the window's last place and size, the modes: written once more on the way out
-        if (d3d_) d3d_->setExclusive(false);   // the swap chain must be out of exclusive full screen before it is released
         d3d_.reset();
         hwnd_ = nullptr;
         PostQuitMessage(0);

@@ -23,7 +23,6 @@ public:
     struct View {
         DisplayMode displayMode = DisplayMode::Borderless;
         bool borders = true;
-        std::string notice;   // a line under the entries of the graphics page (e.g. why Fullscreen is not in use)
     };
 
     // The panel (picture pixels). Everything of the menu is inside it.

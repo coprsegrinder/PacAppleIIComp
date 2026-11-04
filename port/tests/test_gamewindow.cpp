@@ -939,24 +939,15 @@ TEST(pause_menu_draws_inside_its_panel_with_the_apple_ii_font_and_marks_the_sele
     g.key(PauseMenu::Key::Down);
     g.key(PauseMenu::Key::Select);
     std::vector<std::uint8_t> on, off;
-    PauseMenu::View viewOn, viewOff, viewMode, viewNotice;
+    PauseMenu::View viewOn, viewOff, viewMode;
     viewOff.borders = false;
     viewMode.displayMode = app::DisplayMode::Windowed;
-    viewNotice.notice = "FULLSCREEN NOT AVAILABLE: BORDERLESS USED";
-    std::vector<std::uint8_t> mode, notice;
+    std::vector<std::uint8_t> mode;
     g.render(rom, viewOn, on);
     g.render(rom, viewOff, off);
     g.render(rom, viewMode, mode);
-    g.render(rom, viewNotice, notice);
     CHECK(on != off);       // the border state is shown
     CHECK(on != mode);      // the display mode is shown
-    CHECK(on != notice);    // a notice is shown on the graphics page ...
-    std::vector<std::uint8_t> mainPage, mainPageNotice;
-    PauseMenu mm;
-    mm.show();
-    mm.render(rom, viewOn, mainPage);
-    mm.render(rom, viewNotice, mainPageNotice);
-    CHECK(mainPage == mainPageNotice);   // ... and nowhere else
 }
 
 TEST(pause_gate_holds_the_game_and_no_time_is_made_up_afterwards) {
@@ -1210,7 +1201,7 @@ std::filesystem::path scratchDir(const char* name) {
 
 }  // namespace
 
-TEST(display_mode_windowed_borderless_and_exclusive_fullscreen_each_work_or_fall_back_safely) {
+TEST(display_mode_windowed_and_borderless_fullscreen_switch_back_and_forth_exactly) {
     GameWindow w(GameWindowOptions{3, true});
     CHECK(w.ok());
     if (!w.ok()) return;
@@ -1221,75 +1212,59 @@ TEST(display_mode_windowed_borderless_and_exclusive_fullscreen_each_work_or_fall
     SetWindowPos(w.hwnd(), nullptr, 100, 80, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
     pump(30);
     const POINT o0 = clientOrigin(w.hwnd());
-    // Borderless Fullscreen: the desktop's own resolution, the picture centred at the largest whole scale
-    CHECK(w.setDisplayMode(DisplayMode::Borderless));
-    pump(60);
-    CHECK(w.displayMode() == DisplayMode::Borderless && w.fullscreen() && !w.exclusiveActive() && w.notice().empty());
-    const RECT mon = monitorRectOf(w.hwnd());
-    RECT wr{};
-    GetWindowRect(w.hwnd(), &wr);
-    CHECK(wr.left == mon.left && wr.top == mon.top && wr.right == mon.right && wr.bottom == mon.bottom);
-    CHECK(clientSize(w.hwnd()).cx == mon.right - mon.left && clientSize(w.hwnd()).cy == mon.bottom - mon.top);   // native resolution, not one of a list
-    if (w.usesDirect3d()) {
-        std::vector<std::uint32_t> got;
-        int cw = 0, ch = 0;
-        CHECK(w.captureFrame(got, cw, ch));
-        CHECK(cw == mon.right - mon.left && ch == mon.bottom - mon.top && differences(got, expected(page, cw, ch)) == 0);
-    }
-    // exclusive Fullscreen: it works, or it is refused and the borderless window stays, with a notice and a false result; both are fine, nothing else is
-    const bool exclusiveWorked = w.setDisplayMode(DisplayMode::Fullscreen);
-    pump(300);
-    std::printf("    exclusive full screen on this machine: %s %s\n", exclusiveWorked ? "entered" : "refused, borderless used instead:", w.exclusiveFailure().c_str());
-    if (exclusiveWorked) {
-        CHECK(w.displayMode() == DisplayMode::Fullscreen && w.exclusiveActive() && w.fullscreen() && w.notice().empty());
+    for (int round = 0; round < 4; ++round) {
+        // Borderless Fullscreen: the desktop's own resolution, the picture centred at the largest whole scale
+        w.setDisplayMode(DisplayMode::Borderless);
+        pump(60);
+        CHECK(w.displayMode() == DisplayMode::Borderless && w.fullscreen());
+        const RECT mon = monitorRectOf(w.hwnd());
+        RECT wr{};
+        GetWindowRect(w.hwnd(), &wr);
+        CHECK(wr.left == mon.left && wr.top == mon.top && wr.right == mon.right && wr.bottom == mon.bottom);
+        CHECK(clientSize(w.hwnd()).cx == mon.right - mon.left && clientSize(w.hwnd()).cy == mon.bottom - mon.top);   // native resolution, not one of a list
+        CHECK(IsWindowVisible(w.hwnd()) != FALSE);
         if (w.usesDirect3d()) {
             std::vector<std::uint32_t> got;
             int cw = 0, ch = 0;
             CHECK(w.captureFrame(got, cw, ch));
             CHECK(cw == mon.right - mon.left && ch == mon.bottom - mon.top && differences(got, expected(page, cw, ch)) == 0);
         }
-    } else {
-        CHECK(w.displayMode() == DisplayMode::Borderless && w.fullscreen() && !w.exclusiveActive() && !w.notice().empty());
+        // and back: exactly the window the user had (same picture area, same place), the same frame, still shown
+        w.setDisplayMode(DisplayMode::Windowed);
+        pump(60);
+        CHECK(w.displayMode() == DisplayMode::Windowed && !w.fullscreen() && IsWindowVisible(w.hwnd()) != FALSE);
+        CHECK(clientSize(w.hwnd()).cx == 1000 && clientSize(w.hwnd()).cy == 700 && clientOrigin(w.hwnd()).x == o0.x && clientOrigin(w.hwnd()).y == o0.y);
+        CHECK((GetWindowLongW(w.hwnd(), GWL_STYLE) & WS_CAPTION) == WS_CAPTION);
+        if (w.usesDirect3d()) {
+            std::vector<std::uint32_t> got;
+            int cw = 0, ch = 0;
+            CHECK(w.captureFrame(got, cw, ch));
+            CHECK(cw == 1000 && ch == 700 && differences(got, expected(page, cw, ch)) == 0);
+        }
     }
-    // back to borderless, then to the window: exactly the window the user had
-    CHECK(w.setDisplayMode(DisplayMode::Borderless));
-    pump(100);
-    CHECK(!w.exclusiveActive() && w.displayMode() == DisplayMode::Borderless && w.notice().empty());
-    CHECK(w.setDisplayMode(DisplayMode::Windowed));
-    pump(100);
-    CHECK(w.displayMode() == DisplayMode::Windowed && !w.fullscreen() && !w.exclusiveActive());
-    CHECK(clientSize(w.hwnd()).cx == 1000 && clientSize(w.hwnd()).cy == 700 && clientOrigin(w.hwnd()).x == o0.x && clientOrigin(w.hwnd()).y == o0.y);
-    CHECK(IsWindowVisible(w.hwnd()) != FALSE);
-    // straight from the window into exclusive full screen and out again
-    const bool again = w.setDisplayMode(DisplayMode::Fullscreen);
-    pump(300);
-    CHECK(again == exclusiveWorked);
-    CHECK(w.setDisplayMode(DisplayMode::Windowed));
-    pump(100);
-    CHECK(!w.fullscreen() && !w.exclusiveActive() && clientSize(w.hwnd()).cx == 1000 && clientSize(w.hwnd()).cy == 700);
+    // the same mode twice does nothing harmful
+    w.setDisplayMode(DisplayMode::Windowed);
+    w.setDisplayMode(DisplayMode::Windowed);
+    CHECK(clientSize(w.hwnd()).cx == 1000 && clientSize(w.hwnd()).cy == 700);
+    w.setDisplayMode(DisplayMode::Borderless);
+    w.setDisplayMode(DisplayMode::Borderless);
+    pump(60);
+    CHECK(w.fullscreen());
+    w.setDisplayMode(DisplayMode::Windowed);
+    pump(60);
+    CHECK(clientSize(w.hwnd()).cx == 1000 && clientSize(w.hwnd()).cy == 700);
 }
 
-TEST(display_mode_f11_and_alt_enter_go_between_the_window_and_the_chosen_full_screen_mode) {
+TEST(display_mode_f11_and_alt_enter_go_between_the_window_and_borderless_fullscreen) {
     GameWindow w(GameWindowOptions{3, true});
     CHECK(w.ok());
     if (!w.ok()) return;
     CHECK(w.handleHotkey(VK_F11, false, false));
     pump(60);
-    CHECK(w.displayMode() == DisplayMode::Borderless);   // the default kind
+    CHECK(w.displayMode() == DisplayMode::Borderless && w.fullscreen());
     CHECK(w.handleHotkey(VK_RETURN, false, true));
     pump(60);
     CHECK(w.displayMode() == DisplayMode::Windowed && !w.fullscreen());
-    const bool worked = w.setDisplayMode(DisplayMode::Fullscreen);   // the chosen kind is remembered ...
-    pump(300);
-    w.handleHotkey(VK_F11, false, false);                              // ... F11 leaves it
-    pump(100);
-    CHECK(w.displayMode() == DisplayMode::Windowed && !w.exclusiveActive());
-    w.handleHotkey(VK_F11, false, false);                              // ... and F11 returns to it (or to borderless where exclusive is refused)
-    pump(300);
-    CHECK(w.displayMode() == (worked ? DisplayMode::Fullscreen : DisplayMode::Borderless));
-    w.handleHotkey(VK_F11, false, false);
-    pump(100);
-    CHECK(w.displayMode() == DisplayMode::Windowed);
 }
 
 TEST(display_mode_is_changed_from_the_pause_menu_with_keys_and_mouse_and_the_menu_stays) {
@@ -1304,7 +1279,7 @@ TEST(display_mode_is_changed_from_the_pause_menu_with_keys_and_mouse_and_the_men
     SendMessageW(h, WM_KEYDOWN, VK_DOWN, 1);
     SendMessageW(h, WM_KEYDOWN, VK_RETURN, 1);   // Graphics Settings; "Display Mode" is the first entry
     CHECK(w.menuOpen() && w.displayMode() == DisplayMode::Windowed);
-    SendMessageW(h, WM_KEYDOWN, VK_LEFT, 1);     // previous: Windowed -> Borderless Fullscreen
+    SendMessageW(h, WM_KEYDOWN, VK_LEFT, 1);     // the other mode: Windowed -> Borderless Fullscreen
     pump(60);
     CHECK(w.displayMode() == DisplayMode::Borderless && w.fullscreen() && w.menuOpen());
     // the menu is drawn on the full screen picture too
@@ -1318,16 +1293,15 @@ TEST(display_mode_is_changed_from_the_pause_menu_with_keys_and_mouse_and_the_men
             for (int x = 0; x < cw; ++x) white += (got[static_cast<std::size_t>(y) * static_cast<std::size_t>(cw) + static_cast<std::size_t>(x)] & 0xFFFFFF) == 0xFFFFFF && x >= vp.x && x < vp.x + vp.w && y >= vp.y && y < vp.y + vp.h;
         CHECK(white > 600u * static_cast<std::size_t>(vp.scale) * static_cast<std::size_t>(vp.scale) / 2);
     }
-    SendMessageW(h, WM_KEYDOWN, VK_RIGHT, 1);    // next: Borderless -> Windowed
+    SendMessageW(h, WM_KEYDOWN, VK_RIGHT, 1);    // Borderless -> Windowed
     pump(60);
     CHECK(w.displayMode() == DisplayMode::Windowed && !w.fullscreen());
-    SendMessageW(h, WM_KEYDOWN, VK_RETURN, 1);   // Enter = next: Windowed -> Fullscreen (or borderless where exclusive is refused)
-    pump(300);
-    CHECK(w.displayMode() == DisplayMode::Fullscreen || (w.displayMode() == DisplayMode::Borderless && !w.notice().empty()));
-    CHECK(w.fullscreen() && w.menuOpen());
+    SendMessageW(h, WM_KEYDOWN, VK_RETURN, 1);   // Enter: Windowed -> Borderless Fullscreen
+    pump(60);
+    CHECK(w.displayMode() == DisplayMode::Borderless && w.fullscreen() && w.menuOpen());
     // the mouse: click the Display Mode entry until it is the window again
     const POINT entry = graphicsItem(0);
-    for (int i = 0; i < 3 && w.displayMode() != DisplayMode::Windowed; ++i) {
+    for (int i = 0; i < 2 && w.displayMode() != DisplayMode::Windowed; ++i) {
         SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, entry.x, entry.y));
         pump(300);
     }
@@ -1455,27 +1429,6 @@ TEST(display_settings_with_a_window_place_that_no_longer_exists_are_made_reachab
     std::filesystem::remove_all(dir);
 }
 
-TEST(display_mode_refused_at_start_up_is_not_written_over_the_users_choice) {
-    const auto dir = scratchDir("refused");
-    const std::filesystem::path file = dir / "settings.ini";
-    SettingsStore store(file.wstring());
-    Settings s;
-    s.displayMode = DisplayMode::Fullscreen;
-    s.fullscreenKind = DisplayMode::Fullscreen;
-    {
-        GameWindow w(GameWindowOptions{3, false});   // a hidden window: exclusive full screen is not possible for it
-        CHECK(w.ok());
-        if (!w.ok()) return;
-        w.attachSettings(&store, s);
-        pump(100);
-        std::printf("    start-up in Fullscreen gave: %s\n", app::displayModeKey(w.displayMode()));
-        CHECK(w.displayMode() == DisplayMode::Fullscreen || (w.displayMode() == DisplayMode::Borderless && !w.notice().empty()));
-        CHECK(w.settings().displayMode == w.displayMode() || w.settings().displayMode == DisplayMode::Fullscreen);
-    }
-    CHECK(store.load().displayMode == DisplayMode::Fullscreen || store.load().displayMode == DisplayMode::Borderless);
-    std::filesystem::remove_all(dir);
-}
-
 TEST(display_mode_changes_while_the_game_runs_leave_the_game_and_its_clock_untouched) {
     if (testfw::config().image.empty()) {
         std::printf("    SKIPPED (needs --image)\n");
@@ -1500,10 +1453,10 @@ TEST(display_mode_changes_while_the_game_runs_leave_the_game_and_its_clock_untou
             }
             done = true;
         });
-        const DisplayMode order[3] = {DisplayMode::Borderless, DisplayMode::Fullscreen, DisplayMode::Windowed};
+        const DisplayMode order[2] = {DisplayMode::Borderless, DisplayMode::Windowed};
         while (!done) {
             if (disturb) {
-                w.setDisplayMode(order[res.changes % 3]);
+                w.setDisplayMode(order[res.changes % 2]);
                 ++res.changes;
             }
             pump(20);
@@ -1537,10 +1490,10 @@ TEST(display_mode_changes_while_the_game_runs_leave_the_game_and_its_clock_untou
         handed += clock.cyclesDue(endNs);
         done = true;
     });
-    const DisplayMode order[3] = {DisplayMode::Borderless, DisplayMode::Fullscreen, DisplayMode::Windowed};
+    const DisplayMode order[2] = {DisplayMode::Borderless, DisplayMode::Windowed};
     int changes = 0;
     while (!done) {
-        w.setDisplayMode(order[changes++ % 3]);
+        w.setDisplayMode(order[changes++ % 2]);
         pump(120);
     }
     worker.join();

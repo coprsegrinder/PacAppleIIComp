@@ -45,7 +45,6 @@ struct D3dRenderer::Impl {
     ComPtr<ID3D11RasterizerState> raster;
     ComPtr<ID3D11Texture2D> staging;
     bool warp = false;
-    std::string failure;
     Background background = Background::Black;
     int w = 0, h = 0;
 
@@ -76,9 +75,7 @@ struct D3dRenderer::Impl {
 };
 
 D3dRenderer::D3dRenderer() : d_(std::make_unique<Impl>()) {}
-D3dRenderer::~D3dRenderer() {
-    if (d_ && d_->swap) d_->swap->SetFullscreenState(FALSE, nullptr);   // a swap chain must not be released while it owns the monitor
-}
+D3dRenderer::~D3dRenderer() = default;
 
 void D3dRenderer::setBackground(Background b) { d_->background = b; }
 bool D3dRenderer::software() const noexcept { return d_->warp; }
@@ -103,7 +100,6 @@ bool D3dRenderer::init(HWND hwnd) {
     sd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
     sd.Scaling = DXGI_SCALING_NONE;
     sd.AlphaMode = DXGI_ALPHA_MODE_IGNORE;
-    sd.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;   // needed for exclusive full screen and its mode changes
     if (FAILED(factory->CreateSwapChainForHwnd(d.device.Get(), hwnd, &sd, nullptr, nullptr, &d.swap))) return false;
     factory->MakeWindowAssociation(hwnd, DXGI_MWA_NO_ALT_ENTER | DXGI_MWA_NO_WINDOW_CHANGES);   // Alt+Enter is the window's own hotkey
     if (!d.makeTarget()) return false;
@@ -146,7 +142,7 @@ void D3dRenderer::resize(int clientW, int clientH) {
     d.context->OMSetRenderTargets(0, nullptr, nullptr);
     d.rtv.Reset();
     d.staging.Reset();
-    if (SUCCEEDED(d.swap->ResizeBuffers(0, static_cast<UINT>(clientW), static_cast<UINT>(clientH), DXGI_FORMAT_UNKNOWN, DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH))) d.makeTarget();
+    if (SUCCEEDED(d.swap->ResizeBuffers(0, static_cast<UINT>(clientW), static_cast<UINT>(clientH), DXGI_FORMAT_UNKNOWN, 0))) d.makeTarget();
 }
 
 bool D3dRenderer::draw(const std::uint32_t* argb, const Viewport& vp) {
@@ -176,59 +172,6 @@ bool D3dRenderer::draw(const std::uint32_t* argb, const Viewport& vp) {
         d.context->PSSetSamplers(0, 1, &smp);
         d.context->Draw(3, 0);
     }
-    return true;
-}
-
-const std::string& D3dRenderer::failure() const noexcept { return d_->failure; }
-
-bool D3dRenderer::exclusive() const {
-    const Impl& d = *d_;
-    if (!d.swap) return false;
-    BOOL fs = FALSE;
-    ComPtr<IDXGIOutput> out;
-    return SUCCEEDED(d.swap->GetFullscreenState(&fs, &out)) && fs != FALSE;
-}
-
-bool D3dRenderer::setExclusive(bool on) {
-    Impl& d = *d_;
-    if (!d.swap) return false;
-    if (!on) {
-        if (!exclusive()) return true;
-        return SUCCEEDED(d.swap->SetFullscreenState(FALSE, nullptr));
-    }
-    if (exclusive()) return true;
-    HRESULT hr = S_OK;
-    // the monitor the window is on, at the resolution and refresh rate the desktop has now (no display mode change; the Resolution setting comes later)
-    ComPtr<IDXGIOutput> output;
-    const auto fail = [&](const char* stage, HRESULT hr) {
-        char buf[96];
-        std::snprintf(buf, sizeof(buf), "%s failed: 0x%08lX", stage, static_cast<unsigned long>(hr));
-        d.failure = buf;
-        return false;
-    };
-    d.failure.clear();
-    if (FAILED(hr = d.swap->GetContainingOutput(&output))) return fail("GetContainingOutput", hr);
-    MONITORINFOEXW mi{};
-    mi.cbSize = sizeof(mi);
-    DXGI_OUTPUT_DESC od{};
-    if (FAILED(hr = output->GetDesc(&od)) || !GetMonitorInfoW(od.Monitor, &mi)) return fail("GetDesc", hr);
-    DEVMODEW dm{};
-    dm.dmSize = sizeof(dm);
-    const bool haveMode = EnumDisplaySettingsW(mi.szDevice, ENUM_CURRENT_SETTINGS, &dm) != FALSE;
-    DXGI_MODE_DESC want{};
-    want.Width = static_cast<UINT>(mi.rcMonitor.right - mi.rcMonitor.left);
-    want.Height = static_cast<UINT>(mi.rcMonitor.bottom - mi.rcMonitor.top);
-    want.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
-    if (haveMode && dm.dmDisplayFrequency > 1) want.RefreshRate = DXGI_RATIONAL{dm.dmDisplayFrequency, 1};
-    DXGI_MODE_DESC closest = want;
-    if (FAILED(output->FindClosestMatchingMode(&want, &closest, d.device.Get()))) closest = want;
-    if (FAILED(hr = d.swap->ResizeTarget(&closest))) return fail("ResizeTarget", hr);
-    if (FAILED(hr = d.swap->SetFullscreenState(TRUE, output.Get()))) {
-        d.swap->SetFullscreenState(FALSE, nullptr);
-        return fail("SetFullscreenState", hr);
-    }
-    closest.RefreshRate = DXGI_RATIONAL{0, 0};   // as the documentation advises after entering: resize the target again so that the back buffers follow
-    d.swap->ResizeTarget(&closest);
     return true;
 }
 

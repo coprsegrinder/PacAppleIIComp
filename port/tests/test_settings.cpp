@@ -43,7 +43,7 @@ void spit(const std::filesystem::path& p, const std::string& text) {
 
 TEST(settings_defaults_when_there_is_no_usable_file) {
     const Settings d;
-    CHECK(d.displayMode == DisplayMode::Borderless && d.fullscreenKind == DisplayMode::Borderless && d.windowBorders && !d.hasWindowRect);   // first run: borderless full screen
+    CHECK(d.displayMode == DisplayMode::Borderless && d.windowBorders && !d.hasWindowRect);   // first run: borderless full screen
     const auto dir = tempDir("defaults");
     bool existed = true;
     CHECK(SettingsStore((dir / "none.ini").wstring()).load(&existed) == d && !existed);   // missing
@@ -58,7 +58,6 @@ TEST(settings_defaults_when_there_is_no_usable_file) {
 TEST(settings_round_trip_and_tolerant_reading) {
     Settings s;
     s.displayMode = DisplayMode::Windowed;
-    s.fullscreenKind = DisplayMode::Fullscreen;
     s.windowBorders = false;
     s.hasWindowRect = true;
     s.windowX = -1200;   // a monitor to the left of the main one
@@ -66,17 +65,18 @@ TEST(settings_round_trip_and_tolerant_reading) {
     s.windowW = 1120;
     s.windowH = 768;
     CHECK(SettingsStore::parse(SettingsStore::format(s)) == s);
-    for (DisplayMode m : {DisplayMode::Fullscreen, DisplayMode::Borderless, DisplayMode::Windowed}) {
+    for (DisplayMode m : {DisplayMode::Borderless, DisplayMode::Windowed}) {
         Settings t;
         t.displayMode = m;
         CHECK(SettingsStore::parse(SettingsStore::format(t)).displayMode == m);
     }
     // an edited, older or newer file: comments, spaces, capitals, CRLF, unknown keys
     const Settings p = SettingsStore::parse("# mine\r\n  Display_Mode =  WINDOWED \r\nfuture_key=7\r\nwindow_borders = off\r\nfullscreen_kind=fullscreen\r\n\r\nversion=99\r\n");
-    CHECK(p.displayMode == DisplayMode::Windowed && !p.windowBorders && p.fullscreenKind == DisplayMode::Fullscreen && !p.hasWindowRect);
+    CHECK(p.displayMode == DisplayMode::Windowed && !p.windowBorders && !p.hasWindowRect);   // (an old fullscreen_kind line is ignored)
     // bad values keep the default of that key and do not disturb the others
     const Settings q = SettingsStore::parse("display_mode=sideways\nfullscreen_kind=windowed\nwindow_borders=maybe\nwindow_x=12\nwindow_y=ab\nwindow_w=300\nwindow_h=200\n");
-    CHECK(q.displayMode == DisplayMode::Borderless && q.fullscreenKind == DisplayMode::Borderless && q.windowBorders && !q.hasWindowRect);   // the rectangle needs all four good numbers
+    CHECK(q.displayMode == DisplayMode::Borderless && q.windowBorders && !q.hasWindowRect);   // the rectangle needs all four good numbers
+    CHECK(SettingsStore::parse("display_mode=fullscreen\n").displayMode == DisplayMode::Borderless);   // the removed exclusive mode of an older file: borderless full screen
     CHECK(!SettingsStore::parse("window_x=1\nwindow_y=1\nwindow_w=0\nwindow_h=5\n").hasWindowRect);
     CHECK(!SettingsStore::parse("window_x=1\nwindow_y=1\nwindow_w=99999\nwindow_h=5\n").hasWindowRect);
     CHECK(!SettingsStore::parse("window_x=99999999999\nwindow_y=1\nwindow_w=10\nwindow_h=5\n").hasWindowRect);
@@ -92,7 +92,7 @@ TEST(settings_are_written_atomically_and_a_failure_leaves_the_old_file_alone) {
     CHECK(store.load() == a);
     CHECK(!std::filesystem::exists(dir / "deep" / "er" / "settings.ini.tmp"));   // no temporary file left
     Settings b = a;
-    b.displayMode = DisplayMode::Fullscreen;
+    b.displayMode = DisplayMode::Borderless;
     b.windowBorders = false;
     CHECK(store.save(b) && store.load() == b);   // replaced
     // the temporary file cannot be created (something else of that name is in the way): save fails, the file is as it was

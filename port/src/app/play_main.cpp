@@ -6,7 +6,7 @@
 //   --scale N      whole-number window scale (default 3)
 //   --seconds N    close the window by itself after N seconds (for tests)
 //   --mute         start with the sound off (F9 toggles it)
-//   --display M    fullscreen | borderless | windowed (the saved choice otherwise; the default is borderless)
+//   --display M    borderless | windowed (the saved choice otherwise; the default is borderless)
 //   --settings F   use this settings file instead of %LOCALAPPDATA%\PacmanAppleIIPort\settings.ini
 //   --sound-test   play every sound once (to listen to the speaker model) and exit
 //   --level N      test aid: start at level N (1-255)
@@ -492,8 +492,7 @@ int wmain(int argc, wchar_t** argv) {
     app::SettingsStore settingsStore(settingsPath);   // outlives the window, which writes its changes into it
     app::Settings settings = settingsStore.load();
     if (scaleGiven) settings.hasWindowRect = false;   // an explicit --scale wins over the window size kept in the settings
-    if (displayArg == L"fullscreen") settings.displayMode = app::DisplayMode::Fullscreen;
-    else if (displayArg == L"borderless") settings.displayMode = app::DisplayMode::Borderless;
+    if (displayArg == L"fullscreen" || displayArg == L"borderless") settings.displayMode = app::DisplayMode::Borderless;
     else if (displayArg == L"windowed") settings.displayMode = app::DisplayMode::Windowed;
     app::GameWindow window(options);
     if (!window.ok()) return 4;
