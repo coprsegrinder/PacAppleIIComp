@@ -45,3 +45,5 @@ After TASK-020, 9,147 of the 10,456 static code bytes (87.5%) have run; 1,309 by
 Port hotkeys (not game keys): F11 or Alt+Enter = full screen; F8 = title bar and frame on/off (windowed mode); Ctrl+Plus / Ctrl+Minus = window one whole-number scale larger/smaller; F9 = mute. In the borderless window, drag the picture to move it and drag the edges to resize it.
 
 **Esc = pause menu (TASK-034-3):** the original Esc pause (wait for any key) is replaced. Esc opens the menu (Resume / Graphics Settings / Quit Game); Up/Down + Enter or the mouse choose; Esc goes back/closes. The game stands still while it is open.
+
+**Display mode (TASK-034-4):** pause menu (Esc) > Graphics Settings > Display Mode (Enter or Right = next, Left = previous): Fullscreen, Borderless Fullscreen (default), Windowed. F11 / Alt+Enter switch between the window and the full screen mode last used. The choice, the window size and place and the window frame setting are remembered in %LOCALAPPDATA%\PacmanAppleIIPort\settings.ini.

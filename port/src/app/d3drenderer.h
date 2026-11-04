@@ -11,6 +11,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "background.h"
@@ -31,6 +32,11 @@ public:
     bool draw(const std::uint32_t* argb280x192, const Viewport& vp); // clears to the background, draws the picture into vp; nothing is shown until present()
     bool present();                                                  // sync interval 0 for now (VSync is its own section)
     bool readBack(std::vector<std::uint32_t>& argb, int& w, int& h); // the back buffer after draw() (tests)
+    // Exclusive full screen (the "Fullscreen" display mode): the swap chain takes over the monitor at the desktop's own resolution and refresh rate. Returns false (and stays windowed)
+    // if Windows or the display refuses; the caller then falls back to the borderless window. Leaving always works.
+    bool setExclusive(bool on);
+    const std::string& failure() const noexcept;                     // why the last setExclusive(true) was refused (stage and HRESULT), for the log and the tests
+    bool exclusive() const;                                          // really in exclusive full screen now (false after Alt+Tab away, until it is entered again)
     bool software() const noexcept;                                  // true when the WARP software device is in use
     int width() const noexcept;
     int height() const noexcept;

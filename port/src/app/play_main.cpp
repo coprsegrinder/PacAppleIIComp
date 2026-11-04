@@ -6,6 +6,8 @@
 //   --scale N      whole-number window scale (default 3)
 //   --seconds N    close the window by itself after N seconds (for tests)
 //   --mute         start with the sound off (F9 toggles it)
+//   --display M    fullscreen | borderless | windowed (the saved choice otherwise; the default is borderless)
+//   --settings F   use this settings file instead of %LOCALAPPDATA%\PacmanAppleIIPort\settings.ini
 //   --sound-test   play every sound once (to listen to the speaker model) and exit
 //   --level N      test aid: start at level N (1-255)
 //   --items K      test aid: only K dots/energizers left to eat (1-248), so a level end comes quickly
@@ -29,6 +31,7 @@
 
 #include "audio.h"
 #include "pausegate.h"
+#include "settings.h"
 #include "../core/attractflow.h"
 #include "../core/cartoon.h"
 #include "../core/textscreen.h"
@@ -427,12 +430,17 @@ int wmain(int argc, wchar_t** argv) {
     int scale = 3, seconds = 0, startLevel = 0, startItems = 0;
     bool mute = false;
     bool soundTest = false, skipBoot = false;
-    std::wstring romsArg;
+    std::wstring romsArg, settingsPath = app::SettingsStore::defaultPath(), displayArg;
+    bool scaleGiven = false;
+    std::wstring logArg;
     long ticks = -1;
     for (int i = 1; i < argc; ++i) {
         const std::wstring a = argv[i];
         if (a == L"--pack" && i + 1 < argc) pack = argv[++i];
-        else if (a == L"--scale" && i + 1 < argc) scale = _wtoi(argv[++i]);
+        else if (a == L"--scale" && i + 1 < argc) {
+            scale = _wtoi(argv[++i]);
+            scaleGiven = true;
+        }
         else if (a == L"--seconds" && i + 1 < argc) seconds = _wtoi(argv[++i]);
         else if (a == L"--ticks" && i + 1 < argc) ticks = _wtol(argv[++i]);
         else if (a == L"--dump" && i + 1 < argc) dump = argv[++i];
@@ -440,6 +448,9 @@ int wmain(int argc, wchar_t** argv) {
         else if (a == L"--level" && i + 1 < argc) startLevel = _wtoi(argv[++i]);
         else if (a == L"--items" && i + 1 < argc) startItems = _wtoi(argv[++i]);
         else if (a == L"--roms" && i + 1 < argc) romsArg = argv[++i];
+        else if (a == L"--settings" && i + 1 < argc) settingsPath = argv[++i];   // another settings file (tests)
+        else if (a == L"--log" && i + 1 < argc) logArg = argv[++i];   // a text file that gets a line for every display mode change (for tests and for reports)
+        else if (a == L"--display" && i + 1 < argc) displayArg = argv[++i];     // fullscreen | borderless | windowed (written to the settings like a change in the menu)
         else if (a == L"--skip-boot") skipBoot = true;
         else if (a == L"--mute") mute = true;   // no sound (the same as F9 at the start); for running the real program in tests
         else return 64;
@@ -478,8 +489,16 @@ int wmain(int argc, wchar_t** argv) {
     options.scale = scale;
     options.muted = mute;
     options.menuAllowed = false;   // the pause menu belongs to a running game (runGame allows it)
+    app::SettingsStore settingsStore(settingsPath);   // outlives the window, which writes its changes into it
+    app::Settings settings = settingsStore.load();
+    if (scaleGiven) settings.hasWindowRect = false;   // an explicit --scale wins over the window size kept in the settings
+    if (displayArg == L"fullscreen") settings.displayMode = app::DisplayMode::Fullscreen;
+    else if (displayArg == L"borderless") settings.displayMode = app::DisplayMode::Borderless;
+    else if (displayArg == L"windowed") settings.displayMode = app::DisplayMode::Windowed;
     app::GameWindow window(options);
     if (!window.ok()) return 4;
+    if (!logArg.empty()) window.setLogFile(logArg);
+    window.attachSettings(&settingsStore, settings);
     core::CharacterRom menuFont;   // the pause menu is drawn with the Apple II character ROM
     if (menuFont.load(charRom)) window.setMenuFont(menuFont);
     std::atomic<bool> quit{false};

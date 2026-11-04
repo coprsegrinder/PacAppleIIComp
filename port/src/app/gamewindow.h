@@ -12,6 +12,7 @@
 #include <mutex>
 #include <optional>
 #include <span>
+#include <string>
 #include <vector>
 
 #include "../hires/hires.h"
@@ -19,6 +20,7 @@
 #include "d3drenderer.h"
 #include "display_layout.h"
 #include "pausemenu.h"
+#include "settings.h"
 
 namespace pacman::app {
 
@@ -58,6 +60,18 @@ public:
     void setMenuFont(const core::CharacterRom& rom) { font_ = rom; }   // before the window is used: the Apple II character ROM the menu is drawn with
     bool borders() const noexcept { return borders_; }
     void setBorders(bool on);
+    // Display mode (TASK-034-4): Windowed, Borderless Fullscreen (a borderless window over the monitor at its own resolution) or exclusive Fullscreen (the swap chain owns the monitor).
+    // None of them touches the game or its clock. Exclusive full screen that Windows or the display refuses falls back to borderless full screen (false is returned, notice() says so).
+    DisplayMode displayMode() const noexcept { return mode_; }
+    bool setDisplayMode(DisplayMode m);
+    bool exclusiveActive() const { return d3d_ && d3d_->exclusive(); }
+    void setLogFile(const std::wstring& path) { logPath_ = path; }   // appends a line for every display mode change (what was asked, what is, why exclusive was refused)
+    const std::string& exclusiveFailure() const { static const std::string none; return d3d_ ? d3d_->failure() : none; }   // why exclusive full screen was refused (tests, log)
+    const std::string& notice() const noexcept { return notice_; }   // shown in the graphics page, e.g. why Fullscreen became Borderless
+    // Settings: starts with these (display mode, frame, window position and size), and from then on writes every change of them to the store (atomic file); the window's last
+    // windowed place is written when the window closes.
+    void attachSettings(SettingsStore* store, const Settings& initial);
+    const Settings& settings();                         // the settings as they are now
     void setFullscreen(bool on);                       // never touches the game: only the window style, size and the swap chain change
     void setBackground(Background b);                  // what fills the bars around the picture (window thread)
     Background background() const noexcept { return background_; }
@@ -77,6 +91,9 @@ private:
     LONG windowedStyle() const;                        // the style of the windowed mode for the current borders_ setting (without WS_VISIBLE)
     RECT outerRect(int clientX, int clientY, int clientW, int clientH) const;   // the window rectangle that has this client area, in the current windowed style
     LRESULT hitTest(LPARAM lp);                        // borderless windowed mode: resize edges, and the picture moves the window
+    void applyFullscreenWindow(bool on);               // the borderless window over the monitor (what Borderless Fullscreen is, and the base of Fullscreen)
+    void rememberWindowRect();                         // windowed mode: where the picture area is now (kept for the settings file)
+    void saveSettings();
     void fitToMonitor();                               // full screen: cover the monitor the window is on (again after a display change)
     UINT dpi() const;
     void paint();
@@ -88,7 +105,15 @@ private:
 
     HWND hwnd_ = nullptr;
     int scale_ = 3;
-    bool fullscreen_ = false;
+    bool fullscreen_ = false;                 // the window covers its monitor (Borderless Fullscreen and Fullscreen)
+    DisplayMode mode_ = DisplayMode::Windowed;
+    DisplayMode fullscreenKind_ = DisplayMode::Borderless;   // where F11 / Alt+Enter goes from the window
+    DisplayMode wantedMode_ = DisplayMode::Windowed;          // what is written to the settings (what the user chose; see setDisplayMode)
+    std::string notice_;
+    std::wstring logPath_;
+    void logMode(const char* what);
+    SettingsStore* store_ = nullptr;
+    Settings settings_;
     bool borders_ = true;               // windowed mode only: title bar and frame
     bool scalePending_ = false;         // setScale() was called in full screen: applies when leaving it
     Background background_ = Background::Black;

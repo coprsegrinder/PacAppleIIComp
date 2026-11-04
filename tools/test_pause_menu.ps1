@@ -9,12 +9,12 @@ public class W3 {
   [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr h, out RECT r);
   [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, uint m, IntPtr w, IntPtr l);
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; }
-  public static bool MenuVisible(IntPtr h) {   // the white frame of the panel (picture row 44, x 40..239 at scale 3 = client row 132..134)
+  public static bool MenuVisible(IntPtr h) {   // the white frame of the panel (picture row 20, x 10..269 at scale 3 = client row 60..62)
     RECT r; GetClientRect(h, out r);
     Bitmap bmp = new Bitmap(r.R - r.L, r.B - r.T);
     Graphics g = Graphics.FromImage(bmp); IntPtr dc = g.GetHdc(); PrintWindow(h, dc, 3); g.ReleaseHdc(dc); g.Dispose();
-    int white = 0; int[] xs = { 200, 300, 400, 500, 600 };
-    foreach (int x in xs) { Color c = bmp.GetPixel(x, 133); if (c.R == 255 && c.G == 255 && c.B == 255) white++; }
+    int white = 0; int[] xs = { 100, 300, 500, 700 };
+    foreach (int x in xs) { Color c = bmp.GetPixel(x, 61); if (c.R == 255 && c.G == 255 && c.B == 255) white++; }
     bmp.Dispose(); return white == xs.Length;
   }
   public static byte[] Shot(IntPtr h, string path) {
@@ -35,7 +35,7 @@ function Same($a, $b) { if ($a.Length -ne $b.Length) { return $false }; for ($i 
 $root = Split-Path -Parent $PSScriptRoot
 $dir = Join-Path $root "scratch"
 $exeA = Join-Path $root "out\bat\pacman_play.exe"
-$argsA = "--pack `"$dir\local.pmpk`" --scale 3 --seconds 120 --skip-boot --mute"
+$argsA = "--pack `"$dir\local.pmpk`" --scale 3 --seconds 120 --skip-boot --mute --display windowed --settings `"$dir\test_settings.ini`""
 $pa = Start-Process -FilePath $exeA -ArgumentList $argsA -WorkingDirectory $root -PassThru
 Start-Sleep -Seconds 3; $pa.Refresh(); $ha = $pa.MainWindowHandle
 if ($ha -eq 0) { "no window"; Stop-Process -Id $pa.Id -Force; exit 1 }
@@ -55,7 +55,7 @@ Stop-Process -Id $pa.Id -Force
 $root = Split-Path -Parent $PSScriptRoot
 $exe = "F:\Ports\Pac-Man - Apple II\out\bat\pacman_play.exe"
 $dir = Join-Path $root "scratch"
-$a = "--pack `"$dir\local.pmpk`" --scale 3 --seconds 180 --level 1 --mute"
+$a = "--pack `"$dir\local.pmpk`" --scale 3 --seconds 180 --level 1 --mute --display windowed --settings `"$dir\test_settings.ini`""
 $p = Start-Process -FilePath $exe -ArgumentList $a -WorkingDirectory $root -PassThru
 Start-Sleep -Seconds 2
 $p.Refresh(); $h = $p.MainWindowHandle

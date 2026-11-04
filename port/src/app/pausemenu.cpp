@@ -7,23 +7,26 @@ namespace pacman::app {
 
 namespace {
 
-constexpr int kItemCol = 8, kItemWidth = 24;   // text columns of the item band (centred in the 40-column text page)
-constexpr int kTitleRow = 7;
-constexpr int kFirstItemRow = 11;              // items are two text rows apart
-
-int rowOfItem(int index) { return kFirstItemRow + 2 * index; }
+constexpr int kItemCol = 2, kItemWidth = 36;   // text columns of an entry's band (centred in the 40-column text page)
+constexpr int kTitleRow = 4;
+constexpr int kNoteRow = 6;                    // the line under the title of the confirmation page
+constexpr int kNoticeRow = 17;                 // the line under the entries of the graphics page
+constexpr int kHintRow = 19;
 
 }  // namespace
 
 int PauseMenu::itemCount() const noexcept {
     switch (page_) {
-    case Page::Main: return 3;
-    case Page::Graphics: return 2;
-    case Page::Confirm: return 2;
+    case Page::Main: return 3;       // Resume, Graphics Settings, Quit Game
+    case Page::Graphics: return 3;   // Display Mode, Window Borders, Back
+    case Page::Confirm: return 2;    // Confirm, Cancel
     case Page::Closed: break;
     }
     return 0;
 }
+
+int PauseMenu::rowStep() const noexcept { return page_ == Page::Graphics ? 1 : 2; }
+int PauseMenu::firstRow() const noexcept { return page_ == Page::Graphics ? 8 : 9; }
 
 void PauseMenu::show() {
     page_ = Page::Main;
@@ -51,7 +54,8 @@ PauseMenu::Action PauseMenu::activate() {
         }
         return Action::None;
     case Page::Graphics:
-        if (selected_ == 0) return Action::ToggleBorders;
+        if (selected_ == 0) return Action::NextDisplayMode;
+        if (selected_ == 1) return Action::ToggleBorders;
         page_ = Page::Main;
         selected_ = 1;
         return Action::None;
@@ -71,6 +75,11 @@ PauseMenu::Action PauseMenu::key(Key k) {
     switch (k) {
     case Key::Up: selected_ = (selected_ + n - 1) % n; return Action::None;
     case Key::Down: selected_ = (selected_ + 1) % n; return Action::None;
+    case Key::Left:
+    case Key::Right:   // on the graphics page the entries are settings: left and right change them
+        if (page_ == Page::Graphics && selected_ == 0) return k == Key::Left ? Action::PreviousDisplayMode : Action::NextDisplayMode;
+        if (page_ == Page::Graphics && selected_ == 1) return Action::ToggleBorders;
+        return Action::None;
     case Key::Select: return activate();
     case Key::Back:
         if (page_ == Page::Main) {
@@ -84,11 +93,16 @@ PauseMenu::Action PauseMenu::key(Key k) {
     return Action::None;
 }
 
+PauseMenu::Point PauseMenu::itemCenter(int index) const noexcept {
+    return Point{kPanelX + kPanelW / 2, (firstRow() + rowStep() * index) * 8 + 4};
+}
+
 int PauseMenu::itemAt(int px, int py) const noexcept {
     if (!open() || px < kItemCol * 7 || px >= (kItemCol + kItemWidth) * 7) return -1;
+    const int slack = rowStep() == 2 ? 4 : 0;   // the short pages have a free row between the entries: it belongs half to each
     for (int i = 0; i < itemCount(); ++i) {
-        const int top = rowOfItem(i) * 8 - 4;   // the row of text and half of the gap above and below it
-        if (py >= top && py < top + 16) return i;
+        const int top = (firstRow() + rowStep() * i) * 8 - slack;
+        if (py >= top && py < top + 8 + 2 * slack) return i;
     }
     return -1;
 }
@@ -106,48 +120,43 @@ PauseMenu::Action PauseMenu::pointerClick(int px, int py) {
     return activate();
 }
 
-void PauseMenu::render(const core::CharacterRom& rom, bool borders, std::vector<std::uint8_t>& pixels) const {
+void PauseMenu::render(const core::CharacterRom& rom, const View& view, std::vector<std::uint8_t>& pixels) const {
     pixels.assign(static_cast<std::size_t>(core::kTextWidth) * core::kTextHeight, 0);
     if (!open()) return;
     core::TextScreen screen;
     screen.clear(0xA0);
-    const auto put = [&](int col, int row, const char* s, bool inverse) {
+    const auto put = [&](int col, int row, const std::string& s, bool inverse) {
         screen.setCursor(col, row);
-        for (; *s; ++s) screen.put(inverse ? static_cast<std::uint8_t>(*s & 0x3F) : static_cast<std::uint8_t>(*s | 0x80));
+        for (char c : s) screen.put(inverse ? static_cast<std::uint8_t>(c & 0x3F) : static_cast<std::uint8_t>(c | 0x80));
     };
-    const auto centred = [&](int row, const char* s, bool inverse) {
-        const int len = static_cast<int>(std::strlen(s));
-        if (inverse) put(kItemCol, row, std::string(static_cast<std::size_t>(kItemWidth), ' ').c_str(), true);   // the whole band
+    const auto centred = [&](int row, const std::string& s, bool inverse) {
+        const int len = static_cast<int>(s.size());
+        if (inverse) put(kItemCol, row, std::string(static_cast<std::size_t>(kItemWidth), ' '), true);   // the whole band
         put(kItemCol + (kItemWidth - len) / 2, row, s, inverse);
     };
-    const char* title = "PAUSED";
-    const char* items[3] = {nullptr, nullptr, nullptr};
-    const char* note = nullptr;
-    std::string border;
+    std::string title = "PAUSED", note, hint = "UP DOWN ENTER  ESC BACK";
+    std::vector<std::string> items;
     switch (page_) {
     case Page::Main:
-        items[0] = "RESUME";
-        items[1] = "GRAPHICS SETTINGS";
-        items[2] = "QUIT GAME";
+        items = {"RESUME", "GRAPHICS SETTINGS", "QUIT GAME"};
         break;
     case Page::Graphics:
         title = "GRAPHICS SETTINGS";
-        border = borders ? "WINDOW BORDERS: ON" : "WINDOW BORDERS: OFF";
-        items[0] = border.c_str();
-        items[1] = "BACK";
+        items = {std::string("DISPLAY MODE: ") + displayModeLabel(view.displayMode), view.borders ? "WINDOW BORDERS: ON" : "WINDOW BORDERS: OFF", "BACK"};
+        hint = "UP DOWN  LEFT RIGHT CHANGE  ESC BACK";
         break;
     case Page::Confirm:
         title = "QUIT GAME?";
         note = "THE GAME WILL CLOSE";
-        items[0] = "CONFIRM";
-        items[1] = "CANCEL";
+        items = {"CONFIRM", "CANCEL"};
         break;
     case Page::Closed: break;
     }
     centred(kTitleRow, title, false);
-    if (note) centred(kTitleRow + 2, note, false);
-    for (int i = 0; i < itemCount(); ++i) centred(rowOfItem(i), items[i], i == selected_);
-    centred(17, "UP DOWN ENTER  ESC BACK", false);
+    if (!note.empty()) centred(kNoteRow, note, false);
+    for (int i = 0; i < itemCount(); ++i) centred(firstRow() + rowStep() * i, items[static_cast<std::size_t>(i)], i == selected_);
+    if (page_ == Page::Graphics && !view.notice.empty()) centred(kNoticeRow, view.notice, false);
+    centred(kHintRow, hint, false);
     std::vector<std::uint8_t> text;
     core::renderText(screen, rom, false, -1, -1, text);
     for (std::size_t i = 0; i < pixels.size() && i < text.size(); ++i) pixels[i] = text[i] ? 1 : 0;

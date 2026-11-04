@@ -800,7 +800,24 @@ bool loadFont(core::CharacterRom& rom) {
 }
 
 // The centre of an item of the menu in picture coordinates.
-POINT itemPoint(int index) { return POINT{140, (11 + 2 * index) * 8 + 4}; }
+// The centre of an entry of a page of the menu, in picture coordinates (the page is reached by keys).
+POINT itemPointOn(PauseMenu::Page page, int index) {
+    PauseMenu m;
+    m.show();
+    if (page == PauseMenu::Page::Graphics) {
+        m.key(PauseMenu::Key::Down);
+        m.key(PauseMenu::Key::Select);
+    } else if (page == PauseMenu::Page::Confirm) {
+        m.key(PauseMenu::Key::Down);
+        m.key(PauseMenu::Key::Down);
+        m.key(PauseMenu::Key::Select);
+    }
+    const PauseMenu::Point c = m.itemCenter(index);
+    return POINT{c.x, c.y};
+}
+POINT mainItem(int i) { return itemPointOn(PauseMenu::Page::Main, i); }
+POINT graphicsItem(int i) { return itemPointOn(PauseMenu::Page::Graphics, i); }
+POINT confirmItem(int i) { return itemPointOn(PauseMenu::Page::Confirm, i); }
 
 // A client position (for a window message) of a picture pixel at the window's present scale.
 LPARAM clientPos(HWND h, int px, int py) {
@@ -835,9 +852,13 @@ TEST(pause_menu_keyboard_navigation_pages_and_actions) {
     // Graphics Settings: its page, the toggle, Back and Esc return to the main page on the entry that led there
     m.show();
     m.key(PauseMenu::Key::Down);
-    CHECK(m.key(PauseMenu::Key::Select) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Graphics && m.selected() == 0 && m.itemCount() == 2);
-    CHECK(m.key(PauseMenu::Key::Select) == PauseMenu::Action::ToggleBorders && m.page() == PauseMenu::Page::Graphics);
+    CHECK(m.key(PauseMenu::Key::Select) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Graphics && m.selected() == 0 && m.itemCount() == 3);
+    CHECK(m.key(PauseMenu::Key::Select) == PauseMenu::Action::NextDisplayMode && m.page() == PauseMenu::Page::Graphics);   // Display Mode: Enter = next
+    CHECK(m.key(PauseMenu::Key::Right) == PauseMenu::Action::NextDisplayMode && m.key(PauseMenu::Key::Left) == PauseMenu::Action::PreviousDisplayMode);
     m.key(PauseMenu::Key::Down);
+    CHECK(m.selected() == 1 && m.key(PauseMenu::Key::Select) == PauseMenu::Action::ToggleBorders && m.key(PauseMenu::Key::Left) == PauseMenu::Action::ToggleBorders);   // Window Borders
+    m.key(PauseMenu::Key::Down);
+    CHECK(m.selected() == 2 && m.key(PauseMenu::Key::Left) == PauseMenu::Action::None);   // Back: left/right do nothing
     m.key(PauseMenu::Key::Select);   // Back
     CHECK(m.page() == PauseMenu::Page::Main && m.selected() == 1);
     m.key(PauseMenu::Key::Select);
@@ -860,27 +881,28 @@ TEST(pause_menu_mouse_selects_on_hover_activates_on_click_and_ignores_the_rest) 
     PauseMenu m;
     m.show();
     for (int i = 0; i < 3; ++i) {
-        const POINT p = itemPoint(i);
+        const POINT p = mainItem(i);
         CHECK(m.itemAt(p.x, p.y) == i);
         m.pointerMove(p.x, p.y);
         CHECK(m.selected() == i);
     }
-    CHECK(m.itemAt(10, 10) == -1 && m.itemAt(140, 60) == -1 && m.itemAt(140, 150) == -1 && m.itemAt(-1, -1) == -1);
+    CHECK(m.itemAt(5, 5) == -1 && m.itemAt(140, 40) == -1 && m.itemAt(140, 150) == -1 && m.itemAt(-1, -1) == -1 && m.itemAt(2, 76) == -1);
     m.pointerMove(5, 5);
     CHECK(m.selected() == 2);   // moving over nothing keeps the selection
     CHECK(m.pointerClick(5, 5) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Main);   // a click outside the entries does nothing
     // click Graphics Settings, then the border entry, then Back
-    CHECK(m.pointerClick(itemPoint(1).x, itemPoint(1).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Graphics);
-    CHECK(m.pointerClick(itemPoint(0).x, itemPoint(0).y) == PauseMenu::Action::ToggleBorders);
-    CHECK(m.pointerClick(itemPoint(1).x, itemPoint(1).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Main);
+    CHECK(m.pointerClick(mainItem(1).x, mainItem(1).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Graphics);
+    CHECK(m.pointerClick(graphicsItem(0).x, graphicsItem(0).y) == PauseMenu::Action::NextDisplayMode);
+    CHECK(m.pointerClick(graphicsItem(1).x, graphicsItem(1).y) == PauseMenu::Action::ToggleBorders);
+    CHECK(m.pointerClick(graphicsItem(2).x, graphicsItem(2).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Main);
     // Quit Game -> Cancel by mouse, Quit Game -> Confirm by mouse
-    CHECK(m.pointerClick(itemPoint(2).x, itemPoint(2).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Confirm);
-    CHECK(m.pointerClick(itemPoint(1).x, itemPoint(1).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Main);
-    m.pointerClick(itemPoint(2).x, itemPoint(2).y);
-    CHECK(m.pointerClick(itemPoint(0).x, itemPoint(0).y) == PauseMenu::Action::Quit);
+    CHECK(m.pointerClick(mainItem(2).x, mainItem(2).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Confirm);
+    CHECK(m.pointerClick(confirmItem(1).x, confirmItem(1).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Main);
+    m.pointerClick(mainItem(2).x, mainItem(2).y);
+    CHECK(m.pointerClick(confirmItem(0).x, confirmItem(0).y) == PauseMenu::Action::Quit);
     // Resume by mouse
     m.show();
-    CHECK(m.pointerClick(itemPoint(0).x, itemPoint(0).y) == PauseMenu::Action::Resume && !m.open());
+    CHECK(m.pointerClick(mainItem(0).x, mainItem(0).y) == PauseMenu::Action::Resume && !m.open());
 }
 
 TEST(pause_menu_draws_inside_its_panel_with_the_apple_ii_font_and_marks_the_selection) {
@@ -888,16 +910,17 @@ TEST(pause_menu_draws_inside_its_panel_with_the_apple_ii_font_and_marks_the_sele
     if (!loadFont(rom)) return;
     PauseMenu m;
     std::vector<std::uint8_t> closed;
-    m.render(rom, true, closed);
+    PauseMenu::View view;
+    m.render(rom, view, closed);
     CHECK(closed.size() == 280u * 192u);
     std::size_t lit = 0;
     for (auto v : closed) lit += v;
     CHECK(lit == 0);   // closed: nothing
     m.show();
     std::vector<std::uint8_t> a, b;
-    m.render(rom, true, a);
+    m.render(rom, view, a);
     m.key(PauseMenu::Key::Down);
-    m.render(rom, true, b);
+    m.render(rom, view, b);
     std::size_t outside = 0, inside = 0, differ = 0;
     for (int y = 0; y < 192; ++y)
         for (int x = 0; x < 280; ++x) {
@@ -916,9 +939,24 @@ TEST(pause_menu_draws_inside_its_panel_with_the_apple_ii_font_and_marks_the_sele
     g.key(PauseMenu::Key::Down);
     g.key(PauseMenu::Key::Select);
     std::vector<std::uint8_t> on, off;
-    g.render(rom, true, on);
-    g.render(rom, false, off);
-    CHECK(on != off);
+    PauseMenu::View viewOn, viewOff, viewMode, viewNotice;
+    viewOff.borders = false;
+    viewMode.displayMode = app::DisplayMode::Windowed;
+    viewNotice.notice = "FULLSCREEN NOT AVAILABLE: BORDERLESS USED";
+    std::vector<std::uint8_t> mode, notice;
+    g.render(rom, viewOn, on);
+    g.render(rom, viewOff, off);
+    g.render(rom, viewMode, mode);
+    g.render(rom, viewNotice, notice);
+    CHECK(on != off);       // the border state is shown
+    CHECK(on != mode);      // the display mode is shown
+    CHECK(on != notice);    // a notice is shown on the graphics page ...
+    std::vector<std::uint8_t> mainPage, mainPageNotice;
+    PauseMenu mm;
+    mm.show();
+    mm.render(rom, viewOn, mainPage);
+    mm.render(rom, viewNotice, mainPageNotice);
+    CHECK(mainPage == mainPageNotice);   // ... and nowhere else
 }
 
 TEST(pause_gate_holds_the_game_and_no_time_is_made_up_afterwards) {
@@ -1020,19 +1058,19 @@ TEST(pause_menu_in_the_window_mouse_keyboard_graphics_page_and_quit_with_confirm
     CHECK(w.menuOpen());
     // mouse: Graphics Settings, then the border entry toggles the window frame
     CHECK(w.borders());
-    SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, itemPoint(1).x, itemPoint(1).y));
-    SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, itemPoint(0).x, itemPoint(0).y));
+    SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, mainItem(1).x, mainItem(1).y));
+    SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, graphicsItem(1).x, graphicsItem(1).y));
     CHECK(!w.borders() && w.menuOpen());
-    SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, itemPoint(0).x, itemPoint(0).y));
+    SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, graphicsItem(1).x, graphicsItem(1).y));
     CHECK(w.borders());
     // the mouse works at another window size too (the picture position is mapped through the viewport)
     SetWindowPos(h, nullptr, 0, 0, 1100, 800, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
     pump(20);
-    SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, itemPoint(1).x, itemPoint(1).y));   // Back
-    SendMessageW(h, WM_MOUSEMOVE, 0, clientPos(h, itemPoint(2).x, itemPoint(2).y));
-    SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, itemPoint(2).x, itemPoint(2).y));    // Quit Game: asks first
+    SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, graphicsItem(2).x, graphicsItem(2).y));   // Back
+    SendMessageW(h, WM_MOUSEMOVE, 0, clientPos(h, mainItem(2).x, mainItem(2).y));
+    SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, mainItem(2).x, mainItem(2).y));    // Quit Game: asks first
     CHECK(w.ok() && w.menuOpen());
-    SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, itemPoint(1).x, itemPoint(1).y));    // Cancel
+    SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, confirmItem(1).x, confirmItem(1).y));    // Cancel
     CHECK(w.ok() && w.menuOpen());
     // keyboard, from a fresh menu: Down, Down, Enter (asks), Enter (Cancel), Up, Up, then Resume by Enter
     SendMessageW(h, WM_KEYDOWN, VK_ESCAPE, 1);   // back to the game
@@ -1136,4 +1174,379 @@ TEST(pause_menu_only_while_a_game_is_running_esc_does_nothing_before_that) {
     w.setMenuAllowed(false);
     SendMessageW(w.hwnd(), WM_KEYDOWN, VK_DOWN, 1);
     CHECK(!w.menuOpen());
+}
+
+// ---- TASK-034-4: display mode (Fullscreen / Borderless Fullscreen / Windowed) and the settings that keep it ----
+#include <filesystem>
+#include <fstream>
+#include <sstream>
+
+namespace {
+
+using app::DisplayMode;
+using app::Settings;
+using app::SettingsStore;
+
+std::string fileText(const std::filesystem::path& p) {
+    std::ifstream f(p, std::ios::binary);
+    std::ostringstream o;
+    o << f.rdbuf();
+    return o.str();
+}
+
+RECT monitorRectOf(HWND h) {
+    MONITORINFO mi{};
+    mi.cbSize = sizeof(mi);
+    GetMonitorInfoW(MonitorFromWindow(h, MONITOR_DEFAULTTONEAREST), &mi);
+    return mi.rcMonitor;
+}
+
+std::filesystem::path scratchDir(const char* name) {
+    const std::filesystem::path d = std::filesystem::temp_directory_path() / (std::string("pacman_display_test_") + name);
+    std::filesystem::remove_all(d);
+    std::filesystem::create_directories(d);
+    return d;
+}
+
+}  // namespace
+
+TEST(display_mode_windowed_borderless_and_exclusive_fullscreen_each_work_or_fall_back_safely) {
+    GameWindow w(GameWindowOptions{3, true});
+    CHECK(w.ok());
+    if (!w.ok()) return;
+    CHECK(w.displayMode() == DisplayMode::Windowed && !w.fullscreen());
+    const hires::Page page = busyPage();
+    w.setPage(page);
+    setClient(w.hwnd(), 1000, 700);
+    SetWindowPos(w.hwnd(), nullptr, 100, 80, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+    pump(30);
+    const POINT o0 = clientOrigin(w.hwnd());
+    // Borderless Fullscreen: the desktop's own resolution, the picture centred at the largest whole scale
+    CHECK(w.setDisplayMode(DisplayMode::Borderless));
+    pump(60);
+    CHECK(w.displayMode() == DisplayMode::Borderless && w.fullscreen() && !w.exclusiveActive() && w.notice().empty());
+    const RECT mon = monitorRectOf(w.hwnd());
+    RECT wr{};
+    GetWindowRect(w.hwnd(), &wr);
+    CHECK(wr.left == mon.left && wr.top == mon.top && wr.right == mon.right && wr.bottom == mon.bottom);
+    CHECK(clientSize(w.hwnd()).cx == mon.right - mon.left && clientSize(w.hwnd()).cy == mon.bottom - mon.top);   // native resolution, not one of a list
+    if (w.usesDirect3d()) {
+        std::vector<std::uint32_t> got;
+        int cw = 0, ch = 0;
+        CHECK(w.captureFrame(got, cw, ch));
+        CHECK(cw == mon.right - mon.left && ch == mon.bottom - mon.top && differences(got, expected(page, cw, ch)) == 0);
+    }
+    // exclusive Fullscreen: it works, or it is refused and the borderless window stays, with a notice and a false result; both are fine, nothing else is
+    const bool exclusiveWorked = w.setDisplayMode(DisplayMode::Fullscreen);
+    pump(300);
+    std::printf("    exclusive full screen on this machine: %s %s\n", exclusiveWorked ? "entered" : "refused, borderless used instead:", w.exclusiveFailure().c_str());
+    if (exclusiveWorked) {
+        CHECK(w.displayMode() == DisplayMode::Fullscreen && w.exclusiveActive() && w.fullscreen() && w.notice().empty());
+        if (w.usesDirect3d()) {
+            std::vector<std::uint32_t> got;
+            int cw = 0, ch = 0;
+            CHECK(w.captureFrame(got, cw, ch));
+            CHECK(cw == mon.right - mon.left && ch == mon.bottom - mon.top && differences(got, expected(page, cw, ch)) == 0);
+        }
+    } else {
+        CHECK(w.displayMode() == DisplayMode::Borderless && w.fullscreen() && !w.exclusiveActive() && !w.notice().empty());
+    }
+    // back to borderless, then to the window: exactly the window the user had
+    CHECK(w.setDisplayMode(DisplayMode::Borderless));
+    pump(100);
+    CHECK(!w.exclusiveActive() && w.displayMode() == DisplayMode::Borderless && w.notice().empty());
+    CHECK(w.setDisplayMode(DisplayMode::Windowed));
+    pump(100);
+    CHECK(w.displayMode() == DisplayMode::Windowed && !w.fullscreen() && !w.exclusiveActive());
+    CHECK(clientSize(w.hwnd()).cx == 1000 && clientSize(w.hwnd()).cy == 700 && clientOrigin(w.hwnd()).x == o0.x && clientOrigin(w.hwnd()).y == o0.y);
+    CHECK(IsWindowVisible(w.hwnd()) != FALSE);
+    // straight from the window into exclusive full screen and out again
+    const bool again = w.setDisplayMode(DisplayMode::Fullscreen);
+    pump(300);
+    CHECK(again == exclusiveWorked);
+    CHECK(w.setDisplayMode(DisplayMode::Windowed));
+    pump(100);
+    CHECK(!w.fullscreen() && !w.exclusiveActive() && clientSize(w.hwnd()).cx == 1000 && clientSize(w.hwnd()).cy == 700);
+}
+
+TEST(display_mode_f11_and_alt_enter_go_between_the_window_and_the_chosen_full_screen_mode) {
+    GameWindow w(GameWindowOptions{3, true});
+    CHECK(w.ok());
+    if (!w.ok()) return;
+    CHECK(w.handleHotkey(VK_F11, false, false));
+    pump(60);
+    CHECK(w.displayMode() == DisplayMode::Borderless);   // the default kind
+    CHECK(w.handleHotkey(VK_RETURN, false, true));
+    pump(60);
+    CHECK(w.displayMode() == DisplayMode::Windowed && !w.fullscreen());
+    const bool worked = w.setDisplayMode(DisplayMode::Fullscreen);   // the chosen kind is remembered ...
+    pump(300);
+    w.handleHotkey(VK_F11, false, false);                              // ... F11 leaves it
+    pump(100);
+    CHECK(w.displayMode() == DisplayMode::Windowed && !w.exclusiveActive());
+    w.handleHotkey(VK_F11, false, false);                              // ... and F11 returns to it (or to borderless where exclusive is refused)
+    pump(300);
+    CHECK(w.displayMode() == (worked ? DisplayMode::Fullscreen : DisplayMode::Borderless));
+    w.handleHotkey(VK_F11, false, false);
+    pump(100);
+    CHECK(w.displayMode() == DisplayMode::Windowed);
+}
+
+TEST(display_mode_is_changed_from_the_pause_menu_with_keys_and_mouse_and_the_menu_stays) {
+    core::CharacterRom rom;
+    const bool haveFont = loadFont(rom);
+    GameWindow w(GameWindowOptions{3, true});
+    CHECK(w.ok());
+    if (!w.ok()) return;
+    if (haveFont) w.setMenuFont(rom);
+    const HWND h = w.hwnd();
+    SendMessageW(h, WM_KEYDOWN, VK_ESCAPE, 1);
+    SendMessageW(h, WM_KEYDOWN, VK_DOWN, 1);
+    SendMessageW(h, WM_KEYDOWN, VK_RETURN, 1);   // Graphics Settings; "Display Mode" is the first entry
+    CHECK(w.menuOpen() && w.displayMode() == DisplayMode::Windowed);
+    SendMessageW(h, WM_KEYDOWN, VK_LEFT, 1);     // previous: Windowed -> Borderless Fullscreen
+    pump(60);
+    CHECK(w.displayMode() == DisplayMode::Borderless && w.fullscreen() && w.menuOpen());
+    // the menu is drawn on the full screen picture too
+    if (w.usesDirect3d() && haveFont) {
+        std::vector<std::uint32_t> got;
+        int cw = 0, ch = 0;
+        CHECK(w.captureFrame(got, cw, ch));
+        const app::Viewport vp = app::computeViewport(cw, ch);
+        std::size_t white = 0;
+        for (int y = 0; y < ch; ++y)
+            for (int x = 0; x < cw; ++x) white += (got[static_cast<std::size_t>(y) * static_cast<std::size_t>(cw) + static_cast<std::size_t>(x)] & 0xFFFFFF) == 0xFFFFFF && x >= vp.x && x < vp.x + vp.w && y >= vp.y && y < vp.y + vp.h;
+        CHECK(white > 600u * static_cast<std::size_t>(vp.scale) * static_cast<std::size_t>(vp.scale) / 2);
+    }
+    SendMessageW(h, WM_KEYDOWN, VK_RIGHT, 1);    // next: Borderless -> Windowed
+    pump(60);
+    CHECK(w.displayMode() == DisplayMode::Windowed && !w.fullscreen());
+    SendMessageW(h, WM_KEYDOWN, VK_RETURN, 1);   // Enter = next: Windowed -> Fullscreen (or borderless where exclusive is refused)
+    pump(300);
+    CHECK(w.displayMode() == DisplayMode::Fullscreen || (w.displayMode() == DisplayMode::Borderless && !w.notice().empty()));
+    CHECK(w.fullscreen() && w.menuOpen());
+    // the mouse: click the Display Mode entry until it is the window again
+    const POINT entry = graphicsItem(0);
+    for (int i = 0; i < 3 && w.displayMode() != DisplayMode::Windowed; ++i) {
+        SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, entry.x, entry.y));
+        pump(300);
+    }
+    CHECK(w.displayMode() == DisplayMode::Windowed && !w.fullscreen() && w.menuOpen());
+    SendMessageW(h, WM_KEYDOWN, VK_ESCAPE, 1);
+    SendMessageW(h, WM_KEYDOWN, VK_ESCAPE, 1);
+    CHECK(!w.menuOpen());
+}
+
+TEST(display_settings_are_saved_when_they_change_and_restored_at_the_next_start) {
+    const auto dir = scratchDir("restore");
+    const std::filesystem::path file = dir / "settings.ini";
+    SettingsStore store(file.wstring());
+    Settings start;
+    start.displayMode = DisplayMode::Windowed;   // the tests must not start in full screen
+    POINT origin{0, 0};
+    {
+        GameWindow w(GameWindowOptions{3, true});
+        CHECK(w.ok());
+        if (!w.ok()) return;
+        w.attachSettings(&store, start);
+        setClient(w.hwnd(), 1000, 700);
+        SetWindowPos(w.hwnd(), nullptr, 150, 120, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+        pump(40);
+        w.setBorders(false);
+        pump(40);
+        CHECK(fileText(file).find("window_borders=0") != std::string::npos);   // written at once, not only on exit
+        setClient(w.hwnd(), 900, 600);
+        pump(40);
+        origin = clientOrigin(w.hwnd());
+        w.setDisplayMode(DisplayMode::Borderless);
+        pump(100);
+        CHECK(fileText(file).find("display_mode=borderless") != std::string::npos);
+        // the window is closed while in full screen: the window as the user had it is what is kept
+    }
+    const Settings kept = store.load();
+    std::printf("    kept: mode %s, borders %d, window %d,%d %dx%d\n", app::displayModeKey(kept.displayMode), kept.windowBorders, kept.windowX, kept.windowY, kept.windowW, kept.windowH);
+    CHECK(kept.displayMode == DisplayMode::Borderless && !kept.windowBorders && kept.hasWindowRect);
+    CHECK(kept.windowW == 900 && kept.windowH == 600 && kept.windowX == origin.x && kept.windowY == origin.y);
+    {   // the next start: the same mode, frame, size and place
+        GameWindow w(GameWindowOptions{3, true});
+        CHECK(w.ok());
+        if (!w.ok()) return;
+        Settings s = kept;
+        s.displayMode = DisplayMode::Windowed;
+        w.attachSettings(&store, s);
+        pump(60);
+        CHECK(w.displayMode() == DisplayMode::Windowed && !w.borders());
+        CHECK(clientSize(w.hwnd()).cx == 900 && clientSize(w.hwnd()).cy == 600 && clientOrigin(w.hwnd()).x == origin.x && clientOrigin(w.hwnd()).y == origin.y);
+        w.setDisplayMode(DisplayMode::Borderless);
+        pump(60);
+        w.setDisplayMode(DisplayMode::Windowed);
+        pump(100);
+        CHECK(clientSize(w.hwnd()).cx == 900 && clientSize(w.hwnd()).cy == 600 && clientOrigin(w.hwnd()).x == origin.x && clientOrigin(w.hwnd()).y == origin.y);   // and back from full screen to the same place
+    }
+    {   // the saved display mode itself is what the program starts in
+        GameWindow w(GameWindowOptions{3, true});
+        CHECK(w.ok());
+        if (!w.ok()) return;
+        w.attachSettings(&store, store.load());
+        pump(100);
+        CHECK(w.displayMode() == DisplayMode::Windowed);   // the second window above ended in Windowed
+        w.setDisplayMode(DisplayMode::Borderless);
+    }
+    {
+        GameWindow w(GameWindowOptions{3, true});
+        CHECK(w.ok());
+        if (!w.ok()) return;
+        w.attachSettings(&store, store.load());
+        pump(100);
+        CHECK(w.displayMode() == DisplayMode::Borderless && w.fullscreen());
+    }
+    std::filesystem::remove_all(dir);
+}
+
+TEST(display_settings_with_a_window_place_that_no_longer_exists_are_made_reachable) {
+    const auto dir = scratchDir("offscreen");
+    SettingsStore store((dir / "settings.ini").wstring());
+    Settings s;
+    s.displayMode = DisplayMode::Windowed;
+    s.hasWindowRect = true;
+    s.windowX = 40000;   // a monitor that is not there any more
+    s.windowY = -9000;
+    s.windowW = 600;
+    s.windowH = 400;
+    {
+        GameWindow w(GameWindowOptions{3, true});
+        CHECK(w.ok());
+        if (!w.ok()) return;
+        w.attachSettings(&store, s);
+        pump(60);
+        RECT wr{};
+        GetWindowRect(w.hwnd(), &wr);
+        CHECK(MonitorFromRect(&wr, MONITOR_DEFAULTTONULL) != nullptr);   // on a monitor
+        CHECK(clientSize(w.hwnd()).cx == 600 && clientSize(w.hwnd()).cy == 400);
+    }
+    s.windowX = 100;
+    s.windowY = 100;
+    s.windowW = 9000;   // larger than any screen
+    s.windowH = 7000;
+    {
+        GameWindow w(GameWindowOptions{3, true});
+        CHECK(w.ok());
+        if (!w.ok()) return;
+        w.attachSettings(&store, s);
+        pump(60);
+        MONITORINFO mi{};
+        mi.cbSize = sizeof(mi);
+        GetMonitorInfoW(MonitorFromWindow(w.hwnd(), MONITOR_DEFAULTTONEAREST), &mi);
+        RECT wr{};
+        GetWindowRect(w.hwnd(), &wr);
+        CHECK(wr.right - wr.left <= mi.rcWork.right - mi.rcWork.left && wr.bottom - wr.top <= mi.rcWork.bottom - mi.rcWork.top);   // cut to the work area
+        CHECK(clientSize(w.hwnd()).cx >= 140 && clientSize(w.hwnd()).cy >= 96);
+    }
+    s.windowW = 3;   // smaller than a window may be
+    s.windowH = 2;
+    {
+        GameWindow w(GameWindowOptions{3, true});
+        CHECK(w.ok());
+        if (!w.ok()) return;
+        w.attachSettings(&store, s);
+        pump(60);
+        CHECK(clientSize(w.hwnd()).cx >= 140 && clientSize(w.hwnd()).cy >= 96);
+    }
+    std::filesystem::remove_all(dir);
+}
+
+TEST(display_mode_refused_at_start_up_is_not_written_over_the_users_choice) {
+    const auto dir = scratchDir("refused");
+    const std::filesystem::path file = dir / "settings.ini";
+    SettingsStore store(file.wstring());
+    Settings s;
+    s.displayMode = DisplayMode::Fullscreen;
+    s.fullscreenKind = DisplayMode::Fullscreen;
+    {
+        GameWindow w(GameWindowOptions{3, false});   // a hidden window: exclusive full screen is not possible for it
+        CHECK(w.ok());
+        if (!w.ok()) return;
+        w.attachSettings(&store, s);
+        pump(100);
+        std::printf("    start-up in Fullscreen gave: %s\n", app::displayModeKey(w.displayMode()));
+        CHECK(w.displayMode() == DisplayMode::Fullscreen || (w.displayMode() == DisplayMode::Borderless && !w.notice().empty()));
+        CHECK(w.settings().displayMode == w.displayMode() || w.settings().displayMode == DisplayMode::Fullscreen);
+    }
+    CHECK(store.load().displayMode == DisplayMode::Fullscreen || store.load().displayMode == DisplayMode::Borderless);
+    std::filesystem::remove_all(dir);
+}
+
+TEST(display_mode_changes_while_the_game_runs_leave_the_game_and_its_clock_untouched) {
+    if (testfw::config().image.empty()) {
+        std::printf("    SKIPPED (needs --image)\n");
+        return;
+    }
+    datapack::Pack pack;
+    CHECK(flowtest::loadPack(pack));
+    constexpr int kTicks = 150000;
+    struct Result { std::vector<std::uint8_t> page; unsigned score = 0, level = 0; int changes = 0; };
+    const auto run = [&](bool disturb) {
+        Result res;
+        core::GameDriver drv;
+        CHECK(drv.init(pack) && drv.newGame());
+        GameWindow w(GameWindowOptions{3, true});
+        CHECK(w.ok());
+        std::atomic<bool> done{false};
+        std::thread worker([&] {
+            for (int t = 0; t < kTicks; ++t) {
+                drv.tick();
+                if (t % 3 == 0) w.setPage(drv.page());
+                if (t % 1000 == 0) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+            done = true;
+        });
+        const DisplayMode order[3] = {DisplayMode::Borderless, DisplayMode::Fullscreen, DisplayMode::Windowed};
+        while (!done) {
+            if (disturb) {
+                w.setDisplayMode(order[res.changes % 3]);
+                ++res.changes;
+            }
+            pump(20);
+        }
+        worker.join();
+        if (w.displayMode() != DisplayMode::Windowed) w.setDisplayMode(DisplayMode::Windowed);
+        for (std::size_t i = 0; i < hires::kPageBytes; ++i) res.page.push_back(drv.page().byte(i));
+        res.score = drv.core().state().zp(0x52);
+        res.level = drv.core().state().level();
+        return res;
+    };
+    const Result plain = run(false);
+    const Result disturbed = run(true);
+    std::printf("    %d ticks; %d display mode changes while it ran; page equal %d\n", kTicks, disturbed.changes, plain.page == disturbed.page);
+    CHECK(disturbed.changes >= 3);
+    CHECK(plain.page == disturbed.page && plain.score == disturbed.score && plain.level == disturbed.level);
+    // and the clock
+    GameWindow w(GameWindowOptions{3, true});
+    CHECK(w.ok());
+    core::CycleClock clock;
+    const std::int64_t t0 = core::nowNanoseconds();
+    clock.start(t0);
+    std::atomic<bool> done{false};
+    std::int64_t handed = 0, endNs = 0;
+    std::thread worker([&] {
+        while (core::nowNanoseconds() - t0 < 1'000'000'000) {
+            handed += clock.cyclesDue(core::nowNanoseconds());
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        endNs = core::nowNanoseconds();
+        handed += clock.cyclesDue(endNs);
+        done = true;
+    });
+    const DisplayMode order[3] = {DisplayMode::Borderless, DisplayMode::Fullscreen, DisplayMode::Windowed};
+    int changes = 0;
+    while (!done) {
+        w.setDisplayMode(order[changes++ % 3]);
+        pump(120);
+    }
+    worker.join();
+    if (w.displayMode() != DisplayMode::Windowed) w.setDisplayMode(DisplayMode::Windowed);
+    const std::int64_t exact = clock.cyclesIn(endNs - t0);
+    std::printf("    %d display mode changes in 1 s; cycles handed out %lld, exact %lld, skipped %lld\n", changes, static_cast<long long>(handed), static_cast<long long>(exact), static_cast<long long>(clock.skipped()));
+    CHECK(changes >= 4);
+    CHECK(handed == exact && clock.skipped() == 0);
 }
