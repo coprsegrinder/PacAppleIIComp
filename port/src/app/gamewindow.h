@@ -109,6 +109,7 @@ public:
     // FPS (TASK-034-11): how often the window shows the game's pictures: Native (the Apple II's 60.05 pictures a second), 30, 60, 120, 144, or Unlocked (a picture whenever the game has a new
     // one). The game, its clock and the sound run on their own thread and never depend on it. Only effective while run() is the message loop.
     FpsMode fps() const noexcept { return fps_; }
+    FpsMode fpsForGameThread() const noexcept { return fpsAtomic_.load(); }   // any thread
     void setFps(FpsMode m);
     void cycleFps(int dir) { setFps(nextFpsMode(fps_, dir)); }
     struct FrameStats {   // the pictures shown by the paced loop since resetFrameStats()
@@ -119,10 +120,6 @@ public:
     FrameStats frameStats() const;
     void resetFrameStats();
     unsigned long long framesShown() const noexcept { return frames_.load(); }
-    // Gameplay Speed (TASK-034-11, user request): Original (the game's own time with its slowdowns) or Steady (every ordinary tick the same length). Read by the game's thread every tick
-    // (any thread); the game's logic never sees it (gameplayspeed.h).
-    GameplaySpeed gameplaySpeed() const noexcept { return speed_.load(); }
-    void setGameplaySpeed(GameplaySpeed m);
     void setBackground(Background b);                  // what is drawn around the picture (window thread); written to the settings
     void cycleBackground(int dir);
     Background background() const noexcept { return background_; }
@@ -171,7 +168,7 @@ private:
     ColourMode colour_ = ColourMode::Original;
     CrtFilter crt_, crtDraw_;
     FpsMode fps_ = FpsMode::Native;
-    std::atomic<GameplaySpeed> speed_{GameplaySpeed::Original};
+    std::atomic<FpsMode> fpsAtomic_{FpsMode::Native};   // the same as fps_, for the game's thread (it chooses the timing of the ticks by it, pacing.h)
     bool paced_ = false;                      // run() is the message loop: pictures are paced by fps_ instead of the window timer
     bool inModalLoop_ = false;                // the user is dragging or sizing the window (Windows runs its own loop then)
     std::atomic<unsigned long long> frames_{0};

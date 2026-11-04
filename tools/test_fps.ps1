@@ -35,9 +35,9 @@ foreach ($mode in $expected.Keys) {
     }
 }
 if ($results.ContainsKey("unlocked")) { "unlocked : more pictures than the 144 cap allows: " + ($results["unlocked"].rate -gt 150) }
-# the game's speed (ticks a second from the first tick on): the same whatever the picture rate (the game runs from its own clock)
+# the game's speed (ticks a second from the first tick on): the same whatever the picture rate (the game runs from its own clock; the modern modes follow the original's average pace, pacing.h)
 $tpsAll = $results.Values | ForEach-Object { $_.tps }
 if ($tpsAll.Count -gt 1) {
     $min = ($tpsAll | Measure-Object -Minimum).Minimum; $max = ($tpsAll | Measure-Object -Maximum).Maximum
-    "game speed the same in every setting (ticks a second {0:N1} .. {1:N1}, within 3 %): {2}" -f $min, $max, (($max - $min) / $max -lt 0.03)
+    "game speed the same in every setting (ticks a second {0:N1} .. {1:N1}, within 5 %): {2}" -f $min, $max, (($max - $min) / $max -lt 0.05)
 }

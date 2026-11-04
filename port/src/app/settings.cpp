@@ -99,7 +99,6 @@ std::string SettingsStore::format(const Settings& s) {
     o << "background=" << backgroundKey(s.background) << "\n";
     o << "colour_mode=" << colourModeKey(s.colourMode) << "\n";
     o << "fps=" << fpsModeKey(s.fps) << "\n";
-    o << "gameplay_speed=" << gameplaySpeedKey(s.gameplaySpeed) << "\n";
     for (int i = 0; i < kCrtOptionCount; ++i) o << crtOptionKey(static_cast<CrtOption>(i)) << "=" << crtGet(s.crt, static_cast<CrtOption>(i)) << "\n";
     if (s.desktopScale != 0 || s.desktopX != 0.0f || s.desktopY != 0.0f) {
         char buf[64];
@@ -142,9 +141,6 @@ Settings SettingsStore::parse(const std::string& text) {
         } else if (key == "background") {
             Background bg;
             if (parseBackground(value, bg)) s.background = bg;
-        } else if (key == "gameplay_speed") {
-            GameplaySpeed gs;
-            if (parseGameplaySpeed(value, gs)) s.gameplaySpeed = gs;
         } else if (key == "fps") {
             FpsMode fm;
             if (parseFpsMode(value, fm)) s.fps = fm;

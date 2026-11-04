@@ -852,7 +852,7 @@ TEST(pause_menu_keyboard_navigation_pages_and_actions) {
     // Graphics Settings: its page, the toggle, Back and Esc return to the main page on the entry that led there
     m.show();
     m.key(PauseMenu::Key::Down);
-    CHECK(m.key(PauseMenu::Key::Select) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Graphics && m.selected() == 0 && m.itemCount() == 9);
+    CHECK(m.key(PauseMenu::Key::Select) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Graphics && m.selected() == 0 && m.itemCount() == 8);
     CHECK(m.key(PauseMenu::Key::Select) == PauseMenu::Action::NextDisplayMode && m.page() == PauseMenu::Page::Graphics);   // Display Mode: Enter = next
     CHECK(m.key(PauseMenu::Key::Right) == PauseMenu::Action::NextDisplayMode && m.key(PauseMenu::Key::Left) == PauseMenu::Action::PreviousDisplayMode);
     m.key(PauseMenu::Key::Down);
@@ -883,9 +883,7 @@ TEST(pause_menu_keyboard_navigation_pages_and_actions) {
     m.key(PauseMenu::Key::Down);
     CHECK(m.selected() == 6 && m.key(PauseMenu::Key::Left) == PauseMenu::Action::PreviousFps && m.key(PauseMenu::Key::Right) == PauseMenu::Action::NextFps && m.key(PauseMenu::Key::Select) == PauseMenu::Action::NextFps);   // FPS
     m.key(PauseMenu::Key::Down);
-    CHECK(m.selected() == 7 && m.key(PauseMenu::Key::Left) == PauseMenu::Action::PreviousGameplaySpeed && m.key(PauseMenu::Key::Right) == PauseMenu::Action::ToggleGameplaySpeed && m.key(PauseMenu::Key::Select) == PauseMenu::Action::ToggleGameplaySpeed);   // Gameplay Speed
-    m.key(PauseMenu::Key::Down);
-    CHECK(m.selected() == 8 && m.key(PauseMenu::Key::Left) == PauseMenu::Action::None);   // Back: left/right do nothing
+    CHECK(m.selected() == 7 && m.key(PauseMenu::Key::Left) == PauseMenu::Action::None);   // Back: left/right do nothing
     m.key(PauseMenu::Key::Select);   // Back
     CHECK(m.page() == PauseMenu::Page::Main && m.selected() == 1);
     m.key(PauseMenu::Key::Select);
@@ -932,8 +930,7 @@ TEST(pause_menu_mouse_selects_on_hover_activates_on_click_and_ignores_the_rest) 
         CHECK(m.pointerClick(crtItem(10).x, crtItem(10).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Graphics);
     }
     CHECK(m.pointerClick(graphicsItem(6).x, graphicsItem(6).y) == PauseMenu::Action::NextFps);
-    CHECK(m.pointerClick(graphicsItem(7).x, graphicsItem(7).y) == PauseMenu::Action::ToggleGameplaySpeed);
-    CHECK(m.pointerClick(graphicsItem(8).x, graphicsItem(8).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Main);
+    CHECK(m.pointerClick(graphicsItem(7).x, graphicsItem(7).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Main);
     // Quit Game -> Cancel by mouse, Quit Game -> Confirm by mouse
     CHECK(m.pointerClick(mainItem(2).x, mainItem(2).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Confirm);
     CHECK(m.pointerClick(confirmItem(1).x, confirmItem(1).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Main);
@@ -1096,7 +1093,7 @@ TEST(pause_menu_in_the_window_mouse_keyboard_graphics_page_and_quit_with_confirm
     // the mouse works at another window size too (the picture position is mapped through the viewport)
     SetWindowPos(h, nullptr, 0, 0, 1100, 800, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
     pump(20);
-    SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, graphicsItem(8).x, graphicsItem(8).y));   // Back
+    SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, graphicsItem(7).x, graphicsItem(7).y));   // Back
     SendMessageW(h, WM_MOUSEMOVE, 0, clientPos(h, mainItem(2).x, mainItem(2).y));
     SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, mainItem(2).x, mainItem(2).y));    // Quit Game: asks first
     CHECK(w.ok() && w.menuOpen());
@@ -4361,99 +4358,76 @@ TEST(fps_setting_is_changed_from_the_pause_menu_kept_in_the_settings_and_restore
     }
 }
 
-// ---------------------------------------------------------------- Gameplay Speed (next to FPS)
+// ---------------------------------------------------------------- Pacing of the modern FPS modes (pacing.h)
 
-#include "../src/app/gameplayspeed.h"
+#include "../src/app/pacing.h"
 
-TEST(gameplay_speed_original_is_exactly_the_old_timing_and_steady_evens_out_the_ticks_and_the_short_sound_stand_stills) {
-    using app::GameplaySpeed;
-    // Original: the very formula the program used before the setting existed, for every sound and a range of ticks
+TEST(modern_pacing_keeps_the_originals_average_pace_in_every_situation_without_its_hitches_and_native_is_unchanged) {
+    // Native: exactly the old timing for every sound and a range of ticks
+    app::SmoothPacer pacer;
     for (int i = 0; i < static_cast<int>(core::SoundId::Count); ++i) {
         const core::SoundId id = static_cast<core::SoundId>(i);
         const bool zero = id == core::SoundId::DotEaten || (id >= core::SoundId::Death1 && id <= core::SoundId::Death6);
-        CHECK(app::soundStandStill(GameplaySpeed::Original, id) == (zero ? 0 : core::soundFreezeCycles(id)));
+        CHECK(app::soundStandStill(false, id) == (zero ? 0 : core::soundFreezeCycles(id)));
     }
     for (std::int64_t tick : {2987, 4870, 9000, 24463})
         for (std::int64_t extra : {0, 4330065, 6043263})
-            for (std::int64_t stand : {0, 8990, 179070}) CHECK(app::tickCost(GameplaySpeed::Original, tick, extra, stand) == tick + extra + stand);
-    // Steady: every ordinary tick costs the original's mean, whatever it drew; long sequences keep their time
-    for (std::int64_t tick : {2987, 3500, 4870, 9000, 24463}) CHECK(app::tickCost(GameplaySpeed::Steady, tick, 0, 0) == core::kTypicalTickCycles);
-    CHECK(app::tickCost(GameplaySpeed::Steady, 8917, 6043263, 0) == 8917 + 6043263 && app::tickCost(GameplaySpeed::Steady, 4870, 4330065, 0) == 4870 + 4330065);   // the death sequence and the level end: as they were
-    // the sounds: the ghost being eaten keeps its stand-still (the points stay on the screen for that sound); the short ones of the energizer, the fruit and the bonus life no longer stop the game
-    CHECK(app::soundStandStill(GameplaySpeed::Steady, core::SoundId::GhostEaten) == core::soundFreezeCycles(core::SoundId::GhostEaten) && core::soundFreezeCycles(core::SoundId::GhostEaten) > 100000);
-    CHECK(app::soundStandStill(GameplaySpeed::Steady, core::SoundId::Energizer) == 0 && app::soundStandStill(GameplaySpeed::Steady, core::SoundId::Fruit) == 0 && app::soundStandStill(GameplaySpeed::Steady, core::SoundId::BonusLife) == 0);
-    CHECK(app::soundStandStill(GameplaySpeed::Steady, core::SoundId::Death3) == 0 && app::soundStandStill(GameplaySpeed::Steady, core::SoundId::DotEaten) == 0);
-    // an ordinary tick that also eats a ghost takes the tick plus the stand-still, as in the original
-    CHECK(app::tickCost(GameplaySpeed::Steady, 6000, 0, core::soundFreezeCycles(core::SoundId::GhostEaten)) == core::kTypicalTickCycles + core::soundFreezeCycles(core::SoundId::GhostEaten));
-    // Steady Fast: the same, a third faster
-    for (std::int64_t tick : {2987, 9000, 24463}) CHECK(app::tickCost(GameplaySpeed::SteadyFast, tick, 0, 0) == app::kSteadyFastTickCycles && app::kSteadyFastTickCycles < core::kTypicalTickCycles);
-    CHECK(app::tickCost(GameplaySpeed::SteadyFast, 8917, 6043263, 0) == 8917 + 6043263);
-    CHECK(app::soundStandStill(GameplaySpeed::SteadyFast, core::SoundId::GhostEaten) == core::soundFreezeCycles(core::SoundId::GhostEaten) && app::soundStandStill(GameplaySpeed::SteadyFast, core::SoundId::Fruit) == 0);
-    CHECK(app::nextGameplaySpeed(GameplaySpeed::Original) == GameplaySpeed::Steady && app::nextGameplaySpeed(GameplaySpeed::Steady) == GameplaySpeed::SteadyFast && app::nextGameplaySpeed(GameplaySpeed::SteadyFast) == GameplaySpeed::Original && app::nextGameplaySpeed(GameplaySpeed::Original, -1) == GameplaySpeed::SteadyFast);
-    // words and the file
-    CHECK(app::parseGameplaySpeed("steady", *std::make_unique<GameplaySpeed>(GameplaySpeed::Original)) && !app::parseGameplaySpeed("fast", *std::make_unique<GameplaySpeed>(GameplaySpeed::Original)));
-    Settings s;
-    CHECK(s.gameplaySpeed == GameplaySpeed::Original && SettingsStore::parse(SettingsStore::format(s)).gameplaySpeed == GameplaySpeed::Original);
-    s.gameplaySpeed = GameplaySpeed::SteadyFast;
-    CHECK(SettingsStore::parse(SettingsStore::format(s)).gameplaySpeed == GameplaySpeed::SteadyFast);
-    s.gameplaySpeed = GameplaySpeed::Steady;
-    CHECK(SettingsStore::parse(SettingsStore::format(s)).gameplaySpeed == GameplaySpeed::Steady && SettingsStore::parse("gameplay_speed=turbo\n").gameplaySpeed == GameplaySpeed::Original);
+            for (std::int64_t stand : {0, 8990, 179070}) CHECK(app::tickCost(false, pacer, tick, extra, stand) == tick + extra + stand);
+    // modern: the ghost-eaten stand-still stays (the points stay on the screen for the sound), the short ones of the energizer, fruit and bonus life go
+    CHECK(app::soundStandStill(true, core::SoundId::GhostEaten) == core::soundFreezeCycles(core::SoundId::GhostEaten) && core::soundFreezeCycles(core::SoundId::GhostEaten) > 100000);
+    CHECK(app::soundStandStill(true, core::SoundId::Energizer) == 0 && app::soundStandStill(true, core::SoundId::Fruit) == 0 && app::soundStandStill(true, core::SoundId::BonusLife) == 0);
+    // a stretch like the original's: idle ticks (2,987), moving ticks (7,000) and a dot tick (16,200) every twelfth tick; the pace is its average and the hitches are gone
+    app::SmoothPacer p;
+    std::vector<std::int64_t> original, modern;
+    for (int i = 0; i < 4000; ++i) {
+        const std::int64_t c = (i % 12 == 0) ? 16200 : (i % 3 == 0 ? 7000 : 2987);
+        original.push_back(c);
+        modern.push_back(app::tickCost(true, p, c, 0, 0));
+    }
+    double so = 0, sm = 0;
+    std::int64_t mn = 1LL << 60, mx = 0;
+    for (std::size_t i = 1000; i < original.size(); ++i) {   // (after the first few hundred ticks, which start from the typical value)
+        so += static_cast<double>(original[i]);
+        sm += static_cast<double>(modern[i]);
+        mn = (std::min)(mn, modern[i]);
+        mx = (std::max)(mx, modern[i]);
+    }
+    const double n = static_cast<double>(original.size() - 1000);
+    std::printf("    original mean %.0f cycles a tick, modern mean %.0f; modern tick times %lld .. %lld (original 2,987 .. 16,200)\n", so / n, sm / n, static_cast<long long>(mn), static_cast<long long>(mx));
+    CHECK(std::abs(so / n - sm / n) < 0.01 * so / n);   // the same pace over a stretch (within 1 %)
+    CHECK(mx - mn < 0.05 * so / n);                      // and no hitches: the tick time moves by less than 5 % of itself
+    // the situation changes (the ghosts turn blue: the original's ticks become 17 % shorter, 4,900 -> 4,100): the pace follows within a fraction of a second, so Pac-Man's step countdown
+    // (which grows by 2 ticks in that phase) is still balanced by the shorter ticks, as in the original
+    app::SmoothPacer q;
+    for (int i = 0; i < 1000; ++i) app::tickCost(true, q, 4900, 0, 0);
+    CHECK(std::abs(q.duration() - 4900) <= 2);
+    int ticksToFollow = 0;
+    while (std::abs(q.duration() - 4100) > 4100 / 10 / 2 && ticksToFollow < 2000) {   // within 5 % of the new level
+        app::tickCost(true, q, 4100, 0, 0);
+        ++ticksToFollow;
+    }
+    std::printf("    after the situation changes (4,900 -> 4,100 cycles a tick) the pace is within 5 %% after %d ticks (%.2f s)\n", ticksToFollow, ticksToFollow * 4100.0 / 1022727.0);
+    CHECK(ticksToFollow < 300);
+    // the long sequences (death, level end) are not smoothed and do not disturb the pace
+    const std::int64_t before = q.duration();
+    CHECK(app::tickCost(true, q, 8917, 6043263, 0) == 8917 + 6043263 && q.duration() == before);
+    // a fixed tick time would break the balance: with the countdown 11 instead of 9 ticks, Pac-Man's step takes 11 x tick: original 11 x 4,100 = 45.1k against 9 x 4,900 = 44.1k (+2 %)
+    // but at a fixed 4,870 it would be 53.6k (+21 %): "drastically slower" after a power pill
+    CHECK(std::abs(11.0 * 4100 / (9.0 * 4900) - 1.0) < 0.03 && 11.0 * 4870 / (9.0 * 4870) - 1.0 > 0.2);
 }
 
-TEST(gameplay_speed_is_changed_from_the_pause_menu_kept_in_the_settings_and_restored) {
-    using app::GameplaySpeed;
-    core::CharacterRom rom;
-    const bool haveFont = loadFont(rom);
-    const auto dir = scratchDir("gameplayspeed");
-    SettingsStore store((dir / "settings.ini").wstring());
-    Settings start;
-    start.displayMode = DisplayMode::Windowed;
-    {
-        GameWindow w(GameWindowOptions{3, true});
-        CHECK(w.ok());
-        if (!w.ok()) return;
-        if (haveFont) w.setMenuFont(rom);
-        w.attachSettings(&store, start);
-        CHECK(w.gameplaySpeed() == GameplaySpeed::Original);
-        const HWND h = w.hwnd();
-        SendMessageW(h, WM_KEYDOWN, VK_ESCAPE, 1);
-        SendMessageW(h, WM_KEYDOWN, VK_DOWN, 1);
-        SendMessageW(h, WM_KEYDOWN, VK_RETURN, 1);                              // Graphics Settings
-        for (int i = 0; i < 7; ++i) SendMessageW(h, WM_KEYDOWN, VK_DOWN, 1);   // Gameplay Speed
-        SendMessageW(h, WM_KEYDOWN, VK_RIGHT, 1);
-        CHECK(w.gameplaySpeed() == GameplaySpeed::Steady && w.menuOpen() && store.load().gameplaySpeed == GameplaySpeed::Steady);
-        SendMessageW(h, WM_KEYDOWN, VK_LEFT, 1);
-        CHECK(w.gameplaySpeed() == GameplaySpeed::Original);
-        SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, graphicsItem(7).x, graphicsItem(7).y));   // a click: the other one
-        CHECK(w.gameplaySpeed() == GameplaySpeed::Steady && w.fps() == app::FpsMode::Native);               // (the FPS setting is separate)
+TEST(the_fps_setting_chooses_the_timing_native_is_the_originals_and_the_modern_modes_the_smoothed_pace) {
+    // the game's thread reads the choice from the window (any thread)
+    GameWindow w(GameWindowOptions{3, true});
+    CHECK(w.ok());
+    if (!w.ok()) return;
+    CHECK(w.fpsForGameThread() == app::FpsMode::Native);
+    for (int i = 0; i < app::kFpsModeCount; ++i) {
+        w.setFps(static_cast<app::FpsMode>(i));
+        CHECK(w.fpsForGameThread() == static_cast<app::FpsMode>(i) && w.fps() == static_cast<app::FpsMode>(i));
     }
-    CHECK(store.load().gameplaySpeed == GameplaySpeed::Steady);
-    {
-        GameWindow w(GameWindowOptions{3, true});
-        CHECK(w.ok());
-        if (!w.ok()) return;
-        w.attachSettings(&store, store.load());
-        CHECK(w.gameplaySpeed() == GameplaySpeed::Steady);   // the next start
-    }
-    if (haveFont) {   // the entry shows the choice
-        PauseMenu m;
-        m.show();
-        m.key(PauseMenu::Key::Down);
-        m.key(PauseMenu::Key::Select);
-        PauseMenu::View a, b;
-        b.gameplaySpeed = GameplaySpeed::Steady;
-        std::vector<std::uint8_t> pa, pb;
-        m.render(rom, a, pa);
-        m.render(rom, b, pb);
-        int rows = 0, elsewhere = 0;
-        for (int y = 0; y < 192; ++y) {
-            bool differs = false;
-            for (int x = 0; x < 280; ++x) differs |= pa[static_cast<std::size_t>(y) * 280 + static_cast<std::size_t>(x)] != pb[static_cast<std::size_t>(y) * 280 + static_cast<std::size_t>(x)];
-            if (differs) {
-                ++rows;
-                if (y < 15 * 8 || y >= 16 * 8) ++elsewhere;   // the Gameplay Speed entry is text row 15
-            }
-        }
-        CHECK(rows > 0 && elsewhere == 0);
-    }
+    // the settings file has no gameplay-speed key any more (an old file's key is ignored)
+    Settings s = SettingsStore::parse("gameplay_speed=steady_fast\nfps=60\n");
+    CHECK(s.fps == app::FpsMode::Fps60);
+    CHECK(SettingsStore::format(s).find("gameplay_speed") == std::string::npos);
 }

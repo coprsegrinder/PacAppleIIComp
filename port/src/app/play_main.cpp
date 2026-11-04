@@ -31,7 +31,7 @@
 
 #include "audio.h"
 #include "pausegate.h"
-#include "gameplayspeed.h"
+#include "pacing.h"
 #include "precisesleep.h"
 #include "settings.h"
 #include "../core/attractflow.h"
@@ -202,6 +202,7 @@ bool runGame(core::GameDriver& drv, const datapack::Pack& pack, app::GameWindow&
         std::array<std::int64_t, 8> histCycles{};
         long ateTicks = 0, noAteTicks = 0;
         std::int64_t ateCycles = 0, noAteCycles = 0;
+        std::int64_t ordMin = 1LL << 60, ordMax = 0;   // the time of ticks without a long sequence or a sound stand-still: how even the pace is
         long slow = 0;                                                               // ticks that cost more than twice the typical tick   // ticks after which the picture differed from the one before
         std::vector<std::uint8_t> last;
         void note(const hires::Page& p) {
@@ -214,8 +215,8 @@ bool runGame(core::GameDriver& drv, const datapack::Pack& pack, app::GameWindow&
         }
         ~TickLog() {
             const double s = firstNs == 0 ? 0.0 : static_cast<double>(core::nowNanoseconds() - firstNs) / 1e9;
-            char buf[160];
-            std::snprintf(buf, sizeof(buf), "game: ticks=%ld seconds=%.3f picture_changes=%ld sound_calls=%ld sound_call_total_ms=%.2f sound_call_max_ms=%.2f tick_cycles_min=%lld mean=%.0f max=%lld freeze_cycles_total=%lld slow_ticks=%ld", ticks, s, pictureChanges, playCalls, playTotalMs, playMaxMs, static_cast<long long>(costMin), ticks ? static_cast<double>(costSum) / static_cast<double>(ticks) : 0.0, static_cast<long long>(costMax), static_cast<long long>(freezeSum), slow);
+            char buf[480];
+            std::snprintf(buf, sizeof(buf), "game: ticks=%ld seconds=%.3f picture_changes=%ld sound_calls=%ld sound_call_total_ms=%.2f sound_call_max_ms=%.2f tick_cycles_min=%lld mean=%.0f max=%lld freeze_cycles_total=%lld slow_ticks=%ld ordinary_min=%lld ordinary_max=%lld", ticks, s, pictureChanges, playCalls, playTotalMs, playMaxMs, static_cast<long long>(costMin), ticks ? static_cast<double>(costSum) / static_cast<double>(ticks) : 0.0, static_cast<long long>(costMax), static_cast<long long>(freezeSum), slow, static_cast<long long>(ordMin), static_cast<long long>(ordMax));
             w.logLine(buf);
             static const char* const names[8] = {"<3.5k", "<4k", "<5k", "<6k", "<8k", "<12k", "<20k", ">=20k"};
             std::string h = "cost histogram (ticks / share of the game's time):";
@@ -242,6 +243,7 @@ bool runGame(core::GameDriver& drv, const datapack::Pack& pack, app::GameWindow&
             secCost = 0;
         }
     } tickLog{window};
+    app::SmoothPacer pacer;
     SoundPlayer sounds;
     sounds.init(pack);
     core::CartoonPlayer cartoon;
@@ -326,6 +328,7 @@ bool runGame(core::GameDriver& drv, const datapack::Pack& pack, app::GameWindow&
             if (++tickLog.ticks == 1) tickLog.firstNs = core::nowNanoseconds();
             std::int64_t soundFreeze = 0;
             const bool audible = drv.core().input().soundOn() && !window.muted();
+            const bool modern = window.fpsForGameThread() != app::FpsMode::Native;   // the modern FPS modes keep the original's pace but not its hitches (pacing.h); Native is the original's timing exactly
             const bool dying = !drv.sequence().empty();   // the animation schedules the six death sounds itself
             for (const core::SoundId id : ev.sounds) {
                 const bool deathStep = id >= core::SoundId::Death1 && id <= core::SoundId::Death6;
@@ -338,7 +341,7 @@ bool runGame(core::GameDriver& drv, const datapack::Pack& pack, app::GameWindow&
                     tickLog.playTotalMs += ms;
                     tickLog.playMaxMs = (std::max)(tickLog.playMaxMs, ms);
                 }
-                soundFreeze += app::soundStandStill(window.gameplaySpeed(), id);
+                soundFreeze += app::soundStandStill(modern, id);
             }
             if (!audible) sounds.stop();   // Ctrl-S / F9 during a long sound cuts it
             if (dying) {   // the pacman was caught: play the animation, then the next life starts
@@ -353,12 +356,16 @@ bool runGame(core::GameDriver& drv, const datapack::Pack& pack, app::GameWindow&
                 window.setPage(drv.page());
                 break;
             }
+            const std::int64_t cost = app::tickCost(modern, pacer, drv.tickCycles(), drv.extraCycles(), soundFreeze);
             {
-                const std::int64_t cost = app::tickCost(window.gameplaySpeed(), drv.tickCycles(), drv.extraCycles(), soundFreeze);
                 tickLog.costSum += cost;
                 tickLog.costMin = (std::min)(tickLog.costMin, cost);
                 tickLog.costMax = (std::max)(tickLog.costMax, cost);
                 tickLog.freezeSum += soundFreeze;
+                if (soundFreeze == 0 && drv.extraCycles() == 0) {
+                    tickLog.ordMin = (std::min)(tickLog.ordMin, cost);
+                    tickLog.ordMax = (std::max)(tickLog.ordMax, cost);
+                }
                 tickLog.slow += cost > 2 * core::kTypicalTickCycles;
                 {
                     const std::size_t bin = cost < 3500 ? 0 : cost < 4000 ? 1 : cost < 5000 ? 2 : cost < 6000 ? 3 : cost < 8000 ? 4 : cost < 12000 ? 5 : cost < 20000 ? 6 : 7;
@@ -373,11 +380,11 @@ bool runGame(core::GameDriver& drv, const datapack::Pack& pack, app::GameWindow&
                     }
                 }
             }
-            budget -= app::tickCost(window.gameplaySpeed(), drv.tickCycles(), drv.extraCycles(), soundFreeze);   // the tick's modelled cost (033-1c), or the same for every ordinary tick (Steady)
+            budget -= cost;   // the tick's modelled cost (033-1c), or its smoothed pace in the modern modes (pacing.h)
             changed = true;
             tickLog.note(drv.page());
             ++tickLog.secTicks;
-            tickLog.secCost += app::tickCost(window.gameplaySpeed(), drv.tickCycles(), drv.extraCycles(), soundFreeze);
+            tickLog.secCost += cost;
             tickLog.energizers += ev.energizer;
             tickLog.secAte += ev.ate;
             {
