@@ -1756,3 +1756,53 @@ TEST(resolution_changes_while_the_game_runs_leave_the_game_and_its_clock_untouch
     CHECK(changes >= 10);
     CHECK(handed == exact && clock.skipped() == 0);
 }
+
+TEST(resolution_entry_in_borderless_fullscreen_shows_the_desktop_size_without_a_native_label) {
+    core::CharacterRom rom;
+    if (!loadFont(rom)) return;
+    GameWindow w(GameWindowOptions{3, true});
+    CHECK(w.ok());
+    if (!w.ok()) return;
+    w.setMenuFont(rom);
+    w.setDisplayMode(DisplayMode::Borderless);
+    pump(60);
+    const GameWindow::RenderInfo ri = w.renderInfo();
+    PauseMenu::View view;
+    view.displayMode = DisplayMode::Borderless;
+    view.resolution = std::to_string(ri.displayW) + "X" + std::to_string(ri.displayH);   // what the window gives the menu in this mode
+    PauseMenu m;
+    m.show();
+    m.key(PauseMenu::Key::Down);
+    m.key(PauseMenu::Key::Select);   // the graphics page
+    std::vector<std::uint8_t> shown, withLabel;
+    m.render(rom, view, shown);
+    view.resolution = "NATIVE " + view.resolution;
+    m.render(rom, view, withLabel);
+    CHECK(shown != withLabel);   // the label is a visible difference: the window's text is the plain one (checked below through the real code path)
+    // the real code path: Esc, Down, Enter, then the frame must equal the menu rendered with the plain text
+    SendMessageW(w.hwnd(), WM_KEYDOWN, VK_ESCAPE, 1);
+    SendMessageW(w.hwnd(), WM_KEYDOWN, VK_DOWN, 1);
+    SendMessageW(w.hwnd(), WM_KEYDOWN, VK_RETURN, 1);
+    CHECK(w.menuOpen());
+    if (w.usesDirect3d()) {
+        std::vector<std::uint32_t> got;
+        int cw = 0, ch = 0;
+        CHECK(w.captureFrame(got, cw, ch));
+        const app::Viewport vp = app::computeViewport(cw, ch);
+        view.resolution = std::to_string(ri.displayW) + "X" + std::to_string(ri.displayH);
+        view.borders = w.borders();
+        std::vector<std::uint8_t> want;
+        m.render(rom, view, want);
+        std::size_t bad = 0;
+        for (int y = PauseMenu::kPanelY; y < PauseMenu::kPanelY + PauseMenu::kPanelH; ++y)
+            for (int x = PauseMenu::kPanelX; x < PauseMenu::kPanelX + PauseMenu::kPanelW; ++x) {
+                const std::uint32_t px = got[static_cast<std::size_t>(vp.y + y * vp.scale + vp.scale / 2) * static_cast<std::size_t>(cw) + static_cast<std::size_t>(vp.x + x * vp.scale + vp.scale / 2)] & 0xFFFFFF;
+                bad += (px == 0xFFFFFF) != (want[static_cast<std::size_t>(y) * 280 + static_cast<std::size_t>(x)] != 0);
+            }
+        std::printf("    graphics page in Borderless Fullscreen, panel pixels that differ from the plain-text menu: %zu\n", bad);
+        CHECK(bad == 0);
+    }
+    SendMessageW(w.hwnd(), WM_KEYDOWN, VK_ESCAPE, 1);
+    SendMessageW(w.hwnd(), WM_KEYDOWN, VK_ESCAPE, 1);
+    w.setDisplayMode(DisplayMode::Windowed);
+}

@@ -91,7 +91,7 @@ Done: all exclusive code removed (the renderer's `setExclusive`, the activate/de
 For Section 5 (Resolution): with no exclusive mode, a listed resolution can only mean the size of the windowed picture area (and the internal render size); Borderless keeps the desktop's resolution as the spec says. To be agreed when Section 5 starts.
 
 ## Section 5 - Graphics Settings: Resolution (done 2026-11-04, TASK-034-5)
-**Meaning (agreed in principle at Decision 5, no exclusive mode):** the Resolution is the size of the picture area of the WINDOWED mode, in real pixels. **Borderless Fullscreen always uses the desktop's own resolution** and shows it in the menu as "RESOLUTION: NATIVE 2560X1440" (it cannot be changed there; a listed size is never forced on it).
+**Meaning (agreed in principle at Decision 5, no exclusive mode):** the Resolution is the size of the picture area of the WINDOWED mode, in real pixels. **Borderless Fullscreen always uses the desktop's own resolution** and shows it in the menu as "RESOLUTION: 2560X1440" (the desktop size, without a list entry's ratio) (it cannot be changed there; a listed size is never forced on it).
 **Two sizes kept apart (spec: "display resolution vs internal rendering resolution"):** *display resolution* = the size the picture is shown at = the window's client area = the Direct3D back buffer (`GameWindow::renderInfo().displayW/H`); *game resolution* = 280 x 192, the picture the Apple II made (`gameW/gameH`), always drawn into the display by the viewport rule (whole-number scale, centred, bars on every side, never stretched). Changing the display resolution never changes the game picture, only its scale and the bars.
 | Requirement | Result |
 |---|---|

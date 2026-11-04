@@ -23,7 +23,7 @@ public:
     struct View {
         DisplayMode displayMode = DisplayMode::Borderless;
         bool borders = true;
-        std::string resolution = "1920X1080 (16:9)";   // the Resolution entry's value: a listed size, CUSTOM WxH, or NATIVE WxH in Borderless Fullscreen
+        std::string resolution = "1920X1080 (16:9)";   // the Resolution entry's value: a listed size, CUSTOM WxH, or the desktop WxH in Borderless Fullscreen
     };
 
     // The panel (picture pixels). Everything of the menu is inside it.

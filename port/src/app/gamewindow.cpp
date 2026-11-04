@@ -419,7 +419,7 @@ void GameWindow::currentPixels(std::uint32_t* out) {
         view.borders = borders_;
         {
             const RenderInfo ri = renderInfo();
-            view.resolution = fullscreen_ ? "NATIVE " + std::to_string(ri.displayW) + "X" + std::to_string(ri.displayH) : resolutionLabel(ri.displayW, ri.displayH);
+            view.resolution = fullscreen_ ? std::to_string(ri.displayW) + "X" + std::to_string(ri.displayH) : resolutionLabel(ri.displayW, ri.displayH);
         }
         menu_.render(font_, view, lit);
         for (int y = 0; y < kH; ++y)
