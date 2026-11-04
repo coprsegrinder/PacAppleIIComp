@@ -12,4 +12,7 @@ if not exist scratch\local.pmpk (
   pause
   exit /b 1
 )
+rem Shows which build this is, so you can confirm it is the newest one: the exe's build time and the latest commit.
+for %%F in (out\bat\pacman_play.exe) do echo Build of pacman_play.exe: %%~tF
+for /f "delims=" %%G in ('git log -1 --format^="%%h  %%cd  %%s" 2^>nul') do echo Latest commit: %%G
 start "" out\bat\pacman_play.exe --pack scratch\local.pmpk --scale 3
