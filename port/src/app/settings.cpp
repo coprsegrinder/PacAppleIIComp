@@ -96,6 +96,7 @@ std::string SettingsStore::format(const Settings& s) {
     o << "version=1\n";
     o << "display_mode=" << displayModeKey(s.displayMode) << "\n";
     o << "window_borders=" << (s.windowBorders ? 1 : 0) << "\n";
+    o << "background=" << backgroundKey(s.background) << "\n";
     if (s.hasWindowRect) {
         o << "window_x=" << s.windowX << "\n";
         o << "window_y=" << s.windowY << "\n";
@@ -126,6 +127,9 @@ Settings SettingsStore::parse(const std::string& text) {
             if (parseMode(value, m)) s.displayMode = m;
         } else if (key == "window_borders") {
             if (parseBool(value, b)) s.windowBorders = b;
+        } else if (key == "background") {
+            Background bg;
+            if (parseBackground(value, bg)) s.background = bg;
         } else if (key == "window_x") {
             haveX = parseInt(value, x);
         } else if (key == "window_y") {

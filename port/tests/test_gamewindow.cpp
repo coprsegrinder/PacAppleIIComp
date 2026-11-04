@@ -852,7 +852,7 @@ TEST(pause_menu_keyboard_navigation_pages_and_actions) {
     // Graphics Settings: its page, the toggle, Back and Esc return to the main page on the entry that led there
     m.show();
     m.key(PauseMenu::Key::Down);
-    CHECK(m.key(PauseMenu::Key::Select) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Graphics && m.selected() == 0 && m.itemCount() == 4);
+    CHECK(m.key(PauseMenu::Key::Select) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Graphics && m.selected() == 0 && m.itemCount() == 5);
     CHECK(m.key(PauseMenu::Key::Select) == PauseMenu::Action::NextDisplayMode && m.page() == PauseMenu::Page::Graphics);   // Display Mode: Enter = next
     CHECK(m.key(PauseMenu::Key::Right) == PauseMenu::Action::NextDisplayMode && m.key(PauseMenu::Key::Left) == PauseMenu::Action::PreviousDisplayMode);
     m.key(PauseMenu::Key::Down);
@@ -860,7 +860,9 @@ TEST(pause_menu_keyboard_navigation_pages_and_actions) {
     m.key(PauseMenu::Key::Down);
     CHECK(m.selected() == 2 && m.key(PauseMenu::Key::Select) == PauseMenu::Action::ToggleBorders && m.key(PauseMenu::Key::Left) == PauseMenu::Action::ToggleBorders);   // Window Borders
     m.key(PauseMenu::Key::Down);
-    CHECK(m.selected() == 3 && m.key(PauseMenu::Key::Left) == PauseMenu::Action::None);   // Back: left/right do nothing
+    CHECK(m.selected() == 3 && m.key(PauseMenu::Key::Select) == PauseMenu::Action::NextBackground && m.key(PauseMenu::Key::Right) == PauseMenu::Action::NextBackground && m.key(PauseMenu::Key::Left) == PauseMenu::Action::PreviousBackground);   // Background
+    m.key(PauseMenu::Key::Down);
+    CHECK(m.selected() == 4 && m.key(PauseMenu::Key::Left) == PauseMenu::Action::None);   // Back: left/right do nothing
     m.key(PauseMenu::Key::Select);   // Back
     CHECK(m.page() == PauseMenu::Page::Main && m.selected() == 1);
     m.key(PauseMenu::Key::Select);
@@ -897,7 +899,8 @@ TEST(pause_menu_mouse_selects_on_hover_activates_on_click_and_ignores_the_rest) 
     CHECK(m.pointerClick(graphicsItem(0).x, graphicsItem(0).y) == PauseMenu::Action::NextDisplayMode);
     CHECK(m.pointerClick(graphicsItem(1).x, graphicsItem(1).y) == PauseMenu::Action::NextResolution);
     CHECK(m.pointerClick(graphicsItem(2).x, graphicsItem(2).y) == PauseMenu::Action::ToggleBorders);
-    CHECK(m.pointerClick(graphicsItem(3).x, graphicsItem(3).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Main);
+    CHECK(m.pointerClick(graphicsItem(3).x, graphicsItem(3).y) == PauseMenu::Action::NextBackground);
+    CHECK(m.pointerClick(graphicsItem(4).x, graphicsItem(4).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Main);
     // Quit Game -> Cancel by mouse, Quit Game -> Confirm by mouse
     CHECK(m.pointerClick(mainItem(2).x, mainItem(2).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Confirm);
     CHECK(m.pointerClick(confirmItem(1).x, confirmItem(1).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Main);
@@ -1060,7 +1063,7 @@ TEST(pause_menu_in_the_window_mouse_keyboard_graphics_page_and_quit_with_confirm
     // the mouse works at another window size too (the picture position is mapped through the viewport)
     SetWindowPos(h, nullptr, 0, 0, 1100, 800, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
     pump(20);
-    SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, graphicsItem(3).x, graphicsItem(3).y));   // Back
+    SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, graphicsItem(4).x, graphicsItem(4).y));   // Back
     SendMessageW(h, WM_MOUSEMOVE, 0, clientPos(h, mainItem(2).x, mainItem(2).y));
     SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, mainItem(2).x, mainItem(2).y));    // Quit Game: asks first
     CHECK(w.ok() && w.menuOpen());
@@ -2086,4 +2089,393 @@ TEST(window_borders_setting_is_saved_at_once_and_restored_with_the_window) {
         CHECK(w.borders() && hasCaption(w.hwnd()) && store.load().windowBorders);
     }
     std::filesystem::remove_all(dir);
+}
+
+// ---- TASK-034-7: Background (Black, Ambient Glow) ----
+#include "../src/app/background.h"
+#include "../src/app/glow.h"
+
+namespace {
+
+std::array<std::uint32_t, 280 * 192> solidPicture(std::uint32_t argb) {
+    std::array<std::uint32_t, 280 * 192> p{};
+    p.fill(argb);
+    return p;
+}
+
+int peakOf(std::uint32_t argb) { return static_cast<int>(std::max({(argb >> 16) & 0xFF, (argb >> 8) & 0xFF, argb & 0xFF})); }
+int redOf(std::uint32_t argb) { return static_cast<int>((argb >> 16) & 0xFF); }
+int greenOf(std::uint32_t argb) { return static_cast<int>((argb >> 8) & 0xFF); }
+int blueOf(std::uint32_t argb) { return static_cast<int>(argb & 0xFF); }
+
+// the cell (i, j) of a glow field as r, g, b bytes
+void cellBytes(const app::GlowField& g, int i, int j, int& r, int& gr, int& b) {
+    const std::uint8_t* px = &g.bytes()[static_cast<std::size_t>(j * app::kGlowW + i) * 4];
+    b = px[0];
+    gr = px[1];
+    r = px[2];
+}
+
+std::uint32_t at(const std::vector<std::uint32_t>& frame, int cw, int x, int y) { return frame[static_cast<std::size_t>(y) * static_cast<std::size_t>(cw) + static_cast<std::size_t>(x)] & 0xFFFFFF; }
+
+// the picture area of a captured frame equals the expected picture (the background must never reach into it)
+std::size_t insideDiffers(const std::vector<std::uint32_t>& got, const hires::Page& page, int cw, int ch) {
+    const std::vector<unsigned> want = expected(page, cw, ch);
+    const app::Viewport vp = app::computeViewport(cw, ch);
+    std::size_t bad = 0;
+    for (int y = vp.y; y < vp.y + vp.h; ++y)
+        for (int x = vp.x; x < vp.x + vp.w; ++x) bad += at(got, cw, x, y) != want[static_cast<std::size_t>(y) * static_cast<std::size_t>(cw) + static_cast<std::size_t>(x)];
+    return bad;
+}
+
+hires::Page allWhitePage() {
+    hires::Page p;
+    p.clear(0x7F);   // every pixel lit: a white picture
+    return p;
+}
+
+}  // namespace
+
+TEST(background_names_cycle_and_the_settings_file_keeps_the_choice) {
+    CHECK(app::kBackgroundCount == 2);
+    CHECK(std::string(app::backgroundKey(app::Background::Black)) == "black" && std::string(app::backgroundKey(app::Background::AmbientGlow)) == "glow");
+    CHECK(std::string(app::backgroundLabel(app::Background::Black)) == "BLACK" && std::string(app::backgroundLabel(app::Background::AmbientGlow)) == "AMBIENT GLOW");
+    CHECK(app::nextBackground(app::Background::Black, 1) == app::Background::AmbientGlow && app::nextBackground(app::Background::AmbientGlow, 1) == app::Background::Black);
+    CHECK(app::nextBackground(app::Background::Black, -1) == app::Background::AmbientGlow && app::nextBackground(app::Background::AmbientGlow, -1) == app::Background::Black);
+    app::Background b = app::Background::Black;
+    CHECK(app::parseBackground("glow", b) && b == app::Background::AmbientGlow);
+    CHECK(!app::parseBackground("rainbow", b) && b == app::Background::AmbientGlow);   // unchanged on a bad word
+    Settings s;
+    CHECK(s.background == app::Background::Black);   // the default
+    s.background = app::Background::AmbientGlow;
+    CHECK(SettingsStore::parse(SettingsStore::format(s)).background == app::Background::AmbientGlow);
+    CHECK(SettingsStore::parse("background=GLOW\n").background == app::Background::AmbientGlow);
+    CHECK(SettingsStore::parse("background=sideways\n").background == app::Background::Black);   // a bad word: the default
+}
+
+TEST(glow_field_keeps_the_hue_lifts_dim_content_keeps_empty_cells_black_and_maps_the_grid) {
+    app::GlowField g;
+    int r, gr, b;
+    const auto black = solidPicture(0xFF000000);
+    g.update(black.data(), 1.0);
+    for (int j = 0; j < app::kGlowH; ++j)
+        for (int i = 0; i < app::kGlowW; ++i) {
+            cellBytes(g, i, j, r, gr, b);
+            CHECK(r == 0 && gr == 0 && b == 0);   // nothing in the picture, nothing in the glow
+        }
+    CHECK(g.bytes()[3] == 255);
+    const auto green = solidPicture(0xFF00FF00);
+    g.reset();
+    g.update(green.data(), 0.0);   // the first picture is taken as it is
+    cellBytes(g, 3, 4, r, gr, b);
+    CHECK(r == 0 && gr == 255 && b == 0);
+    const auto dimGreen = solidPicture(0xFF004000);   // a quarter of full green: still shown at full brightness (lifted), hue unchanged
+    g.reset();
+    g.update(dimGreen.data(), 0.0);
+    cellBytes(g, 0, 0, r, gr, b);
+    CHECK(r == 0 && b == 0 && gr == 255);
+    const auto grey = solidPicture(0xFF1A1A1A);   // about 10 %: lifted to about half, still grey
+    g.reset();
+    g.update(grey.data(), 0.0);
+    cellBytes(g, 5, 5, r, gr, b);
+    CHECK(r == gr && gr == b && gr >= 120 && gr <= 136);
+    const auto nearlyBlack = solidPicture(0xFF040404);   // under the black threshold
+    g.reset();
+    g.update(nearlyBlack.data(), 0.0);
+    cellBytes(g, 5, 5, r, gr, b);
+    CHECK(r == 0 && gr == 0 && b == 0);
+    // left half red, right half blue: the cells follow (cell columns are 20 picture pixels wide: the halves meet at a cell boundary)
+    auto halves = solidPicture(0xFF0000FF);
+    for (int y = 0; y < 192; ++y)
+        for (int x = 0; x < 140; ++x) halves[static_cast<std::size_t>(y) * 280 + static_cast<std::size_t>(x)] = 0xFFFF0000;
+    g.reset();
+    g.update(halves.data(), 0.0);
+    for (int i = 0; i < app::kGlowW; ++i) {
+        cellBytes(g, i, 3, r, gr, b);
+        if (i < 7) CHECK(r == 255 && gr == 0 && b == 0);
+        else CHECK(r == 0 && gr == 0 && b == 255);
+    }
+    // a small lit patch (6 x 6 pixels: about a tenth of a cell; one single pixel is below the black threshold) in each corner lights only its own cell
+    for (int corner = 0; corner < 4; ++corner) {
+        auto one = solidPicture(0xFF000000);
+        const int x = corner % 2 ? 279 : 0, y = corner / 2 ? 191 : 0;
+        for (int dy = 0; dy < 6; ++dy)
+            for (int dx = 0; dx < 6; ++dx) one[static_cast<std::size_t>(y - (corner / 2 ? dy : -dy)) * 280 + static_cast<std::size_t>(x - (corner % 2 ? dx : -dx))] = 0xFFFFFFFF;
+        g.reset();
+        g.update(one.data(), 0.0);
+        int lit = 0;
+        for (int j = 0; j < app::kGlowH; ++j)
+            for (int i = 0; i < app::kGlowW; ++i) {
+                cellBytes(g, i, j, r, gr, b);
+                if (r || gr || b) {
+                    ++lit;
+                    CHECK(i == (corner % 2 ? 13 : 0) && j == (corner / 2 ? 9 : 0));
+                }
+            }
+        CHECK(lit == 1);
+    }
+}
+
+TEST(glow_field_changes_slowly_so_the_blinking_of_the_game_does_not_flicker_the_background) {
+    app::GlowField g;
+    int r, gr, b;
+    const auto white = solidPicture(0xFFFFFFFF), black = solidPicture(0xFF000000);
+    g.update(white.data(), 0.0);
+    g.update(black.data(), 0.25);   // a quarter second: 63 % of the way, and the lift hides it: still full
+    cellBytes(g, 6, 5, r, gr, b);
+    CHECK(gr == 255);
+    g.update(black.data(), 0.25);   // half a second: fading
+    cellBytes(g, 6, 5, r, gr, b);
+    std::printf("    white -> black: after 0.5 s a cell is at %d / 255\n", gr);
+    CHECK(gr > 150 && gr < 200);
+    g.update(black.data(), 0.5);    // a second: gone
+    cellBytes(g, 6, 5, r, gr, b);
+    CHECK(gr == 0);
+    g.update(white.data(), 1.0 / 60.0);   // one frame of white: a faint start, not a flash
+    cellBytes(g, 6, 5, r, gr, b);
+    std::printf("    black -> white: after one frame a cell is at %d / 255\n", gr);
+    CHECK(gr > 40 && gr < 110);
+    // a picture that flashes on and off every frame (a blinking energizer, the 1UP label): the glow stays calm
+    g.reset();
+    g.update(white.data(), 0.0);
+    int lo = 255, hi = 0;
+    for (int frame = 0; frame < 240; ++frame) {
+        g.update(frame % 2 ? white.data() : black.data(), 1.0 / 60.0);
+        if (frame >= 120) {
+            cellBytes(g, 6, 5, r, gr, b);
+            lo = std::min(lo, gr);
+            hi = std::max(hi, gr);
+        }
+    }
+    std::printf("    a picture flashing every frame: the glow stays between %d and %d\n", lo, hi);
+    CHECK(hi - lo <= 25);
+    // time that does not pass changes nothing
+    g.update(black.data(), 0.0);
+    int r2, gr2, b2;
+    cellBytes(g, 6, 5, r2, gr2, b2);
+    CHECK(gr2 == gr || std::abs(gr2 - gr) <= 0);
+}
+
+TEST(ambient_glow_in_the_window_surrounds_the_picture_softly_and_never_touches_it) {
+    GameWindow w(GameWindowOptions{3, true});
+    CHECK(w.ok());
+    if (!w.ok() || !w.usesDirect3d()) return;
+    const hires::Page white = allWhitePage();
+    w.setPage(white);
+    setClient(w.hwnd(), 1920, 1080);   // a picture 1400 x 960 at (260, 60): bars on every side
+    pump(40);
+    std::vector<std::uint32_t> got;
+    int cw = 0, ch = 0;
+    // Black: the bars are exactly black
+    w.setBackground(app::Background::Black);
+    CHECK(w.captureFrame(got, cw, ch) && cw == 1920 && ch == 1080);
+    const app::Viewport vp = app::computeViewport(cw, ch);
+    std::size_t lit = 0;
+    for (int y = 0; y < ch; ++y)
+        for (int x = 0; x < cw; ++x)
+            if (!(x >= vp.x && x < vp.x + vp.w && y >= vp.y && y < vp.y + vp.h)) lit += at(got, cw, x, y) != 0;
+    CHECK(lit == 0 && insideDiffers(got, white, cw, ch) == 0);
+    // Ambient Glow: the picture is exactly the same, the bars have a soft glow
+    w.setBackground(app::Background::AmbientGlow);
+    CHECK(w.captureFrame(got, cw, ch));
+    CHECK(insideDiffers(got, white, cw, ch) == 0);   // no bloom into the game graphics
+    const int midY = vp.y + vp.h / 2;
+    const int edge = peakOf(at(got, cw, vp.x - 1, midY)), nearer = peakOf(at(got, cw, vp.x - 1, midY)), farther = peakOf(at(got, cw, vp.x - 130, midY));
+    const int corner = peakOf(at(got, cw, 0, 0)), screenEdge = peakOf(at(got, cw, 0, midY));
+    std::printf("    glow beside a white picture: at its edge %d, 130 px away %d, at the screen's edge %d, far corner %d (of 255)\n", edge, farther, screenEdge, corner);
+    CHECK(edge >= 50 && edge <= 75);   // a quarter of white at the edge: restrained
+    CHECK(farther < edge && screenEdge < farther && corner <= screenEdge + 1);
+    CHECK(corner <= 14);
+    (void)nearer;
+    // the fall-off is smooth and only ever downwards as the distance grows
+    int worstRise = 0;
+    for (int x = vp.x - 1; x > 0; --x) worstRise = std::max(worstRise, peakOf(at(got, cw, x - 1, midY)) - peakOf(at(got, cw, x, midY)));
+    CHECK(worstRise <= 1);   // (a level of noise that hides the steps)
+    // above and below the picture as well
+    CHECK(peakOf(at(got, cw, vp.x + vp.w / 2, vp.y - 1)) >= 50 && peakOf(at(got, cw, vp.x + vp.w / 2, vp.y + vp.h)) >= 50);
+    CHECK(peakOf(at(got, cw, vp.x + vp.w, midY)) >= 50);
+    // the colour follows the picture: a green picture gives a green glow, a black one none
+    std::vector<std::uint32_t> greenImage(280 * 192, 0xFF00FF00u), blackImage(280 * 192, 0xFF000000u);
+    w.setImage(greenImage);
+    CHECK(w.captureFrame(got, cw, ch));
+    const std::uint32_t gpx = at(got, cw, vp.x - 1, midY);
+    CHECK(greenOf(gpx) >= 50 && redOf(gpx) <= 2 && blueOf(gpx) <= 2);
+    w.setImage(blackImage);
+    CHECK(w.captureFrame(got, cw, ch));
+    int brightest = 0;
+    for (int x = 0; x < vp.x; x += 7) brightest = std::max(brightest, peakOf(at(got, cw, x, midY)));
+    CHECK(brightest <= 1);   // no content, no glow (only the 1/255 of noise)
+    // the picture area is still the game's whatever the window shape
+    w.setPage(white);
+    for (const SIZE& s : {SIZE{1000, 700}, SIZE{1280, 720}, SIZE{2560 / 2, 1100}, SIZE{900, 900}}) {
+        setClient(w.hwnd(), s.cx, s.cy);
+        pump(20);
+        CHECK(w.captureFrame(got, cw, ch) && cw == s.cx && ch == s.cy);
+        CHECK(insideDiffers(got, white, cw, ch) == 0);
+    }
+}
+
+TEST(ambient_glow_is_not_changed_by_the_pause_menu_and_follows_the_game_not_the_menu) {
+    core::CharacterRom rom;
+    const bool haveFont = loadFont(rom);
+    GameWindow w(GameWindowOptions{3, true});
+    CHECK(w.ok());
+    if (!w.ok() || !w.usesDirect3d()) return;
+    if (haveFont) w.setMenuFont(rom);
+    w.setPage(allWhitePage());
+    setClient(w.hwnd(), 1920, 1080);
+    pump(40);
+    w.setBackground(app::Background::AmbientGlow);
+    std::vector<std::uint32_t> closed, open;
+    int cw = 0, ch = 0;
+    CHECK(w.captureFrame(closed, cw, ch));
+    SendMessageW(w.hwnd(), WM_KEYDOWN, VK_ESCAPE, 1);
+    CHECK(w.menuOpen());
+    CHECK(w.captureFrame(open, cw, ch));
+    const app::Viewport vp = app::computeViewport(cw, ch);
+    std::size_t differing = 0;
+    for (int y = 0; y < ch; ++y)
+        for (int x = 0; x < cw; ++x)
+            if (!(x >= vp.x && x < vp.x + vp.w && y >= vp.y && y < vp.y + vp.h)) differing += at(closed, cw, x, y) != at(open, cw, x, y);
+    CHECK(differing == 0);   // the dimmed picture and the menu do not change the bars
+    SendMessageW(w.hwnd(), WM_KEYDOWN, VK_ESCAPE, 1);
+}
+
+TEST(background_is_changed_from_the_pause_menu_kept_in_the_settings_and_restored) {
+    core::CharacterRom rom;
+    const bool haveFont = loadFont(rom);
+    const auto dir = scratchDir("background");
+    SettingsStore store((dir / "settings.ini").wstring());
+    Settings start;
+    start.displayMode = DisplayMode::Windowed;
+    {
+        GameWindow w(GameWindowOptions{3, true});
+        CHECK(w.ok());
+        if (!w.ok()) return;
+        if (haveFont) w.setMenuFont(rom);
+        w.attachSettings(&store, start);
+        CHECK(w.background() == app::Background::Black);
+        const HWND h = w.hwnd();
+        SendMessageW(h, WM_KEYDOWN, VK_ESCAPE, 1);
+        SendMessageW(h, WM_KEYDOWN, VK_DOWN, 1);
+        SendMessageW(h, WM_KEYDOWN, VK_RETURN, 1);   // Graphics Settings
+        for (int i = 0; i < 3; ++i) SendMessageW(h, WM_KEYDOWN, VK_DOWN, 1);   // Background
+        SendMessageW(h, WM_KEYDOWN, VK_RIGHT, 1);
+        CHECK(w.background() == app::Background::AmbientGlow && w.menuOpen());
+        CHECK(store.load().background == app::Background::AmbientGlow);   // written at once
+        SendMessageW(h, WM_KEYDOWN, VK_LEFT, 1);
+        CHECK(w.background() == app::Background::Black && store.load().background == app::Background::Black);
+        SendMessageW(h, WM_KEYDOWN, VK_RETURN, 1);   // Enter = next
+        CHECK(w.background() == app::Background::AmbientGlow);
+        SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, graphicsItem(3).x, graphicsItem(3).y));   // a click: next (round to black)
+        CHECK(w.background() == app::Background::Black);
+        SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, graphicsItem(3).x, graphicsItem(3).y));
+        CHECK(w.background() == app::Background::AmbientGlow);
+    }
+    CHECK(store.load().background == app::Background::AmbientGlow);
+    {
+        GameWindow w(GameWindowOptions{3, true});
+        CHECK(w.ok());
+        if (!w.ok()) return;
+        w.attachSettings(&store, store.load());
+        CHECK(w.background() == app::Background::AmbientGlow);   // the next start
+    }
+    std::filesystem::remove_all(dir);
+}
+
+TEST(background_menu_entry_shows_the_choice) {
+    core::CharacterRom rom;
+    if (!loadFont(rom)) return;
+    PauseMenu m;
+    m.show();
+    m.key(PauseMenu::Key::Down);
+    m.key(PauseMenu::Key::Select);
+    PauseMenu::View black, glow;
+    glow.background = app::Background::AmbientGlow;
+    std::vector<std::uint8_t> a, b;
+    m.render(rom, black, a);
+    m.render(rom, glow, b);
+    int rowsDiffering = 0, elsewhere = 0;
+    for (int y = 0; y < 192; ++y) {
+        bool differs = false;
+        for (int x = 0; x < 280; ++x) differs |= a[static_cast<std::size_t>(y) * 280 + static_cast<std::size_t>(x)] != b[static_cast<std::size_t>(y) * 280 + static_cast<std::size_t>(x)];
+        if (differs) {
+            ++rowsDiffering;
+            if (y < 11 * 8 || y >= 12 * 8) ++elsewhere;   // the Background entry is text row 11
+        }
+    }
+    CHECK(rowsDiffering > 0 && elsewhere == 0);
+}
+
+TEST(background_changes_while_the_game_runs_leave_the_game_and_its_clock_untouched) {
+    if (testfw::config().image.empty()) {
+        std::printf("    SKIPPED (needs --image)\n");
+        return;
+    }
+    datapack::Pack pack;
+    CHECK(flowtest::loadPack(pack));
+    constexpr int kTicks = 150000;
+    struct Result { std::vector<std::uint8_t> page; unsigned score = 0, level = 0; int changes = 0; };
+    const auto run = [&](bool disturb) {
+        Result res;
+        core::GameDriver drv;
+        CHECK(drv.init(pack) && drv.newGame());
+        GameWindow w(GameWindowOptions{3, true});
+        CHECK(w.ok());
+        w.setBackground(app::Background::AmbientGlow);
+        std::atomic<bool> done{false};
+        std::thread worker([&] {
+            for (int t = 0; t < kTicks; ++t) {
+                drv.tick();
+                if (t % 3 == 0) w.setPage(drv.page());
+                if (t % 1000 == 0) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+            done = true;
+        });
+        while (!done) {
+            if (disturb) {
+                w.cycleBackground(1);
+                ++res.changes;
+            }
+            pump(5);
+        }
+        worker.join();
+        for (std::size_t i = 0; i < hires::kPageBytes; ++i) res.page.push_back(drv.page().byte(i));
+        res.score = drv.core().state().zp(0x52);
+        res.level = drv.core().state().level();
+        return res;
+    };
+    const Result plain = run(false);
+    const Result disturbed = run(true);
+    std::printf("    %d ticks, glow drawn all the time; %d background changes while it ran; page equal %d\n", kTicks, disturbed.changes, plain.page == disturbed.page);
+    CHECK(disturbed.changes >= 6);
+    CHECK(plain.page == disturbed.page && plain.score == disturbed.score && plain.level == disturbed.level);
+    GameWindow w(GameWindowOptions{3, true});
+    CHECK(w.ok());
+    w.setBackground(app::Background::AmbientGlow);
+    core::CycleClock clock;
+    const std::int64_t t0 = core::nowNanoseconds();
+    clock.start(t0);
+    std::atomic<bool> done{false};
+    std::int64_t handed = 0, endNs = 0;
+    std::thread worker([&] {
+        while (core::nowNanoseconds() - t0 < 800'000'000) {
+            handed += clock.cyclesDue(core::nowNanoseconds());
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        endNs = core::nowNanoseconds();
+        handed += clock.cyclesDue(endNs);
+        done = true;
+    });
+    int changes = 0;
+    while (!done) {
+        w.cycleBackground(1);
+        ++changes;
+        pump(15);
+    }
+    worker.join();
+    const std::int64_t exact = clock.cyclesIn(endNs - t0);
+    std::printf("    %d background changes in 0.8 s; cycles handed out %lld, exact %lld, skipped %lld\n", changes, static_cast<long long>(handed), static_cast<long long>(exact), static_cast<long long>(clock.skipped()));
+    CHECK(changes >= 10);
+    CHECK(handed == exact && clock.skipped() == 0);
 }

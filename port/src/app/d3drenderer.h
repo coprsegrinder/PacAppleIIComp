@@ -27,8 +27,12 @@ public:
 
     bool init(HWND hwnd);                                            // false: no usable Direct3D 11 device (hardware, then the WARP software rasteriser, are tried)
     void resize(int clientW, int clientH);                           // the back buffer follows the client area
-    void setBackground(Background b);                                // what fills the bars
-    bool draw(const std::uint32_t* argb280x192, const Viewport& vp); // clears to the background, draws the picture into vp; nothing is shown until present()
+    // What is drawn around the picture: black, or the ambient glow (the colours of a 14 x 10 grid, BGRA bytes, spread over the bars with a fall-off from the picture's edge).
+    struct BackgroundFrame {
+        Background kind = Background::Black;
+        const std::uint8_t* glowBgra = nullptr;   // kGlowW x kGlowH x 4 bytes (glow.h) for Background::AmbientGlow
+    };
+    bool draw(const std::uint32_t* argb280x192, const Viewport& vp, const BackgroundFrame& bg = BackgroundFrame{});   // draws the background, then the picture into vp; nothing is shown until present()
     bool present();                                                  // sync interval 0 for now (VSync is its own section)
     bool readBack(std::vector<std::uint32_t>& argb, int& w, int& h); // the back buffer after draw() (tests)
     bool software() const noexcept;                                  // true when the WARP software device is in use

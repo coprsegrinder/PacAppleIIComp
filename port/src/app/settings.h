@@ -6,6 +6,8 @@
 #include <string>
 #include <utility>
 
+#include "background.h"
+
 namespace pacman::app {
 
 enum class DisplayMode { Borderless, Windowed };   // Borderless Fullscreen (the default) and Windowed; the exclusive "Fullscreen" of the first design was removed on the user's decision (2026-11-04)
@@ -16,6 +18,7 @@ const char* displayModeLabel(DisplayMode m) noexcept;   // "BORDERLESS FULLSCREE
 struct Settings {
     DisplayMode displayMode = DisplayMode::Borderless;      // the default: borderless fullscreen at the desktop's own resolution
     bool windowBorders = true;                              // windowed mode: title bar and frame
+    Background background = Background::Black;              // what is drawn around the picture
     bool hasWindowRect = false;                             // the picture area of the window as the user left it (screen position and size in pixels)
     int windowX = 0, windowY = 0, windowW = 0, windowH = 0;
 

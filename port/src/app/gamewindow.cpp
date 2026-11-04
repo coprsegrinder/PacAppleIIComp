@@ -195,9 +195,12 @@ void GameWindow::fitToMonitor() {
 
 void GameWindow::setBackground(Background b) {
     background_ = b;
-    if (d3d_) d3d_->setBackground(b);
+    settings_.background = b;
     if (hwnd_) InvalidateRect(hwnd_, nullptr, FALSE);
+    saveSettings();
 }
+
+void GameWindow::cycleBackground(int dir) { setBackground(nextBackground(background_, dir)); }
 
 void GameWindow::applyWindowedSize() {
     if (IsZoomed(hwnd_)) ShowWindow(hwnd_, SW_RESTORE);
@@ -236,6 +239,7 @@ void GameWindow::rememberWindowRect() {
 const Settings& GameWindow::settings() {
     settings_.displayMode = wantedMode_;
     settings_.windowBorders = borders_;
+    settings_.background = background_;
     rememberWindowRect();
     return settings_;
 }
@@ -323,6 +327,7 @@ void GameWindow::attachSettings(SettingsStore* store, const Settings& initial) {
     store_ = store;
     settings_ = initial;
     wantedMode_ = initial.displayMode;
+    background_ = initial.background;
     if (!hwnd_) return;
     // the frame setting and the window as the user left it
     if (!initial.windowBorders) {
@@ -419,7 +424,7 @@ bool GameWindow::handleHotkey(unsigned vk, bool ctrl, bool alt) {
     return false;
 }
 
-void GameWindow::currentPixels(std::uint32_t* out) {
+void GameWindow::currentPixels(std::uint32_t* out, double glowDtSeconds) {
     std::array<std::uint32_t, kW * kH> pixels{};
     hires::Page copy;
     bool image = false;
@@ -431,11 +436,13 @@ void GameWindow::currentPixels(std::uint32_t* out) {
         paintedVersion_ = pageVersion_;
     }
     if (!image) video::renderArgb(copy, pixels);
+    glow_.update(pixels.data(), glowDtSeconds);   // from the game's own picture, before the menu is put over it
     if (menu_.open()) {   // the game dimmed to a quarter, the menu panel in black with white text
         std::vector<std::uint8_t> lit;
         PauseMenu::View view;
         view.displayMode = mode_;
         view.borders = borders_;
+        view.background = background_;
         {
             const RenderInfo ri = renderInfo();
             view.resolution = fullscreen_ ? std::to_string(ri.displayW) + "X" + std::to_string(ri.displayH) : resolutionLabel(ri.displayW, ri.displayH);
@@ -469,6 +476,8 @@ void GameWindow::menuAction(PauseMenu::Action a) {
     case PauseMenu::Action::PreviousDisplayMode:   // two modes: next and previous are the same
         setDisplayMode(mode_ == DisplayMode::Windowed ? DisplayMode::Borderless : DisplayMode::Windowed);
         break;
+    case PauseMenu::Action::NextBackground: cycleBackground(1); break;
+    case PauseMenu::Action::PreviousBackground: cycleBackground(-1); break;
     case PauseMenu::Action::NextResolution: cycleResolution(1); break;
     case PauseMenu::Action::PreviousResolution: cycleResolution(-1); break;
     case PauseMenu::Action::Quit: close(); break;   // the normal way out: the window closes, the game threads end, everything is released in order
@@ -521,8 +530,8 @@ bool GameWindow::captureFrame(std::vector<std::uint32_t>& argb, int& w, int& h) 
     GetClientRect(hwnd_, &rc);
     d3d_->resize(static_cast<int>(rc.right), static_cast<int>(rc.bottom));
     std::array<std::uint32_t, kW * kH> pixels{};
-    currentPixels(pixels.data());
-    if (!d3d_->draw(pixels.data(), computeViewport(d3d_->width(), d3d_->height()))) return false;
+    currentPixels(pixels.data(), 1e9);   // a test frame: the glow takes the picture as it is, no smoothing in time
+    if (!d3d_->draw(pixels.data(), computeViewport(d3d_->width(), d3d_->height()), D3dRenderer::BackgroundFrame{background_, glow_.bytes().data()})) return false;
     return d3d_->readBack(argb, w, h);
 }
 
@@ -530,12 +539,15 @@ void GameWindow::paint() {
     PAINTSTRUCT ps;
     HDC dc = BeginPaint(hwnd_, &ps);
     std::array<std::uint32_t, kW * kH> pixels{};
-    currentPixels(pixels.data());
+    const std::int64_t nowNs = static_cast<std::int64_t>(GetTickCount64()) * 1'000'000;
+    const double dt = lastPaintNs_ == 0 ? 1e9 : std::min(1.0, static_cast<double>(nowNs - lastPaintNs_) / 1e9);
+    lastPaintNs_ = nowNs;
+    currentPixels(pixels.data(), dt);
     RECT rc{};
     GetClientRect(hwnd_, &rc);
     if (d3d_) {   // Direct3D 11: same picture, same whole-number scale, same bars
         d3d_->resize(static_cast<int>(rc.right), static_cast<int>(rc.bottom));
-        if (d3d_->draw(pixels.data(), computeViewport(d3d_->width(), d3d_->height()))) d3d_->present();
+        if (d3d_->draw(pixels.data(), computeViewport(d3d_->width(), d3d_->height()), D3dRenderer::BackgroundFrame{background_, glow_.bytes().data()})) d3d_->present();
         EndPaint(hwnd_, &ps);
         return;
     }

@@ -19,6 +19,7 @@
 #include "background.h"
 #include "d3drenderer.h"
 #include "display_layout.h"
+#include "glow.h"
 #include "pausemenu.h"
 #include "resolutions.h"
 #include "settings.h"
@@ -82,7 +83,8 @@ public:
     void attachSettings(SettingsStore* store, const Settings& initial);
     const Settings& settings();                         // the settings as they are now
     void setFullscreen(bool on);                       // never touches the game: only the window style, size and the swap chain change
-    void setBackground(Background b);                  // what fills the bars around the picture (window thread)
+    void setBackground(Background b);                  // what is drawn around the picture (window thread); written to the settings
+    void cycleBackground(int dir);
     Background background() const noexcept { return background_; }
     // Port hotkeys; returns true if the key was one of them (and so must not reach the game). ctrl/alt: modifier state.
     bool handleHotkey(unsigned vk, bool ctrl, bool alt);
@@ -110,7 +112,7 @@ private:
     void menuChanged();                                // repaint, and tell the other threads
     bool menuKey(unsigned vk);                         // true if the menu used the key
     bool pictureCoords(LPARAM lp, int& px, int& py) const;   // client position -> picture pixel; false outside the picture
-    void currentPixels(std::uint32_t* out);   // the 280 x 192 picture to show (page or image), marks it as painted
+    void currentPixels(std::uint32_t* out, double glowDtSeconds);   // the 280 x 192 picture to show (page or image), marks it as painted
 
     HWND hwnd_ = nullptr;
     int scale_ = 3;
@@ -124,6 +126,8 @@ private:
     bool borders_ = true;               // windowed mode only: title bar and frame
     bool scalePending_ = false;         // setScale() was called in full screen: applies when leaving it
     Background background_ = Background::Black;
+    GlowField glow_;                          // the colours of the ambient glow, smoothed over time
+    std::int64_t lastPaintNs_ = 0;
     PauseMenu menu_;
     core::CharacterRom font_;
     std::atomic<bool> menuOpen_{false};

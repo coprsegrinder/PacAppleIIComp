@@ -9,6 +9,8 @@
 #include <cstdio>
 #include <cstring>
 
+#include "glow.h"
+
 namespace pacman::app {
 
 using Microsoft::WRL::ComPtr;
@@ -27,6 +29,21 @@ VSOut vs(uint id : SV_VertexID) {
     return o;
 }
 float4 ps(VSOut i) : SV_Target { return float4(tex.Sample(smp, i.uv).rgb, 1.0); }
+
+// The ambient glow of the bars: the colour of the nearest point of the picture's edge (from the coarse grid, smoothly interpolated), faded with the distance from the edge.
+cbuffer Glow : register(b0) { float4 vp; float4 prm; };   // vp = left, top, right, bottom of the picture in pixels; prm = strength, fall-off length in pixels
+Texture2D glowTex : register(t1);
+SamplerState lin : register(s1);
+float4 psbg(VSOut i) : SV_Target {
+    float2 p = i.pos.xy;
+    float2 q = clamp(p, vp.xy, vp.zw);
+    float d = length(p - q);
+    float2 uv = saturate((q - vp.xy) / (vp.zw - vp.xy));
+    float3 c = glowTex.Sample(lin, uv).rgb;
+    float a = prm.x * exp(-d / prm.y);
+    float n = frac(sin(dot(p, float2(12.9898, 78.233))) * 43758.5453) - 0.5;   // 1/255 of noise: the slow fade does not show steps
+    return float4(saturate(c * a + n / 255.0), 1.0);
+}
 )";
 
 }  // namespace
@@ -40,12 +57,15 @@ struct D3dRenderer::Impl {
     ComPtr<ID3D11Texture2D> picture;
     ComPtr<ID3D11ShaderResourceView> pictureView;
     ComPtr<ID3D11VertexShader> vs;
-    ComPtr<ID3D11PixelShader> ps;
+    ComPtr<ID3D11PixelShader> ps, psBackground;
+    ComPtr<ID3D11Texture2D> glow;
+    ComPtr<ID3D11ShaderResourceView> glowView;
+    ComPtr<ID3D11SamplerState> linear;
+    ComPtr<ID3D11Buffer> glowConstants;
     ComPtr<ID3D11SamplerState> sampler;
     ComPtr<ID3D11RasterizerState> raster;
     ComPtr<ID3D11Texture2D> staging;
     bool warp = false;
-    Background background = Background::Black;
     int w = 0, h = 0;
 
     bool makeTarget() {
@@ -77,7 +97,6 @@ struct D3dRenderer::Impl {
 D3dRenderer::D3dRenderer() : d_(std::make_unique<Impl>()) {}
 D3dRenderer::~D3dRenderer() = default;
 
-void D3dRenderer::setBackground(Background b) { d_->background = b; }
 bool D3dRenderer::software() const noexcept { return d_->warp; }
 int D3dRenderer::width() const noexcept { return d_->w; }
 int D3dRenderer::height() const noexcept { return d_->h; }
@@ -109,6 +128,9 @@ bool D3dRenderer::init(HWND hwnd) {
     if (FAILED(D3DCompile(kShader, std::strlen(kShader), nullptr, nullptr, nullptr, "ps", "ps_4_0", 0, 0, &psBlob, &err))) return false;
     if (FAILED(d.device->CreateVertexShader(vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), nullptr, &d.vs))) return false;
     if (FAILED(d.device->CreatePixelShader(psBlob->GetBufferPointer(), psBlob->GetBufferSize(), nullptr, &d.ps))) return false;
+    ComPtr<ID3DBlob> bgBlob;
+    if (FAILED(D3DCompile(kShader, std::strlen(kShader), nullptr, nullptr, nullptr, "psbg", "ps_4_0", 0, 0, &bgBlob, &err))) return false;
+    if (FAILED(d.device->CreatePixelShader(bgBlob->GetBufferPointer(), bgBlob->GetBufferSize(), nullptr, &d.psBackground))) return false;
 
     D3D11_TEXTURE2D_DESC td{};
     td.Width = kGameW;
@@ -128,6 +150,20 @@ bool D3dRenderer::init(HWND hwnd) {
     ss.AddressU = ss.AddressV = ss.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
     ss.MaxLOD = D3D11_FLOAT32_MAX;
     if (FAILED(d.device->CreateSamplerState(&ss, &d.sampler))) return false;
+    D3D11_TEXTURE2D_DESC gd = td;   // the coarse colours of the ambient glow
+    gd.Width = kGlowW;
+    gd.Height = kGlowH;
+    if (FAILED(d.device->CreateTexture2D(&gd, nullptr, &d.glow))) return false;
+    if (FAILED(d.device->CreateShaderResourceView(d.glow.Get(), nullptr, &d.glowView))) return false;
+    D3D11_SAMPLER_DESC ls = ss;
+    ls.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;   // smooth between the cells
+    if (FAILED(d.device->CreateSamplerState(&ls, &d.linear))) return false;
+    D3D11_BUFFER_DESC cb{};
+    cb.ByteWidth = 32;
+    cb.Usage = D3D11_USAGE_DYNAMIC;
+    cb.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    cb.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    if (FAILED(d.device->CreateBuffer(&cb, nullptr, &d.glowConstants))) return false;
     D3D11_RASTERIZER_DESC rs{};
     rs.FillMode = D3D11_FILL_SOLID;
     rs.CullMode = D3D11_CULL_NONE;
@@ -145,7 +181,7 @@ void D3dRenderer::resize(int clientW, int clientH) {
     if (SUCCEEDED(d.swap->ResizeBuffers(0, static_cast<UINT>(clientW), static_cast<UINT>(clientH), DXGI_FORMAT_UNKNOWN, 0))) d.makeTarget();
 }
 
-bool D3dRenderer::draw(const std::uint32_t* argb, const Viewport& vp) {
+bool D3dRenderer::draw(const std::uint32_t* argb, const Viewport& vp, const BackgroundFrame& bg) {
     Impl& d = *d_;
     if (!d.swap || !d.rtv) return false;
     D3D11_MAPPED_SUBRESOURCE m{};
@@ -153,11 +189,39 @@ bool D3dRenderer::draw(const std::uint32_t* argb, const Viewport& vp) {
     for (int y = 0; y < kGameH; ++y) std::memcpy(static_cast<char*>(m.pData) + static_cast<std::size_t>(y) * m.RowPitch, argb + static_cast<std::size_t>(y) * kGameW, kGameW * 4);
     d.context->Unmap(d.picture.Get(), 0);
 
-    const BackgroundFill fill = backgroundFill(d.background);
-    const float black[4] = {fill.r, fill.g, fill.b, 1};
+    const float black[4] = {0, 0, 0, 1};
     ID3D11RenderTargetView* rt = d.rtv.Get();
     d.context->OMSetRenderTargets(1, &rt, nullptr);
     d.context->ClearRenderTargetView(d.rtv.Get(), black);
+    if (bg.kind == Background::AmbientGlow && bg.glowBgra && !vp.empty()) {   // the glow: one pass over the whole window; the picture is drawn over its middle afterwards
+        D3D11_MAPPED_SUBRESOURCE gm{};
+        if (SUCCEEDED(d.context->Map(d.glow.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &gm))) {
+            for (int y = 0; y < kGlowH; ++y) std::memcpy(static_cast<char*>(gm.pData) + static_cast<std::size_t>(y) * gm.RowPitch, bg.glowBgra + static_cast<std::size_t>(y) * kGlowW * 4, kGlowW * 4);
+            d.context->Unmap(d.glow.Get(), 0);
+        }
+        D3D11_MAPPED_SUBRESOURCE cm{};
+        if (SUCCEEDED(d.context->Map(d.glowConstants.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &cm))) {
+            const float strength = 0.25f;                                     // at most a quarter of the cell's colour, right at the picture's edge
+            const float reach = 0.16f * static_cast<float>(std::min(vp.w, vp.h));   // and fading out over about a sixth of the picture's size
+            const float c[8] = {static_cast<float>(vp.x), static_cast<float>(vp.y), static_cast<float>(vp.x + vp.w), static_cast<float>(vp.y + vp.h), strength, reach, 0.0f, 0.0f};
+            std::memcpy(cm.pData, c, sizeof(c));
+            d.context->Unmap(d.glowConstants.Get(), 0);
+        }
+        D3D11_VIEWPORT whole{0.0f, 0.0f, static_cast<float>(d.w), static_cast<float>(d.h), 0.0f, 1.0f};
+        d.context->RSSetViewports(1, &whole);
+        d.context->RSSetState(d.raster.Get());
+        d.context->IASetInputLayout(nullptr);
+        d.context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        d.context->VSSetShader(d.vs.Get(), nullptr, 0);
+        d.context->PSSetShader(d.psBackground.Get(), nullptr, 0);
+        ID3D11Buffer* cbuf = d.glowConstants.Get();
+        d.context->PSSetConstantBuffers(0, 1, &cbuf);
+        ID3D11ShaderResourceView* gsrv = d.glowView.Get();
+        d.context->PSSetShaderResources(1, 1, &gsrv);
+        ID3D11SamplerState* lsmp = d.linear.Get();
+        d.context->PSSetSamplers(1, 1, &lsmp);
+        d.context->Draw(3, 0);
+    }
     if (!vp.empty()) {
         D3D11_VIEWPORT v{static_cast<float>(vp.x), static_cast<float>(vp.y), static_cast<float>(vp.w), static_cast<float>(vp.h), 0.0f, 1.0f};
         d.context->RSSetViewports(1, &v);

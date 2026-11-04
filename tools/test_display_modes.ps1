@@ -57,6 +57,13 @@ Key $h 0x0D
 "Window Borders on again: the title bar is back: " + (HasCaption $h)
 Key $h 0x0D   # off again: this is what the next start must keep
 "off again: " + (-not (HasCaption $h))
+# 2c. Background (TASK-034-7): the Background entry (Down from Window Borders), Right = ambient glow, Left = black, written at once
+Key $h 0x28; Key $h 0x27
+"Background Right: ambient glow, written to the settings at once: " + ((Get-Content $settings -Raw) -match "background=glow")
+Key $h 0x25
+"Background Left: black: " + ((Get-Content $settings -Raw) -match "background=black")
+Key $h 0x27
+"Background Right again: ambient glow (this is what the restart must keep): " + ((Get-Content $settings -Raw) -match "background=glow")
 Key $h 0x1B; Key $h 0x1B   # back to the game
 $null = Start-Sleep -Milliseconds 500
 $text = Get-Content $settings -Raw
@@ -78,6 +85,7 @@ $p = Launch ""
 "restart keeps the frame off (no title bar from the first moment): " + (-not (HasCaption $p.MainWindowHandle))
 Key $p.MainWindowHandle 0x77   # F8
 "F8 brings the title bar back: " + (HasCaption $p.MainWindowHandle)
+"restart kept the ambient glow (the settings file still says so after the program has written it again): " + ((Get-Content $settings -Raw) -match "background=glow")
 Stop-Process -Id $p.Id -Force
 
 # 5. a damaged settings file does not stop the program (defaults: borderless)
