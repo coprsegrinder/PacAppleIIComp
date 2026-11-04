@@ -369,3 +369,37 @@ TEST(gdi_fallback_still_draws_when_direct3d_is_switched_off) {
     }
     _putenv_s("PACMAN_GDI", "");
 }
+
+// A VISIBLE window must stay visible, cover its monitor, and show the picture in full screen and back (the hidden-window test above cannot see this: it found no bug where users saw
+// a black screen with a white block, 2026-11-04).
+TEST(visible_window_full_screen_stays_visible_and_shows_the_picture) {
+    GameWindow w(GameWindowOptions{3, true});
+    CHECK(w.ok());
+    if (!w.ok()) return;
+    const hires::Page page = busyPage();
+    w.setPage(page);
+    pump(100);
+    CHECK(IsWindowVisible(w.hwnd()) != FALSE);
+    w.handleHotkey(VK_F11, false, false);
+    pump(200);
+    CHECK(w.fullscreen());
+    CHECK_MSG(IsWindowVisible(w.hwnd()) != FALSE, "the window is hidden after going full screen");
+    CHECK((GetWindowLongW(w.hwnd(), GWL_STYLE) & WS_VISIBLE) != 0);
+    MONITORINFO mi{};
+    mi.cbSize = sizeof(mi);
+    GetMonitorInfoW(MonitorFromWindow(w.hwnd(), MONITOR_DEFAULTTONEAREST), &mi);
+    RECT r{};
+    GetWindowRect(w.hwnd(), &r);
+    CHECK(r.left == mi.rcMonitor.left && r.top == mi.rcMonitor.top && r.right == mi.rcMonitor.right && r.bottom == mi.rcMonitor.bottom);
+    if (w.usesDirect3d()) {
+        std::vector<std::uint32_t> got;
+        int cw = 0, ch = 0;
+        CHECK(w.captureFrame(got, cw, ch));
+        CHECK(cw == mi.rcMonitor.right - mi.rcMonitor.left && ch == mi.rcMonitor.bottom - mi.rcMonitor.top);
+        CHECK(differences(got, expected(page, cw, ch)) == 0);
+    }
+    w.handleHotkey(VK_F11, false, false);
+    pump(200);
+    CHECK(!w.fullscreen() && IsWindowVisible(w.hwnd()) != FALSE);
+    CHECK(clientSize(w.hwnd()).cx == 840 && clientSize(w.hwnd()).cy == 576);
+}
