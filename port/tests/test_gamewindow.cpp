@@ -3403,22 +3403,24 @@ TEST(monochrome_text_lores_and_other_pictures_make_their_dots) {
     CHECK(lit == 2 && dotAt(dots, 6, 7) == 1);
 }
 
-TEST(monochrome_softness_phosphor_and_the_two_sizes_of_the_picture) {
+TEST(monochrome_has_no_softness_and_the_phosphor_and_the_two_sizes_of_the_picture) {
     std::vector<std::uint8_t> dots(static_cast<std::size_t>(video::kDotsW) * video::kDotsH, 0), level(dots.size());
-    // a lone dot (two positions): reaches three quarters of full, spreads one position each side; a solid run stays full inside; black stays black
+    // no softness: a position is fully lit or dark, whatever is next to it (the softness of a tube is the CRT filter's business)
     dots[10] = 1;
     dots[11] = 1;
     for (int p = 100; p < 120; ++p) dots[static_cast<std::size_t>(p)] = 1;
-    for (int p = 200; p < 600 && p < 560; p += 4) {   // a dotted line: two on, two off
+    for (int p = 200; p < 560; p += 4) {   // a dotted line: two on, two off
         dots[static_cast<std::size_t>(p)] = 1;
         dots[static_cast<std::size_t>(p + 1)] = 1;
     }
-    video::softenDots(dots, level);
-    std::printf("    a lone dot: %d %d %d %d of 255; inside a solid run %d; a dotted line alternates %d / %d\n", level[9], level[10], level[11], level[12], level[110], level[200], level[202]);
-    CHECK(level[9] == 64 && level[10] == 191 && level[11] == 191 && level[12] == 64);
-    CHECK(level[110] == 255 && level[99] == 64 && level[120] == 64);
-    CHECK(level[150] == 0 && level[50] == 0);
-    CHECK(level[201] > 150 && level[203] < 100 && level[201] - level[203] > 90);   // the gaps of a dotted line stay visible (the maze walls)
+    video::levelsFromDots(dots, level);
+    std::printf("    a lone dot: %d %d %d %d of 255; a dotted line alternates %d %d %d %d\n", level[9], level[10], level[11], level[12], level[200], level[201], level[202], level[203]);
+    CHECK(level[9] == 0 && level[10] == 255 && level[11] == 255 && level[12] == 0);
+    CHECK(level[99] == 0 && level[100] == 255 && level[119] == 255 && level[120] == 0);
+    CHECK(level[200] == 255 && level[201] == 255 && level[202] == 0 && level[203] == 0 && level[204] == 255);
+    std::size_t between = 0;
+    for (auto v : level) between += v != 0 && v != 255;
+    CHECK(between == 0);   // only black and full: nothing in between
     // the phosphor: green, black exactly black, brightness follows the level
     CHECK(video::phosphorArgb(0) == 0xFF000000u);
     const std::uint32_t full = video::phosphorArgb(255), half = video::phosphorArgb(128);
@@ -3455,10 +3457,10 @@ TEST(native_black_and_white_in_the_window_is_the_green_dot_picture_and_original_
         std::printf("    (scale %d is odd: the exact comparison needs an even scale; skipped)\n", vp.scale);
         return;
     }
-    // the expected picture, computed independently from the dots: positions, softness, phosphor, nearest neighbour at 2 screen pixels per position (scale 4) or scale/2 in general
+    // the expected picture, computed independently from the dots: positions, phosphor, nearest neighbour at 2 screen pixels per position (scale 4) or scale/2 in general
     const auto dots = dotsOf(page);
     std::vector<std::uint8_t> level(dots.size());
-    video::softenDots(dots, level);
+    video::levelsFromDots(dots, level);
     std::size_t bad = 0, litPixels = 0;
     for (int y = 0; y < vp.h; ++y)
         for (int x = 0; x < vp.w; ++x) {
@@ -3680,4 +3682,112 @@ TEST(colour_mode_changes_while_the_game_runs_leave_the_game_and_its_clock_untouc
     std::printf("    %d colour mode changes in 0.8 s; cycles handed out %lld, exact %lld, skipped %lld\n", changes, static_cast<long long>(handed), static_cast<long long>(exact), static_cast<long long>(clock.skipped()));
     CHECK(changes >= 10);
     CHECK(handed == exact && clock.skipped() == 0);
+}
+
+// ---- TASK-034-8 addition: the Apple II desktop follows Native Black & White ----
+TEST(desktop_art_in_native_black_and_white_is_the_phosphors_green_and_the_bezel_keeps_its_plastic) {
+    core::CharacterRom rom;
+    const bool haveFont = loadFont(rom);
+    const auto build = [&](Background kind, bool mono) {
+        Art a;
+        a.w = 1920;
+        a.h = 1080;
+        a.vp = app::computeViewportFor(kind, a.w, a.h);
+        app::ArtInput in;
+        in.kind = kind;
+        in.width = a.w;
+        in.height = a.h;
+        in.viewport = a.vp;
+        in.font = haveFont ? &rom : nullptr;
+        in.monochrome = mono;
+        CHECK(app::renderBackgroundArt(in, a.px));
+        return a;
+    };
+    const Art colour = build(Background::Desktop, false), mono = build(Background::Desktop, true);
+    std::size_t offHue = 0, differs = 0, colourful = 0;
+    for (std::size_t i = 0; i < mono.px.size(); ++i) {
+        const std::uint32_t p = mono.px[i], c = colour.px[i];
+        offHue += !(redOf(p) <= greenOf(p) && blueOf(p) <= greenOf(p) && redOf(p) * 3 <= greenOf(p) + 2);
+        differs += p != c;
+        colourful += !(redOf(c) == greenOf(c) && greenOf(c) == blueOf(c));
+    }
+    std::printf("    desktop art: %zu of %zu pixels are not a shade of the phosphor's green in Native Black & White (colour version: %zu coloured pixels)\n", offHue, mono.px.size(), colourful);
+    CHECK(offHue == 0 && colourful > mono.px.size() / 2);   // the colour desktop is blue-grey; the mono one is green only
+    CHECK(differs > mono.px.size() / 2);
+    // the same structure: where the colour version is bright the mono one is bright, where dark, dark (the menu bar, the window's paper, the black outline, the pattern in between)
+    const int bar = 2, paperX = mono.vp.x - 2 * mono.vp.scale, paperY = mono.vp.y + mono.vp.h / 2;
+    CHECK(greenOf(mono.at(100, bar)) > 230 && greenOf(mono.at(paperX, paperY)) > 230);   // the menu bar and the window's frame: full green
+    const int pattern = greenOf(mono.at(5, 1000));
+    CHECK(pattern > 60 && pattern < 200);                                                  // the desktop pattern: a mid green
+    CHECK(mono.at(mono.vp.x, mono.vp.y) == 0xFF000000u);                                   // under the picture: still never shown
+    if (haveFont) {   // the menu words and the title are dark on the bright bar
+        int dark = 0;
+        for (int x = 0; x < 400; ++x) dark += greenOf(mono.at(x, 14)) < 60;
+        CHECK(dark > 20);
+    }
+    // the bezel is a physical monitor: its plastic stays beige in Native Black & White
+    const Art bezelColour = build(Background::CrtBezel, false), bezelMono = build(Background::CrtBezel, true);
+    CHECK(bezelColour.px == bezelMono.px);
+}
+
+TEST(desktop_in_the_window_follows_native_black_and_white_everywhere_and_the_game_picture_is_unchanged_by_it) {
+    core::CharacterRom rom;
+    const bool haveFont = loadFont(rom);
+    GameWindow w(GameWindowOptions{3, true});
+    CHECK(w.ok());
+    if (!w.ok() || !w.usesDirect3d()) return;
+    if (haveFont) w.setMenuFont(rom);
+    const hires::Page page = busyPage();
+    w.setPage(page);
+    setClient(w.hwnd(), 1920, 1080);
+    pump(40);
+    w.setBackground(Background::Desktop);
+    std::vector<std::uint32_t> colourShot, monoShot, backShot;
+    int cw = 0, ch = 0;
+    CHECK(w.captureFrame(colourShot, cw, ch));
+    w.setColourMode(ColourMode::NativeMono);
+    CHECK(w.captureFrame(monoShot, cw, ch));
+    // the whole window (the desktop, the menu bar, the window frame and the picture) is the one green
+    std::size_t offHue = 0, lit = 0;
+    for (int y = 0; y < ch; y += 2)
+        for (int x = 0; x < cw; x += 2) {
+            const std::uint32_t p = at(monoShot, cw, x, y);
+            offHue += !(redOf(p) <= greenOf(p) && blueOf(p) <= greenOf(p));
+            lit += greenOf(p) > 0;
+        }
+    std::printf("    desktop + Native Black & White: %zu sampled pixels of the whole window are not green (lit: %zu)\n", offHue, lit);
+    CHECK(offHue == 0 && lit > 100000);
+    // the picture inside is the dot picture (scale 4: two screen pixels per position), exactly
+    const app::Viewport vp = w.renderInfo().viewport;
+    CHECK(vp.scale == 4);
+    std::vector<std::uint8_t> dots(static_cast<std::size_t>(video::kDotsW) * video::kDotsH), level(dots.size());
+    video::hiresDots(page, dots);
+    video::levelsFromDots(dots, level);
+    std::size_t bad = 0;
+    for (int y = 0; y < vp.h; ++y)
+        for (int x = 0; x < vp.w; ++x) bad += at(monoShot, cw, vp.x + x, vp.y + y) != (video::phosphorArgb(level[static_cast<std::size_t>(y / 4) * 560 + static_cast<std::size_t>(x / 2)]) & 0xFFFFFF);
+    CHECK(bad == 0);
+    // with the desktop window moved, the frame (in green) moves with it
+    dragBy(w.hwnd(), vp.x + vp.w / 2, vp.y - 6 * vp.scale, 80, 30);
+    CHECK(w.captureFrame(monoShot, cw, ch));
+    const app::Viewport moved = w.renderInfo().viewport;
+    CHECK(moved.x == vp.x + 80 && moved.y == vp.y + 30);
+    offHue = 0;
+    for (int y = 0; y < ch; y += 3)
+        for (int x = 0; x < cw; x += 3) {
+            const std::uint32_t p = at(monoShot, cw, x, y);
+            offHue += !(redOf(p) <= greenOf(p) && blueOf(p) <= greenOf(p));
+        }
+    CHECK(offHue == 0);
+    // back to Original Colour: the colour desktop again (blue-grey), exactly as before
+    w.setDesktopState(FrameState{});
+    w.setColourMode(ColourMode::Original);
+    CHECK(w.captureFrame(backShot, cw, ch) && backShot == colourShot);
+    // the bezel stays plastic in Native Black & White; only the picture is green
+    w.setBackground(Background::CrtBezel);
+    w.setColourMode(ColourMode::NativeMono);
+    CHECK(w.captureFrame(monoShot, cw, ch));
+    const app::Viewport bv = w.renderInfo().viewport;
+    const std::uint32_t plastic = at(monoShot, cw, bv.x - 9 * bv.scale, bv.y + bv.h / 2);
+    CHECK(redOf(plastic) > blueOf(plastic) + 8 && redOf(plastic) > 120);   // warm beige, not green
 }

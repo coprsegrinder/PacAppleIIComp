@@ -72,13 +72,9 @@ void argbDots(std::span<const std::uint32_t> argb, std::span<std::uint8_t> dots)
         }
 }
 
-void softenDots(std::span<const std::uint8_t> dots, std::span<std::uint8_t> level) noexcept {
+void levelsFromDots(std::span<const std::uint8_t> dots, std::span<std::uint8_t> level) noexcept {
     if (!enough(dots.size()) || !enough(level.size())) return;
-    for (int y = 0; y < kDotsH; ++y)
-        for (int x = 0; x < kDotsW; ++x) {
-            const int left = x > 0 ? dots[at(x - 1, y)] : 0, mid = dots[at(x, y)], right = x + 1 < kDotsW ? dots[at(x + 1, y)] : 0;
-            level[at(x, y)] = static_cast<std::uint8_t>(std::lround((0.25 * left + 0.5 * mid + 0.25 * right) * 255.0));
-        }
+    for (std::size_t i = 0; i < static_cast<std::size_t>(kDotsW) * kDotsH; ++i) level[i] = dots[i] ? 255 : 0;
 }
 
 std::uint32_t phosphorArgb(std::uint8_t level) noexcept {

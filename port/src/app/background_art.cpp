@@ -4,6 +4,7 @@
 #include <cmath>
 #include <string>
 
+#include "../video/monochrome.h"
 #include "framed_layout.h"
 
 namespace pacman::app {
@@ -243,8 +244,16 @@ void drawDesktop(const ArtInput& in, std::vector<std::uint32_t>& out) {
 bool renderBackgroundArt(const ArtInput& in, std::vector<std::uint32_t>& argb) {
     if (in.width <= 0 || in.height <= 0 || in.viewport.empty() || !hasFrame(in.kind)) return false;
     argb.assign(static_cast<std::size_t>(in.width) * static_cast<std::size_t>(in.height), 0xFF000000u);
-    if (in.kind == Background::CrtBezel) drawBezel(in, argb);
-    else drawDesktop(in, argb);
+    if (in.kind == Background::CrtBezel) {
+        drawBezel(in, argb);
+    } else {
+        drawDesktop(in, argb);
+        if (in.monochrome)   // on a monochrome monitor the desktop is lit dots too: every pixel becomes the phosphor at the brightness of its colour
+            for (std::uint32_t& p : argb) {
+                const float lum = (0.30f * static_cast<float>((p >> 16) & 0xFF) + 0.59f * static_cast<float>((p >> 8) & 0xFF) + 0.11f * static_cast<float>(p & 0xFF)) / 255.0f;
+                p = video::phosphorArgb(static_cast<std::uint8_t>(std::lround(clamp01(lum) * 255.0f)));
+            }
+    }
     return true;
 }
 

@@ -155,6 +155,7 @@ private:
         Background kind = Background::Black;
         int width = 0, height = 0, x = 0, y = 0, scale = 0;
         bool font = false;
+        bool mono = false;
         bool operator==(const ArtKey&) const = default;
     };
     ArtKey artKey_;                           // what the cached art image was drawn for

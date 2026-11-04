@@ -19,6 +19,7 @@ struct ArtInput {
     int width = 0, height = 0;                // the window's client area in pixels
     Viewport viewport;                        // where the game picture sits (framed_layout.h)
     const core::CharacterRom* font = nullptr; // for the desktop's words; without it the words are left out
+    bool monochrome = false;                  // Native Black & White: the desktop is drawn in the shades of the phosphor's green (the bezel is a physical monitor and keeps its plastic)
 };
 
 // Fills `argb` (width x height). Returns false for a kind that has no art or an empty size.

@@ -536,7 +536,7 @@ void GameWindow::currentPixels(std::uint32_t* out, double glowDtSeconds) {
             if (image) video::argbDots(pixels, dots);
             else video::hiresDots(copy, dots);
         }
-        video::softenDots(dots, level);
+        video::levelsFromDots(dots, level);
         mono560_.resize(level.size());
         video::phosphorImage(level, mono560_);
         video::phosphorImage280(level, pixels);   // the normal-size picture of the same thing, for the glow and the frame's edge colours
@@ -646,7 +646,8 @@ D3dRenderer::BackgroundFrame GameWindow::backgroundFrame(int cw, int ch, const V
     bf.backdropBgra = glow_.backdropBytes().data();
     bf.edgeBgra = glow_.edgeBytes().data();
     if (hasFrame(background_) && !vp.empty()) {   // the bezel / desktop picture: drawn again only when the window, the picture's place or the font changed
-        const ArtKey key{background_, cw, ch, vp.x, vp.y, vp.scale, font_.loaded};
+        const bool monoDesktop = colour_ == ColourMode::NativeMono && background_ == Background::Desktop;   // the bezel is a plastic monitor: it stays as it is
+        const ArtKey key{background_, cw, ch, vp.x, vp.y, vp.scale, font_.loaded, monoDesktop};
         if (!(key == artKey_)) {
             ArtInput in;
             in.kind = background_;
@@ -654,6 +655,7 @@ D3dRenderer::BackgroundFrame GameWindow::backgroundFrame(int cw, int ch, const V
             in.height = ch;
             in.viewport = vp;
             in.font = font_.loaded ? &font_ : nullptr;
+            in.monochrome = monoDesktop;
             if (renderBackgroundArt(in, art_)) {
                 artKey_ = key;
                 ++artVersion_;
