@@ -200,6 +200,67 @@ void GameWindow::setBackground(Background b) {
     saveSettings();
 }
 
+void GameWindow::setDesktopState(const FrameState& st) {
+    desk_ = st;
+    settings_.desktopScale = st.scale;
+    settings_.desktopX = st.offX;
+    settings_.desktopY = st.offY;
+    if (hwnd_) InvalidateRect(hwnd_, nullptr, FALSE);
+    saveSettings();
+}
+
+bool GameWindow::deskMouse(UINT msg, WPARAM /*wp*/, LPARAM lp) {
+    if (background_ != Background::Desktop || !hwnd_) return false;
+    RECT rc{};
+    GetClientRect(hwnd_, &rc);
+    const int cw = static_cast<int>(rc.right), ch = static_cast<int>(rc.bottom);
+    const int mx = GET_X_LPARAM(lp), my = GET_Y_LPARAM(lp);
+    const Viewport vp = viewportFor(cw, ch);
+    if (vp.scale < 1) return false;
+    if (msg == WM_LBUTTONDOWN) {
+        const DeskHit hit = desktopHit(vp, mx, my, menu_.open());
+        if (hit == DeskHit::None) return false;
+        if (hit == DeskHit::Zoom) {   // fit to the largest size, centred
+            FrameState st;
+            setDesktopState(st);
+            return true;
+        }
+        dragKind_ = hit;
+        dragFrom_ = POINT{mx, my};
+        dragStart_ = vp;
+        SetCapture(hwnd_);
+        return true;
+    }
+    if (dragKind_ == DeskHit::None) return false;
+    if (msg == WM_MOUSEMOVE) {
+        const int fit = framedMaxScale(Background::Desktop, cw, ch);
+        if (dragKind_ == DeskHit::Move) {   // the picture's top left follows the mouse
+            const int s = dragStart_.scale;
+            desk_ = desktopStateFor(cw, ch, s, dragStart_.x + (mx - dragFrom_.x), dragStart_.y + (my - dragFrom_.y), desk_.scale);
+            if (desk_.scale == 0 && s < fit) desk_.scale = s;
+        } else {   // resize: the nearest whole scale for the mouse, the top left stays where it is
+            const double wantW = static_cast<double>(dragStart_.w + (mx - dragFrom_.x)) / kGameW, wantH = static_cast<double>(dragStart_.h + (my - dragFrom_.y)) / kGameH;
+            const int s = std::clamp(static_cast<int>(std::lround((wantW + wantH) / 2.0)), 1, std::max(1, fit));
+            desk_ = desktopStateFor(cw, ch, s, dragStart_.x, dragStart_.y, s >= fit ? 0 : s);
+        }
+        settings_.desktopScale = desk_.scale;
+        settings_.desktopX = desk_.offX;
+        settings_.desktopY = desk_.offY;
+        InvalidateRect(hwnd_, nullptr, FALSE);
+        return true;
+    }
+    if (msg == WM_LBUTTONUP) {
+        dragKind_ = DeskHit::None;
+        ReleaseCapture();
+        // the window's place as it has really been drawn (kept inside the window), written to the settings
+        const Viewport now = viewportFor(cw, ch);
+        desk_ = desktopStateFor(cw, ch, now.scale, now.x, now.y, desk_.scale);
+        setDesktopState(desk_);
+        return true;
+    }
+    return false;
+}
+
 void GameWindow::cycleBackground(int dir) { setBackground(nextBackground(background_, dir)); }
 
 void GameWindow::applyWindowedSize() {
@@ -240,6 +301,9 @@ const Settings& GameWindow::settings() {
     settings_.displayMode = wantedMode_;
     settings_.windowBorders = borders_;
     settings_.background = background_;
+    settings_.desktopScale = desk_.scale;
+    settings_.desktopX = desk_.offX;
+    settings_.desktopY = desk_.offY;
     rememberWindowRect();
     return settings_;
 }
@@ -328,6 +392,9 @@ void GameWindow::attachSettings(SettingsStore* store, const Settings& initial) {
     settings_ = initial;
     wantedMode_ = initial.displayMode;
     background_ = initial.background;
+    desk_.scale = initial.desktopScale;
+    desk_.offX = initial.desktopX;
+    desk_.offY = initial.desktopY;
     if (!hwnd_) return;
     // the frame setting and the window as the user left it
     if (!initial.windowBorders) {
@@ -630,6 +697,13 @@ LRESULT GameWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
     case WM_NCHITTEST:
         if (!borders_ && !fullscreen_) {
             const LRESULT h = hitTest(lp);
+            if (h == HTCAPTION && background_ == Background::Desktop) {   // the desktop's own window takes the mouse (moving and resizing it); the bare desktop moves the program's window
+                RECT cr{};
+                GetClientRect(hwnd_, &cr);
+                POINT pt{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
+                ScreenToClient(hwnd_, &pt);
+                if (desktopHit(viewportFor(static_cast<int>(cr.right), static_cast<int>(cr.bottom)), pt.x, pt.y, menuOpen_.load()) != DeskHit::None) return HTCLIENT;
+            }
             return (h == HTCAPTION && menuOpen_.load()) ? HTCLIENT : h;   // the picture moves the window, except while the menu needs the mouse
         }
         break;
@@ -639,9 +713,18 @@ LRESULT GameWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
             return TRUE;
         }
         break;
+    case WM_LBUTTONUP:
+    case WM_CAPTURECHANGED:
+        if (msg == WM_CAPTURECHANGED) {   // something took the mouse away: the drag ends where it is
+            dragKind_ = DeskHit::None;
+            return 0;
+        }
+        if (deskMouse(msg, wp, lp)) return 0;
+        break;
     case WM_MOUSEMOVE:
     case WM_LBUTTONDOWN:
     case WM_MOUSEWHEEL:
+        if (msg != WM_MOUSEWHEEL && deskMouse(msg, wp, lp)) return 0;   // a drag or resize of the desktop window, or a click on its zoom box
         if (menu_.open()) {
             int px = -1, py = -1;
             if (msg == WM_MOUSEWHEEL) {

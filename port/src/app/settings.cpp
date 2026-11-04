@@ -97,6 +97,11 @@ std::string SettingsStore::format(const Settings& s) {
     o << "display_mode=" << displayModeKey(s.displayMode) << "\n";
     o << "window_borders=" << (s.windowBorders ? 1 : 0) << "\n";
     o << "background=" << backgroundKey(s.background) << "\n";
+    if (s.desktopScale != 0 || s.desktopX != 0.0f || s.desktopY != 0.0f) {
+        char buf[64];
+        std::snprintf(buf, sizeof(buf), "desktop_x=%.2f\ndesktop_y=%.2f\n", static_cast<double>(s.desktopX), static_cast<double>(s.desktopY));
+        o << "desktop_scale=" << s.desktopScale << "\n" << buf;
+    }
     if (s.hasWindowRect) {
         o << "window_x=" << s.windowX << "\n";
         o << "window_y=" << s.windowY << "\n";
@@ -130,6 +135,13 @@ Settings SettingsStore::parse(const std::string& text) {
         } else if (key == "background") {
             Background bg;
             if (parseBackground(value, bg)) s.background = bg;
+        } else if (key == "desktop_scale") {
+            int n;
+            if (parseInt(value, n) && n >= 0 && n <= 64) s.desktopScale = n;
+        } else if (key == "desktop_x" || key == "desktop_y") {
+            char* end = nullptr;
+            const double d = std::strtod(value.c_str(), &end);
+            if (end != value.c_str() && *end == 0 && d > -2000.0 && d < 2000.0) (key == "desktop_x" ? s.desktopX : s.desktopY) = static_cast<float>(d);
         } else if (key == "window_x") {
             haveX = parseInt(value, x);
         } else if (key == "window_y") {

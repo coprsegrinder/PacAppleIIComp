@@ -224,6 +224,13 @@ void drawDesktop(const ArtInput& in, std::vector<std::uint32_t>& out) {
         fillRect(out, W, H, bx + o, by + o, bx + bs - o, by + bs - o, paper);
         if (box == 1) fillRect(out, W, H, bx + 2 * o, by + 2 * o, bx + bs / 2 + o, by + bs / 2 + o, ink);
     }
+    {   // the grow box in the lower right corner of the frame: two squares, drag it to resize the window
+        const DeskRect g = desktopGrowBox(vp);
+        const int a = g.x0 + S / 2, b = g.y0 + S / 2;
+        fillRect(out, W, H, a, b, a + 2 * S, b + 2 * S, ink);
+        fillRect(out, W, H, a + o, b + o, a + 2 * S - o, b + 2 * S - o, paper);
+        fillRect(out, W, H, a + S, b + S, a + 2 * S - o, b + 2 * S - o, ink);
+    }
     fillRect(out, W, H, vp.x - o, vp.y - o, vp.x + vp.w + o, vp.y, ink);                 // the thin black line around the picture
     fillRect(out, W, H, vp.x - o, vp.y + vp.h, vp.x + vp.w + o, vp.y + vp.h + o, ink);
     fillRect(out, W, H, vp.x - o, vp.y, vp.x, vp.y + vp.h, ink);

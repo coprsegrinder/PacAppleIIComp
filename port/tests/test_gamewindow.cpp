@@ -2894,3 +2894,376 @@ TEST(framed_backgrounds_in_the_window_leave_the_picture_exact_and_the_frame_arou
     const Extents a16 = housingExtents(ref), a21 = housingExtents(wideShot);
     CHECK(a21.right - a21.left == a16.right - a16.left && a21.bottom - a21.top == a16.bottom - a16.top);
 }
+
+// ---- TASK-034-7: the Apple II desktop's window can be moved and resized ----
+namespace {
+
+using app::DeskHit;
+using app::FrameState;
+
+void mouse(HWND h, UINT msg, int x, int y, WPARAM wp = 0) { SendMessageW(h, msg, wp, MAKELPARAM(static_cast<short>(x), static_cast<short>(y))); }
+
+void dragBy(HWND h, int fromX, int fromY, int dx, int dy, int steps = 5) {
+    mouse(h, WM_LBUTTONDOWN, fromX, fromY, MK_LBUTTON);
+    for (int i = 1; i <= steps; ++i) mouse(h, WM_MOUSEMOVE, fromX + dx * i / steps, fromY + dy * i / steps, MK_LBUTTON);
+    mouse(h, WM_LBUTTONUP, fromX + dx, fromY + dy);
+}
+
+// the picture and the frame of a captured frame are exactly what they must be at the window's present place
+void checkDesktopFrame(GameWindow& w, const hires::Page& page, const core::CharacterRom* rom) {
+    std::vector<std::uint32_t> got;
+    int cw = 0, ch = 0;
+    CHECK(w.captureFrame(got, cw, ch));
+    const app::Viewport vp = w.renderInfo().viewport;
+    std::array<std::uint32_t, 280 * 192> game{};
+    video::renderArgb(page, game);
+    std::size_t bad = 0;
+    for (int y = 0; y < vp.h; ++y)
+        for (int x = 0; x < vp.w; ++x) bad += at(got, cw, vp.x + x, vp.y + y) != (game[static_cast<std::size_t>(y / vp.scale) * 280 + static_cast<std::size_t>(x / vp.scale)] & 0xFFFFFF);
+    CHECK(bad == 0);
+    std::vector<std::uint32_t> art;
+    app::ArtInput in;
+    in.kind = Background::Desktop;
+    in.width = cw;
+    in.height = ch;
+    in.viewport = vp;
+    in.font = rom && rom->loaded ? rom : nullptr;
+    CHECK(app::renderBackgroundArt(in, art));
+    std::size_t artBad = 0;
+    for (int y = 0; y < ch; ++y)
+        for (int x = 0; x < cw; ++x)
+            if (!(x >= vp.x && x < vp.x + vp.w && y >= vp.y && y < vp.y + vp.h)) artBad += at(got, cw, x, y) != (art[static_cast<std::size_t>(y) * static_cast<std::size_t>(cw) + static_cast<std::size_t>(x)] & 0xFFFFFF);
+    CHECK(artBad == 0);
+}
+
+}  // namespace
+
+TEST(desktop_window_layout_state_moves_resizes_and_stays_inside_the_window) {
+    const int cw = 1920, ch = 1080;
+    const app::Viewport home = app::computeViewportFor(Background::Desktop, cw, ch);
+    CHECK(home.scale == 4 && home.x == 400 && home.y == 188);                                    // the default: the largest scale, centred
+    CHECK(app::computeViewportFor(Background::Desktop, cw, ch, FrameState{}).x == home.x);
+    // a chosen offset moves the picture by that many game pixels
+    FrameState st;
+    st.offX = 10.0f;
+    st.offY = -5.0f;
+    const app::Viewport moved = app::computeViewportFor(Background::Desktop, cw, ch, st);
+    CHECK(moved.scale == 4 && moved.x == home.x + 40 && moved.y == home.y - 20);
+    // however far it is pushed, the whole desktop window stays in the window and below the menu bar
+    for (const float farX : {-5000.0f, 5000.0f})
+        for (const float farY : {-5000.0f, 5000.0f}) {
+            FrameState f;
+            f.offX = farX;
+            f.offY = farY;
+            const app::Viewport v = app::computeViewportFor(Background::Desktop, cw, ch, f);
+            const app::DeskRect win = app::desktopWindowRect(v);
+            CHECK(win.x0 >= 0 && win.x1 <= cw && win.y1 <= ch && win.y0 >= 8 * v.scale);
+        }
+    // a chosen smaller scale is used; a larger one than fits is the largest that fits
+    FrameState shrunk;
+    shrunk.scale = 2;
+    CHECK(app::computeViewportFor(Background::Desktop, cw, ch, shrunk).scale == 2);
+    FrameState huge;
+    huge.scale = 9;
+    CHECK(app::computeViewportFor(Background::Desktop, cw, ch, huge).scale == 4);
+    CHECK(app::computeViewportFor(Background::Desktop, 1280, 720, shrunk).scale == 2 && app::computeViewportFor(Background::Desktop, 1000, 400, shrunk).scale == 1);   // the window got smaller than the chosen scale allows
+    // the state for a wanted place gives that place back
+    const FrameState want = app::desktopStateFor(cw, ch, 3, 600, 300, 3);
+    const app::Viewport at3 = app::computeViewportFor(Background::Desktop, cw, ch, want);
+    CHECK(at3.scale == 3 && at3.x == 600 && at3.y == 300);
+    // only the desktop uses it
+    CHECK(app::computeViewportFor(Background::CrtBezel, cw, ch, st).x == app::computeViewportFor(Background::CrtBezel, cw, ch).x);
+    CHECK(app::computeViewportFor(Background::Black, cw, ch, st).x == app::computeViewport(cw, ch).x);
+    // where the mouse does what
+    const app::Viewport v = home;
+    const int S = v.scale;
+    const app::DeskRect win = app::desktopWindowRect(v);
+    CHECK(app::desktopHit(v, win.x0 + 1, win.y0 + 1, false) == DeskHit::Move);                                    // frame
+    CHECK(app::desktopHit(v, v.x + v.w / 2, v.y - 6 * S, false) == DeskHit::Move);                                // title bar
+    CHECK(app::desktopHit(v, v.x + v.w / 2, v.y + v.h / 2, false) == DeskHit::Move);                              // the picture, menu closed
+    CHECK(app::desktopHit(v, v.x + v.w / 2, v.y + v.h / 2, true) == DeskHit::None);                               // the picture, menu open: the menu's
+    CHECK(app::desktopHit(v, v.x + v.w / 2, v.y - 6 * S, true) == DeskHit::Move);                                 // the title bar still moves it with the menu open
+    const app::DeskRect zoom = app::desktopZoomBox(v);
+    CHECK(app::desktopHit(v, (zoom.x0 + zoom.x1) / 2, (zoom.y0 + zoom.y1) / 2, false) == DeskHit::Zoom);
+    const app::DeskRect grow = app::desktopGrowBox(v);
+    CHECK(app::desktopHit(v, (grow.x0 + grow.x1) / 2, (grow.y0 + grow.y1) / 2, false) == DeskHit::Grow && app::desktopHit(v, (grow.x0 + grow.x1) / 2, (grow.y0 + grow.y1) / 2, true) == DeskHit::Grow);
+    CHECK(app::desktopHit(v, v.x + v.w - 2, v.y + v.h - 2, false) == DeskHit::Grow);   // the corner of the picture helps to grab it ...
+    CHECK(app::desktopHit(v, v.x + v.w - 2, v.y + v.h - 2, true) == DeskHit::None);    // ... but not while the menu has the picture
+    CHECK(app::desktopHit(v, 5, 500, false) == DeskHit::None && app::desktopHit(v, win.x1 + 2, win.y0 + 5 * S, false) == DeskHit::None);   // the bare desktop
+    CHECK(app::desktopHit(app::computeViewport(200, 140), 50, 50, false) == DeskHit::None);   // no frame, nothing to grab
+}
+
+TEST(desktop_window_is_dragged_by_its_title_bar_frame_and_picture_and_the_frame_follows) {
+    core::CharacterRom rom;
+    const bool haveFont = loadFont(rom);
+    GameWindow w(GameWindowOptions{3, true});
+    CHECK(w.ok());
+    if (!w.ok() || !w.usesDirect3d()) return;
+    if (haveFont) w.setMenuFont(rom);
+    const hires::Page page = busyPage();
+    w.setPage(page);
+    setClient(w.hwnd(), 1920, 1080);
+    pump(40);
+    w.setBackground(Background::Desktop);
+    const HWND h = w.hwnd();
+    const app::Viewport home = w.renderInfo().viewport;
+    const int S = home.scale;
+    CHECK(S == 4);
+    // the title bar
+    dragBy(h, home.x + home.w / 2, home.y - 6 * S, 120, 40);
+    app::Viewport v = w.renderInfo().viewport;
+    std::printf("    dragged the title bar by 120, 40: the picture moved by %d, %d\n", v.x - home.x, v.y - home.y);
+    CHECK(v.scale == S && v.x == home.x + 120 && v.y == home.y + 40);
+    checkDesktopFrame(w, page, &rom);   // the picture is still exact and the whole frame was drawn again for the new place
+    // the frame (the window's border), the other way
+    dragBy(h, v.x - 2 * S, v.y + v.h / 2, -300, -20);
+    app::Viewport v2 = w.renderInfo().viewport;
+    CHECK(v2.x == v.x - 300 && v2.y == v.y - 20);
+    // the picture itself, with the menu closed
+    dragBy(h, v2.x + v2.w / 2, v2.y + v2.h / 2, 50, 30);
+    app::Viewport v3 = w.renderInfo().viewport;
+    CHECK(v3.x == v2.x + 50 && v3.y == v2.y + 30);
+    checkDesktopFrame(w, page, &rom);
+    // far beyond the edges: the window stops at the menu bar and the window's edges
+    dragBy(h, v3.x + v3.w / 2, v3.y - 6 * S, -5000, -5000, 10);
+    app::Viewport top = w.renderInfo().viewport;
+    CHECK(top.x - 3 * S >= 0 && top.y - 11 * S >= 8 * S);
+    dragBy(h, top.x + top.w / 2, top.y - 6 * S, 5000, 5000, 10);
+    app::Viewport bottom = w.renderInfo().viewport;
+    CHECK(bottom.x + bottom.w + 3 * S <= 1920 && bottom.y + bottom.h + 3 * S <= 1080);
+    // with the pause menu open the picture belongs to the menu (no drag), the title bar still moves the window
+    SendMessageW(h, WM_KEYDOWN, VK_ESCAPE, 1);
+    CHECK(w.menuOpen());
+    const app::Viewport before = w.renderInfo().viewport;
+    dragBy(h, before.x + before.w / 2, before.y + before.h - 5 * S, 60, 60);   // inside the picture: no entry is there; nothing moves
+    CHECK(w.renderInfo().viewport.x == before.x && w.renderInfo().viewport.y == before.y);
+    dragBy(h, before.x + before.w / 2, before.y - 6 * S, -40, -10);
+    CHECK(w.renderInfo().viewport.x == before.x - 40 && w.renderInfo().viewport.y == before.y - 10);
+    // the menu's mouse mapping follows the window: a click on the menu's first entry at its new place chooses it (Resume closes the menu)
+    const app::Viewport vm = w.renderInfo().viewport;
+    mouse(h, WM_LBUTTONDOWN, vm.x + mainItem(0).x * vm.w / 280, vm.y + mainItem(0).y * vm.h / 192, MK_LBUTTON);
+    mouse(h, WM_LBUTTONUP, vm.x + mainItem(0).x * vm.w / 280, vm.y + mainItem(0).y * vm.h / 192);
+    CHECK(!w.menuOpen());
+    // other backgrounds do not have a window to move: the mouse does nothing to the layout
+    w.setBackground(Background::CrtBezel);
+    const FrameState saved = w.desktopState();
+    const app::Viewport bz = w.renderInfo().viewport;
+    dragBy(h, bz.x + bz.w / 2, bz.y + bz.h / 2, 100, 100);
+    CHECK(w.desktopState() == saved && w.renderInfo().viewport.x == bz.x);
+}
+
+TEST(desktop_window_is_resized_by_its_grow_box_in_whole_scales_and_the_zoom_box_fits_it_again) {
+    core::CharacterRom rom;
+    const bool haveFont = loadFont(rom);
+    GameWindow w(GameWindowOptions{3, true});
+    CHECK(w.ok());
+    if (!w.ok() || !w.usesDirect3d()) return;
+    if (haveFont) w.setMenuFont(rom);
+    const hires::Page page = busyPage();
+    w.setPage(page);
+    setClient(w.hwnd(), 1920, 1080);
+    pump(40);
+    w.setBackground(Background::Desktop);
+    const HWND h = w.hwnd();
+    const app::Viewport home = w.renderInfo().viewport;
+    CHECK(home.scale == 4);
+    // the grow box: a drag up and to the left makes the picture smaller, in whole scales, its top left stays
+    app::DeskRect grow = app::desktopGrowBox(home);
+    const int gx = (grow.x0 + grow.x1) / 2, gy = (grow.y0 + grow.y1) / 2;
+    dragBy(h, gx, gy, -2 * 280 - 20, -2 * 192 - 10);   // about two scales smaller
+    app::Viewport shrunk = w.renderInfo().viewport;
+    std::printf("    grow box dragged up and left: scale %d -> %d, top left %d,%d -> %d,%d\n", home.scale, shrunk.scale, home.x, home.y, shrunk.x, shrunk.y);
+    CHECK(shrunk.scale == 2 && shrunk.w == 560 && shrunk.h == 384);
+    CHECK(shrunk.x == home.x && shrunk.y == home.y);
+    CHECK(w.desktopState().scale == 2);
+    checkDesktopFrame(w, page, &rom);
+    // bigger again: three scales up; it cannot grow past the window, and when it reaches the largest that fits it is "the largest" again
+    grow = app::desktopGrowBox(shrunk);
+    dragBy(h, (grow.x0 + grow.x1) / 2, (grow.y0 + grow.y1) / 2, 3 * 280, 3 * 192);
+    app::Viewport big = w.renderInfo().viewport;
+    CHECK(big.scale == 4 && w.desktopState().scale == 0);
+    CHECK(big.x - 3 * 4 >= 0 && big.x + big.w + 3 * 4 <= 1920 && big.y + big.h + 3 * 4 <= 1080);
+    // one scale smaller by a shrunk drag; the smallest is 1x
+    grow = app::desktopGrowBox(big);
+    dragBy(h, (grow.x0 + grow.x1) / 2, (grow.y0 + grow.y1) / 2, -300, -200);
+    CHECK(w.renderInfo().viewport.scale == 3);
+    grow = app::desktopGrowBox(w.renderInfo().viewport);
+    dragBy(h, (grow.x0 + grow.x1) / 2, (grow.y0 + grow.y1) / 2, -4000, -4000);
+    CHECK(w.renderInfo().viewport.scale == 1);
+    checkDesktopFrame(w, page, &rom);
+    // a window resized by the user (the program's own window) keeps the chosen scale as long as it fits, and takes less when it does not
+    setClient(h, 1000, 600);
+    pump(30);
+    CHECK(w.renderInfo().viewport.scale == 1);
+    FrameState two;
+    two.scale = 3;
+    w.setDesktopState(two);
+    setClient(h, 1920, 1080);
+    pump(30);
+    CHECK(w.renderInfo().viewport.scale == 3);
+    setClient(h, 1000, 600);
+    pump(30);
+    CHECK(w.renderInfo().viewport.scale == 2);   // 3 no longer fits in 1000 x 600
+    setClient(h, 1920, 1080);
+    pump(30);
+    CHECK(w.renderInfo().viewport.scale == 3);   // and it comes back when the window is big again
+    // the zoom box: the largest size, centred
+    dragBy(h, w.renderInfo().viewport.x + 100, w.renderInfo().viewport.y - 6 * 3, 30, 30);
+    const app::DeskRect zb = app::desktopZoomBox(w.renderInfo().viewport);
+    mouse(h, WM_LBUTTONDOWN, (zb.x0 + zb.x1) / 2, (zb.y0 + zb.y1) / 2, MK_LBUTTON);
+    mouse(h, WM_LBUTTONUP, (zb.x0 + zb.x1) / 2, (zb.y0 + zb.y1) / 2);
+    const app::Viewport fitted = w.renderInfo().viewport;
+    CHECK(fitted.scale == 4 && fitted.x == home.x && fitted.y == home.y && w.desktopState() == FrameState{});
+    // the menu bar and window are still the art at the final place
+    checkDesktopFrame(w, page, &rom);
+}
+
+TEST(desktop_window_place_and_size_are_kept_in_the_settings_and_restored) {
+    const auto dir = scratchDir("desktopwindow");
+    SettingsStore store((dir / "settings.ini").wstring());
+    Settings start;
+    start.displayMode = DisplayMode::Windowed;
+    start.background = Background::Desktop;
+    app::Viewport placed;
+    {
+        GameWindow w(GameWindowOptions{3, true});
+        CHECK(w.ok());
+        if (!w.ok()) return;
+        w.attachSettings(&store, start);
+        setClient(w.hwnd(), 1920, 1080);
+        pump(40);
+        const app::Viewport home = w.renderInfo().viewport;
+        dragBy(w.hwnd(), home.x + home.w / 2, home.y - 6 * home.scale, 100, 20);
+        const app::DeskRect grow = app::desktopGrowBox(w.renderInfo().viewport);
+        dragBy(w.hwnd(), (grow.x0 + grow.x1) / 2, (grow.y0 + grow.y1) / 2, -300, -200);
+        placed = w.renderInfo().viewport;
+        std::printf("    placed: scale %d at %d,%d\n", placed.scale, placed.x, placed.y);
+        CHECK(placed.scale == 3);
+        const Settings s = store.load();
+        CHECK(s.desktopScale == 3 && std::fabs(s.desktopX) < 200.0f);   // written at the end of each drag
+    }
+    const Settings kept = store.load();
+    CHECK(kept.background == Background::Desktop && kept.desktopScale == 3);
+    {
+        GameWindow w(GameWindowOptions{3, true});
+        CHECK(w.ok());
+        if (!w.ok()) return;
+        w.attachSettings(&store, kept);
+        setClient(w.hwnd(), 1920, 1080);
+        pump(40);
+        const app::Viewport again = w.renderInfo().viewport;
+        std::printf("    after the restart: scale %d at %d,%d\n", again.scale, again.x, again.y);
+        CHECK(again.scale == placed.scale && again.x == placed.x && again.y == placed.y);   // the window is where the user left it
+    }
+    // a damaged value is ignored
+    CHECK(SettingsStore::parse("desktop_scale=-4\ndesktop_x=abc\ndesktop_y=99999\n").desktopScale == 0);
+    CHECK(SettingsStore::parse("desktop_x=1.5\ndesktop_y=-2.25\ndesktop_scale=2\n").desktopY == -2.25f);
+    Settings round;
+    round.desktopScale = 2;
+    round.desktopX = 7.25f;
+    round.desktopY = -3.5f;
+    const Settings back = SettingsStore::parse(SettingsStore::format(round));
+    CHECK(back.desktopScale == 2 && back.desktopX == 7.25f && back.desktopY == -3.5f);
+    std::filesystem::remove_all(dir);
+}
+
+TEST(desktop_window_in_a_borderless_program_window_takes_the_mouse_and_the_bare_desktop_moves_the_program) {
+    GameWindow w(GameWindowOptions{3, true});
+    CHECK(w.ok());
+    if (!w.ok()) return;
+    setClient(w.hwnd(), 1920, 1080);
+    w.setBorders(false);
+    w.setBackground(Background::Desktop);
+    pump(40);
+    const app::Viewport v = w.renderInfo().viewport;
+    POINT o{0, 0};
+    ClientToScreen(w.hwnd(), &o);
+    const auto hit = [&](int cx, int cy) { return static_cast<int>(SendMessageW(w.hwnd(), WM_NCHITTEST, 0, MAKELPARAM(static_cast<short>(o.x + cx), static_cast<short>(o.y + cy)))); };
+    CHECK(hit(v.x + v.w / 2, v.y - 6 * v.scale) == HTCLIENT);   // the title bar: the desktop window's
+    CHECK(hit(v.x + v.w / 2, v.y + v.h / 2) == HTCLIENT);      // the picture
+    CHECK(hit(300, 600) == HTCAPTION);                           // the bare desktop: moves the program's window
+    CHECK(hit(1, 540) == HTLEFT);                                // and the program's own edges still resize it
+    w.setBackground(Background::Black);
+    CHECK(hit(v.x + v.w / 2, 540) == HTCAPTION);                 // with another background the picture moves the program's window as before
+}
+
+TEST(desktop_window_moving_and_resizing_change_nothing_in_the_game_or_its_clock) {
+    if (testfw::config().image.empty()) {
+        std::printf("    SKIPPED (needs --image)\n");
+        return;
+    }
+    datapack::Pack pack;
+    CHECK(flowtest::loadPack(pack));
+    constexpr int kTicks = 150000;
+    struct Result { std::vector<std::uint8_t> page; unsigned score = 0, level = 0; int moves = 0; };
+    const auto run = [&](bool disturb) {
+        Result res;
+        core::GameDriver drv;
+        CHECK(drv.init(pack) && drv.newGame());
+        GameWindow w(GameWindowOptions{3, true});
+        CHECK(w.ok());
+        setClient(w.hwnd(), 1920, 1080);
+        w.setBackground(Background::Desktop);
+        std::atomic<bool> done{false};
+        std::thread worker([&] {
+            for (int t = 0; t < kTicks; ++t) {
+                drv.tick();
+                if (t % 3 == 0) w.setPage(drv.page());
+                if (t % 1000 == 0) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+            done = true;
+        });
+        while (!done) {
+            if (disturb) {
+                const app::Viewport v = w.renderInfo().viewport;
+                dragBy(w.hwnd(), v.x + v.w / 2, v.y - 6 * v.scale, (res.moves % 2 ? -37 : 41), (res.moves % 3 ? 11 : -13), 3);
+                if (res.moves % 7 == 6) {
+                    const app::DeskRect g = app::desktopGrowBox(w.renderInfo().viewport);
+                    dragBy(w.hwnd(), (g.x0 + g.x1) / 2, (g.y0 + g.y1) / 2, (res.moves % 2 ? 280 : -280), (res.moves % 2 ? 192 : -192), 3);
+                }
+                ++res.moves;
+            }
+            pump(5);
+        }
+        worker.join();
+        for (std::size_t i = 0; i < hires::kPageBytes; ++i) res.page.push_back(drv.page().byte(i));
+        res.score = drv.core().state().zp(0x52);
+        res.level = drv.core().state().level();
+        return res;
+    };
+    const Result plain = run(false);
+    const Result disturbed = run(true);
+    std::printf("    %d ticks; %d drags (and resizes) of the desktop window while it ran; page equal %d\n", kTicks, disturbed.moves, plain.page == disturbed.page);
+    CHECK(disturbed.moves >= 6);
+    CHECK(plain.page == disturbed.page && plain.score == disturbed.score && plain.level == disturbed.level);
+    GameWindow w(GameWindowOptions{3, true});
+    CHECK(w.ok());
+    setClient(w.hwnd(), 1920, 1080);
+    w.setBackground(Background::Desktop);
+    core::CycleClock clock;
+    const std::int64_t t0 = core::nowNanoseconds();
+    clock.start(t0);
+    std::atomic<bool> done{false};
+    std::int64_t handed = 0, endNs = 0;
+    std::thread worker([&] {
+        while (core::nowNanoseconds() - t0 < 800'000'000) {
+            handed += clock.cyclesDue(core::nowNanoseconds());
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        endNs = core::nowNanoseconds();
+        handed += clock.cyclesDue(endNs);
+        done = true;
+    });
+    int moves = 0;
+    while (!done) {
+        const app::Viewport v = w.renderInfo().viewport;
+        dragBy(w.hwnd(), v.x + v.w / 2, v.y - 6 * v.scale, (moves % 2 ? -50 : 50), 10, 4);
+        ++moves;
+        pump(10);
+    }
+    worker.join();
+    const std::int64_t exact = clock.cyclesIn(endNs - t0);
+    std::printf("    %d drags in 0.8 s; cycles handed out %lld, exact %lld, skipped %lld\n", moves, static_cast<long long>(handed), static_cast<long long>(exact), static_cast<long long>(clock.skipped()));
+    CHECK(moves >= 10);
+    CHECK(handed == exact && clock.skipped() == 0);
+}

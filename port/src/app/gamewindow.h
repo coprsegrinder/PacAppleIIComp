@@ -85,6 +85,10 @@ public:
     void attachSettings(SettingsStore* store, const Settings& initial);
     const Settings& settings();                         // the settings as they are now
     void setFullscreen(bool on);                       // never touches the game: only the window style, size and the swap chain change
+    // The Apple II desktop's window can be moved and resized with the mouse: drag its title bar, its frame or the picture (with the pause menu closed); drag the grow box in its lower right
+    // corner to resize it (whole-number scales); the zoom box in its title bar fits it to the largest size and centres it.
+    const FrameState& desktopState() const noexcept { return desk_; }
+    void setDesktopState(const FrameState& st);   // programmatic (settings, tests)
     void setBackground(Background b);                  // what is drawn around the picture (window thread); written to the settings
     void cycleBackground(int dir);
     Background background() const noexcept { return background_; }
@@ -128,8 +132,13 @@ private:
     bool borders_ = true;               // windowed mode only: title bar and frame
     bool scalePending_ = false;         // setScale() was called in full screen: applies when leaving it
     Background background_ = Background::Black;
+    FrameState desk_;                         // the desktop window's chosen scale and place
+    DeskHit dragKind_ = DeskHit::None;        // a drag or a resize in progress (the mouse is captured)
+    POINT dragFrom_{0, 0};
+    Viewport dragStart_;
+    bool deskMouse(UINT msg, WPARAM wp, LPARAM lp);   // the mouse over the desktop window; true if it was used
     GlowField glow_;                          // the picture behind the picture of the ambient glow, smoothed over time
-    Viewport viewportFor(int clientW, int clientH) const { return computeViewportFor(background_, clientW, clientH); }   // the picture's place: framed backgrounds need room for their frame
+    Viewport viewportFor(int clientW, int clientH) const { return computeViewportFor(background_, clientW, clientH, desk_); }   // the picture's place: framed backgrounds need room for their frame
     struct ArtKey {
         Background kind = Background::Black;
         int width = 0, height = 0, x = 0, y = 0, scale = 0;
