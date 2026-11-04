@@ -31,7 +31,7 @@ if not exist "%OUT%\obj_view" mkdir "%OUT%\obj_view"
 cl %FLAGS% /Fo"%OUT%\obj_view\\" /Fe"%OUT%\pacman_view.exe" src\app\view_main.cpp src\app\pagewindow.cpp %CORE% user32.lib gdi32.lib /link /ENTRY:wmainCRTStartup /SUBSYSTEM:WINDOWS
 if errorlevel 1 (popd & exit /b 1)
 if not exist "%OUT%\obj_play" mkdir "%OUT%\obj_play"
-cl %FLAGS% /Fo"%OUT%\obj_play\\" /Fe"%OUT%\pacman_play.exe" src\app\play_main.cpp src\app\gamewindow.cpp src\app\audio.cpp %CORE% winmm.lib user32.lib gdi32.lib /link /ENTRY:wmainCRTStartup /SUBSYSTEM:WINDOWS
+cl %FLAGS% /Fo"%OUT%\obj_play\\" /Fe"%OUT%\pacman_play.exe" src\app\play_main.cpp src\app\gamewindow.cpp src\app\audio.cpp %CORE% winmm.lib ole32.lib user32.lib gdi32.lib /link /ENTRY:wmainCRTStartup /SUBSYSTEM:WINDOWS
 if errorlevel 1 (popd & exit /b 1)
 cl %FLAGS% /Fo"%OUT%\obj_cli\\" /Fe"%OUT%\pacman_verify.exe" src\app\verify_main.cpp %CORE%
 if errorlevel 1 (popd & exit /b 1)

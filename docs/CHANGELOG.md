@@ -104,3 +104,5 @@
 - TASK-030e7: corner/chase countdown and reversal, energizer and eaten-ghost timer effects, life-start queues equal the oracle.
 
 - TASK-030e9 / M5 done: ghost logic inside GameCore; 54,428 ticks free-running equal the oracle; pacman_play.exe has moving ghosts. dist/ rebuilt.
+
+- TASK-033-S: the sound goes through a speaker model (low thump of the short dot/energizer bursts, ring-out mixed over the next sound); audio output is a WASAPI stream with a small mixer; the click lists are untouched.

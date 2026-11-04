@@ -118,6 +118,8 @@ TEST(squarewave_edges_sit_at_the_click_times) {
     CHECK(late.samples[0] == 0 && late.samples[429] == 0 && late.samples[431] == 3000);   // 10000 x 44100 / 1022727 = 431.2
 }
 
+double rms(const core::Pcm& p, double fromMs, double toMs);
+
 TEST(sound_all_sounds_render_with_the_right_length) {
     if (testfw::config().image.empty()) {
         std::printf("    SKIPPED (needs --image)\n");
@@ -141,8 +143,72 @@ TEST(sound_all_sounds_render_with_the_right_length) {
         std::size_t loud = 0;
         for (auto v : p.samples) loud += v != 0;
         CHECK(loud > 10);
+        // TASK-033-S: through the speaker model the sound keeps its place in time, is never clipped, and rings out after its last click
+        const core::Pcm sp = core::renderSpeaker(clicks, freeze, 44100);
+        CHECK(sp.nominal == p.samples.size() && sp.samples.size() > sp.nominal);
+        std::int32_t peak = 0;
+        for (auto v : sp.samples) peak = std::max<std::int32_t>(peak, std::abs(static_cast<std::int32_t>(v)));
+        std::printf("    sound %d: peak %d, ring after the end %.0f rms (10-40 ms)\n", i, peak, rms(sp, static_cast<double>(sp.nominal) * 1000.0 / 44100 + 10.0, static_cast<double>(sp.nominal) * 1000.0 / 44100 + 40.0));
+        CHECK(peak < 32767);
     }
     // the jingle lasts 5.04 s of audio
     const core::Pcm jingle = core::renderClicks(core::clickTimes(sd.list(core::SoundId::Jingle)), core::soundFreezeCycles(core::SoundId::Jingle), 44100);
     CHECK(jingle.samples.size() > 5.0 * 44100 && jingle.samples.size() < 5.1 * 44100);
+}
+
+// ---- TASK-033-S: the speaker model (a short burst becomes a low thump at the cone's resonance) ----
+#include <cmath>
+
+// 8 clicks 307 cycles apart: about the size of the dot-eaten sound (8 clicks in 2.4 ms)
+std::vector<std::uint32_t> dotLikeClicks() {
+    std::vector<std::uint32_t> c;
+    for (std::uint32_t i = 0; i < 8; ++i) c.push_back(100 + i * 307);
+    return c;
+}
+double rms(const core::Pcm& p, double fromMs, double toMs) {
+    const std::size_t a = static_cast<std::size_t>(fromMs * p.sampleRate / 1000), b = std::min(p.samples.size(), static_cast<std::size_t>(toMs * p.sampleRate / 1000));
+    double s = 0;
+    for (std::size_t i = a; i < b; ++i) s += static_cast<double>(p.samples[i]) * p.samples[i];
+    return b > a ? std::sqrt(s / static_cast<double>(b - a)) : 0.0;
+}
+
+TEST(speaker_keeps_the_nominal_length_and_adds_a_ring_out) {
+    const auto clicks = dotLikeClicks();
+    const core::Pcm raw = core::renderClicks(clicks, 2414, 44100);
+    const core::Pcm sp = core::renderSpeaker(clicks, 2414, 44100);
+    CHECK(sp.nominal == raw.samples.size());                                       // the sound occupies the same time as before
+    CHECK(sp.samples.size() == sp.nominal + 80u * 44100u / 1000u);                 // plus the 80 ms ring-out
+    const core::Pcm none = core::renderSpeaker({}, 1000, 44100);
+    CHECK(none.samples.size() == none.nominal && none.samples[0] == 0);            // no clicks: silence, no tail
+    for (auto v : sp.samples) CHECK(v > -32767 && v < 32767);                      // never clipped
+}
+
+TEST(speaker_burst_rings_at_the_resonance_and_decays) {
+    const core::SpeakerModel m;                                                     // 120 Hz, Q 2.5
+    const core::Pcm sp = core::renderSpeaker(dotLikeClicks(), 2414, 44100, 5000, m);
+    const core::Pcm raw = core::renderClicks(dotLikeClicks(), 2414, 44100, 5000);
+    // the raw wave is silent 5 ms after the burst; the speaker still rings
+    CHECK(rms(raw, 8.0, 40.0) == 0.0);
+    const double ring1 = rms(sp, 10.0, 18.3), ring2 = rms(sp, 25.0, 33.3);          // one period of 120 Hz each, 15 ms apart
+    CHECK(ring1 > 100.0);
+    const double expected = std::exp(-15.0e-3 * 3.14159265358979 * m.bodyHz / m.bodyQ);   // tau = Q / (pi f0)
+    std::printf("    ring rms %.0f -> %.0f, ratio %.3f, expected %.3f\n", ring1, ring2, ring2 / ring1, expected);
+    CHECK(ring2 / ring1 > expected * 0.5 && ring2 / ring1 < expected * 2.0);
+    // the ring oscillates at about 120 Hz: count the zero crossings between 6 and 60 ms
+    int crossings = 0;
+    const std::size_t a = static_cast<std::size_t>(0.006 * 44100), b = static_cast<std::size_t>(0.060 * 44100);
+    for (std::size_t i = a + 1; i < b; ++i) crossings += (sp.samples[i - 1] < 0) != (sp.samples[i] < 0);
+    const double hz = crossings / 2.0 / (0.060 - 0.006);
+    std::printf("    ring frequency %.0f Hz (%d crossings)\n", hz, crossings);
+    CHECK(hz > 100.0 && hz < 140.0);
+}
+
+TEST(speaker_passes_a_long_tone_nearly_unchanged) {
+    std::vector<std::uint32_t> tone;   // 1 kHz square wave for 40 ms (500 us per half period)
+    for (std::uint32_t i = 0; i < 80; ++i) tone.push_back(i * 511);
+    const core::Pcm raw = core::renderClicks(tone, 41'000, 44100, 5000);
+    const core::Pcm sp = core::renderSpeaker(tone, 41'000, 44100, 5000);
+    const double r = rms(sp, 10.0, 35.0) / rms(raw, 10.0, 35.0);
+    std::printf("    1 kHz tone: speaker/raw level %.2f\n", r);
+    CHECK(r > 0.6 && r < 1.2);
 }

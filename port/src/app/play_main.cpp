@@ -108,7 +108,7 @@ int playSoundTest(const datapack::Pack& pack) {
         std::printf("playing: %s\n", it.name);
         std::fflush(stdout);
         const auto clicks = core::clickTimes(sounds.list(it.id));
-        audio.play(core::renderClicks(clicks, core::soundFreezeCycles(it.id), 44100));
+        audio.play(core::renderSpeaker(clicks, core::soundFreezeCycles(it.id), 44100));
         while (audio.busy()) std::this_thread::sleep_for(std::chrono::milliseconds(20));
         std::this_thread::sleep_for(std::chrono::milliseconds(450));
     }
@@ -127,7 +127,7 @@ core::TickEvents liveTick(core::GameDriver& drv, core::CartoonPlayer* cartoons =
     return ev;
 }
 
-// TASK-032-5: the game's sounds. Every sound is rendered once (square wave from the original's click times); a sound the core reports is queued behind what is still playing.
+// TASK-032-5: the game's sounds. Every sound is rendered once (the original's click times through the speaker model, TASK-033-S); a sound the core reports is queued behind what is still playing.
 // The audio can be switched off by Ctrl-S (the original's own switch, in the core) or F9 (the window); the game still stands still for the sound (the original's engines
 // busy-wait on the cassette output when Ctrl-S has silenced them).
 struct SoundPlayer {
@@ -143,7 +143,7 @@ struct SoundPlayer {
             const auto id = static_cast<core::SoundId>(i);
             if (id == core::SoundId::Count) continue;
             const auto clicks = core::clickTimes(data.list(id));
-            if (!clicks.empty()) pcm[i] = core::renderClicks(clicks, core::soundFreezeCycles(id), 44100);
+            if (!clicks.empty()) pcm[i] = core::renderSpeaker(clicks, core::soundFreezeCycles(id), 44100);
         }
         gapBetweenDeathSteps = core::renderClicks({}, 137'052, 44100);
         ready = true;

@@ -63,7 +63,7 @@ if(WIN32)
   target_link_options(pacman_view PRIVATE /ENTRY:wmainCRTStartup /SUBSYSTEM:WINDOWS)
 
   add_executable(pacman_play src/app/play_main.cpp src/app/gamewindow.cpp src/app/audio.cpp)
-  target_link_libraries(pacman_play PRIVATE pacman_core_verify user32 gdi32 winmm)
+  target_link_libraries(pacman_play PRIVATE pacman_core_verify user32 gdi32 winmm ole32)
   target_link_options(pacman_play PRIVATE /ENTRY:wmainCRTStartup /SUBSYSTEM:WINDOWS)
 endif()
 

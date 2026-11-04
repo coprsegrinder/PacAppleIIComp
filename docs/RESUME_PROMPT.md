@@ -207,3 +207,5 @@ Latest: 033-5/6 done (several players: GameCore stores, rotation, HUD for 1-5, r
 
 Latest: 033-6c done (AttractMemory; the attract game after prompts/games; suite 146/0). Open from the audit question: joystick/paddle input ($701E/$7041) not ported; ~70 never-executed bytes unverified; modelled (not exact) tick/death timings. Next in M8: 033-7 modern options, 033-8 packaging (ROM dumps in the release, not the game image), 033-9 clean-machine test, 033-10 release notes.
 Latest: 033-R audit done (docs/ROUTINE_AUDIT.md). Next: user decides on 033-7 (modern options) or porting the paddle reader.
+
+Latest: 033-S done (speaker model; estimates, to be fitted to the reference video once the user approves fetching its audio). Next: 033-7 modern options (incl. the documented raw-signal switch and the simulated paddle).
