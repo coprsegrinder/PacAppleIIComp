@@ -112,7 +112,7 @@ PauseMenu::Action PauseMenu::key(Key k) {
         if (page_ == Page::Graphics && selected_ == 4) return k == Key::Left ? Action::PreviousColourMode : Action::NextColourMode;
         if (page_ == Page::Graphics && selected_ == 5) return k == Key::Left ? Action::PreviousCrtPreset : Action::NextCrtPreset;
         if (page_ == Page::Graphics && selected_ == 6) return k == Key::Left ? Action::PreviousFps : Action::NextFps;
-        if (page_ == Page::Graphics && selected_ == 7) return Action::ToggleGameplaySpeed;
+        if (page_ == Page::Graphics && selected_ == 7) return k == Key::Left ? Action::PreviousGameplaySpeed : Action::ToggleGameplaySpeed;
         if (page_ == Page::Crt) return crtStep(k == Key::Left ? -1 : 1);
         return Action::None;
     case Key::Select: return activate();

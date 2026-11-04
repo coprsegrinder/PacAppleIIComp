@@ -678,7 +678,8 @@ void GameWindow::menuAction(PauseMenu::Action a) {
     case PauseMenu::Action::NextCrtPreset: stepCrtPreset(1); break;
     case PauseMenu::Action::PreviousCrtPreset: stepCrtPreset(-1); break;
     case PauseMenu::Action::CrtOptionStep: stepCrtOption(menu_.crtOption(), menu_.crtDir()); break;
-    case PauseMenu::Action::ToggleGameplaySpeed: setGameplaySpeed(nextGameplaySpeed(speed_.load())); break;
+    case PauseMenu::Action::ToggleGameplaySpeed: setGameplaySpeed(nextGameplaySpeed(speed_.load(), 1)); break;   // (Enter, Right, a click: the next one)
+    case PauseMenu::Action::PreviousGameplaySpeed: setGameplaySpeed(nextGameplaySpeed(speed_.load(), -1)); break;
     case PauseMenu::Action::NextFps: cycleFps(1); break;
     case PauseMenu::Action::PreviousFps: cycleFps(-1); break;
     case PauseMenu::Action::NextBackground: cycleBackground(1); break;

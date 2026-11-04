@@ -883,7 +883,7 @@ TEST(pause_menu_keyboard_navigation_pages_and_actions) {
     m.key(PauseMenu::Key::Down);
     CHECK(m.selected() == 6 && m.key(PauseMenu::Key::Left) == PauseMenu::Action::PreviousFps && m.key(PauseMenu::Key::Right) == PauseMenu::Action::NextFps && m.key(PauseMenu::Key::Select) == PauseMenu::Action::NextFps);   // FPS
     m.key(PauseMenu::Key::Down);
-    CHECK(m.selected() == 7 && m.key(PauseMenu::Key::Left) == PauseMenu::Action::ToggleGameplaySpeed && m.key(PauseMenu::Key::Right) == PauseMenu::Action::ToggleGameplaySpeed && m.key(PauseMenu::Key::Select) == PauseMenu::Action::ToggleGameplaySpeed);   // Gameplay Speed
+    CHECK(m.selected() == 7 && m.key(PauseMenu::Key::Left) == PauseMenu::Action::PreviousGameplaySpeed && m.key(PauseMenu::Key::Right) == PauseMenu::Action::ToggleGameplaySpeed && m.key(PauseMenu::Key::Select) == PauseMenu::Action::ToggleGameplaySpeed);   // Gameplay Speed
     m.key(PauseMenu::Key::Down);
     CHECK(m.selected() == 8 && m.key(PauseMenu::Key::Left) == PauseMenu::Action::None);   // Back: left/right do nothing
     m.key(PauseMenu::Key::Select);   // Back
@@ -4385,10 +4385,17 @@ TEST(gameplay_speed_original_is_exactly_the_old_timing_and_steady_evens_out_the_
     CHECK(app::soundStandStill(GameplaySpeed::Steady, core::SoundId::Death3) == 0 && app::soundStandStill(GameplaySpeed::Steady, core::SoundId::DotEaten) == 0);
     // an ordinary tick that also eats a ghost takes the tick plus the stand-still, as in the original
     CHECK(app::tickCost(GameplaySpeed::Steady, 6000, 0, core::soundFreezeCycles(core::SoundId::GhostEaten)) == core::kTypicalTickCycles + core::soundFreezeCycles(core::SoundId::GhostEaten));
+    // Steady Fast: the same, a third faster
+    for (std::int64_t tick : {2987, 9000, 24463}) CHECK(app::tickCost(GameplaySpeed::SteadyFast, tick, 0, 0) == app::kSteadyFastTickCycles && app::kSteadyFastTickCycles < core::kTypicalTickCycles);
+    CHECK(app::tickCost(GameplaySpeed::SteadyFast, 8917, 6043263, 0) == 8917 + 6043263);
+    CHECK(app::soundStandStill(GameplaySpeed::SteadyFast, core::SoundId::GhostEaten) == core::soundFreezeCycles(core::SoundId::GhostEaten) && app::soundStandStill(GameplaySpeed::SteadyFast, core::SoundId::Fruit) == 0);
+    CHECK(app::nextGameplaySpeed(GameplaySpeed::Original) == GameplaySpeed::Steady && app::nextGameplaySpeed(GameplaySpeed::Steady) == GameplaySpeed::SteadyFast && app::nextGameplaySpeed(GameplaySpeed::SteadyFast) == GameplaySpeed::Original && app::nextGameplaySpeed(GameplaySpeed::Original, -1) == GameplaySpeed::SteadyFast);
     // words and the file
     CHECK(app::parseGameplaySpeed("steady", *std::make_unique<GameplaySpeed>(GameplaySpeed::Original)) && !app::parseGameplaySpeed("fast", *std::make_unique<GameplaySpeed>(GameplaySpeed::Original)));
     Settings s;
     CHECK(s.gameplaySpeed == GameplaySpeed::Original && SettingsStore::parse(SettingsStore::format(s)).gameplaySpeed == GameplaySpeed::Original);
+    s.gameplaySpeed = GameplaySpeed::SteadyFast;
+    CHECK(SettingsStore::parse(SettingsStore::format(s)).gameplaySpeed == GameplaySpeed::SteadyFast);
     s.gameplaySpeed = GameplaySpeed::Steady;
     CHECK(SettingsStore::parse(SettingsStore::format(s)).gameplaySpeed == GameplaySpeed::Steady && SettingsStore::parse("gameplay_speed=turbo\n").gameplaySpeed == GameplaySpeed::Original);
 }

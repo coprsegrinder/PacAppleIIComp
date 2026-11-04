@@ -17,7 +17,7 @@ class PauseMenu {
 public:
     enum class Page { Closed, Main, Graphics, Crt, Confirm };
     enum class Key { Up, Down, Left, Right, Select, Back };
-    enum class Action { None, Resume, Quit, ToggleBorders, NextDisplayMode, PreviousDisplayMode, NextResolution, PreviousResolution, NextBackground, PreviousBackground, NextColourMode, PreviousColourMode, NextCrtPreset, PreviousCrtPreset, CrtOptionStep, NextFps, PreviousFps, ToggleGameplaySpeed };
+    enum class Action { None, Resume, Quit, ToggleBorders, NextDisplayMode, PreviousDisplayMode, NextResolution, PreviousResolution, NextBackground, PreviousBackground, NextColourMode, PreviousColourMode, NextCrtPreset, PreviousCrtPreset, CrtOptionStep, NextFps, PreviousFps, ToggleGameplaySpeed, PreviousGameplaySpeed };
     struct Point { int x, y; };
     // What the pages show (the program's present state).
     struct View {

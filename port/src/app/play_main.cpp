@@ -124,6 +124,8 @@ int playSoundTest(const datapack::Pack& pack) {
 }
 
 // `cartoons`: the live window plays the intermission after the level end; the batch mode (--ticks, no window) goes straight to the next level.
+bool gAidEndless = false;    // --aid-endless (tests): every cell Pac-Man reaches has a dot (so that eating can be measured without end)
+bool gAidWander = false;     // --aid-wander (tests): Pac-Man wanders by himself (no energizer)
 bool gAidEnergizer = false;   // --aid-energizer (tests): Pac-Man wanders by himself and eats an energizer about 4 s into the game, to look at what happens then
 
 core::TickEvents liveTick(core::GameDriver& drv, core::CartoonPlayer* cartoons = nullptr, const datapack::Pack* pack = nullptr) {
@@ -193,9 +195,13 @@ bool runGame(core::GameDriver& drv, const datapack::Pack& pack, app::GameWindow&
         long playCalls = 0;
         double playTotalMs = 0, playMaxMs = 0;   // time the game thread spent inside the sound calls (they must be quick: the game waits for them)
         std::int64_t secStartNs = 0;   // a line a second in the log: ticks, mean cost, picture changes, the frightened timer
-        long secTicks = 0, secChanges = 0, energizers = 0, secPac = 0, secGhost = 0;
+        long secTicks = 0, secChanges = 0, energizers = 0, secPac = 0, secGhost = 0, secAte = 0;
         std::array<int, 10> lastPos{};   // Pac-Man and the four ghosts' places at the last tick
         std::int64_t secCost = 0;
+        std::array<long, 8> hist{};   // ticks by cost: <3.5k, <4k, <5k, <6k, <8k, <12k, <20k, more (cycles)
+        std::array<std::int64_t, 8> histCycles{};
+        long ateTicks = 0, noAteTicks = 0;
+        std::int64_t ateCycles = 0, noAteCycles = 0;
         long slow = 0;                                                               // ticks that cost more than twice the typical tick   // ticks after which the picture differed from the one before
         std::vector<std::uint8_t> last;
         void note(const hires::Page& p) {
@@ -211,15 +217,28 @@ bool runGame(core::GameDriver& drv, const datapack::Pack& pack, app::GameWindow&
             char buf[160];
             std::snprintf(buf, sizeof(buf), "game: ticks=%ld seconds=%.3f picture_changes=%ld sound_calls=%ld sound_call_total_ms=%.2f sound_call_max_ms=%.2f tick_cycles_min=%lld mean=%.0f max=%lld freeze_cycles_total=%lld slow_ticks=%ld", ticks, s, pictureChanges, playCalls, playTotalMs, playMaxMs, static_cast<long long>(costMin), ticks ? static_cast<double>(costSum) / static_cast<double>(ticks) : 0.0, static_cast<long long>(costMax), static_cast<long long>(freezeSum), slow);
             w.logLine(buf);
+            static const char* const names[8] = {"<3.5k", "<4k", "<5k", "<6k", "<8k", "<12k", "<20k", ">=20k"};
+            std::string h = "cost histogram (ticks / share of the game's time):";
+            std::int64_t total = 0;
+            for (auto c : histCycles) total += c;
+            for (std::size_t i = 0; i < 8; ++i) {
+                char b2[80];
+                std::snprintf(b2, sizeof(b2), " %s %ld/%.0f%%", names[i], hist[i], total ? 100.0 * static_cast<double>(histCycles[i]) / static_cast<double>(total) : 0.0);
+                h += b2;
+            }
+            w.logLine(h);
+            char b3[200];
+            std::snprintf(b3, sizeof(b3), "dot ticks: %ld, mean cost %.0f; other ticks: %ld, mean cost %.0f", ateTicks, ateTicks ? static_cast<double>(ateCycles) / static_cast<double>(ateTicks) : 0.0, noAteTicks, noAteTicks ? static_cast<double>(noAteCycles) / static_cast<double>(noAteTicks) : 0.0);
+            w.logLine(b3);
         }
         void second(std::int64_t now, bool frightened) {
             if (secStartNs == 0) secStartNs = now;
             if (now - secStartNs < 1'000'000'000) return;
             char buf[200];
-            std::snprintf(buf, sizeof(buf), "second: ticks=%ld mean_cost=%.0f picture_changes=%ld pacman_steps=%ld ghost_moves=%ld frightened=%d energizers_so_far=%ld", secTicks, secTicks ? static_cast<double>(secCost) / static_cast<double>(secTicks) : 0.0, secChanges, secPac, secGhost, frightened ? 1 : 0, energizers);
+            std::snprintf(buf, sizeof(buf), "second: ticks=%ld mean_cost=%.0f picture_changes=%ld pacman_steps=%ld ghost_moves=%ld dots_eaten=%ld frightened=%d energizers_so_far=%ld", secTicks, secTicks ? static_cast<double>(secCost) / static_cast<double>(secTicks) : 0.0, secChanges, secPac, secGhost, secAte, frightened ? 1 : 0, energizers);
             w.logLine(buf);
             secStartNs = now;
-            secTicks = secChanges = secPac = secGhost = 0;
+            secTicks = secChanges = secPac = secGhost = secAte = 0;
             secCost = 0;
         }
     } tickLog{window};
@@ -341,6 +360,18 @@ bool runGame(core::GameDriver& drv, const datapack::Pack& pack, app::GameWindow&
                 tickLog.costMax = (std::max)(tickLog.costMax, cost);
                 tickLog.freezeSum += soundFreeze;
                 tickLog.slow += cost > 2 * core::kTypicalTickCycles;
+                {
+                    const std::size_t bin = cost < 3500 ? 0 : cost < 4000 ? 1 : cost < 5000 ? 2 : cost < 6000 ? 3 : cost < 8000 ? 4 : cost < 12000 ? 5 : cost < 20000 ? 6 : 7;
+                    ++tickLog.hist[bin];
+                    tickLog.histCycles[bin] += cost;
+                    if (ev.ate && !ev.energizer) {
+                        ++tickLog.ateTicks;
+                        tickLog.ateCycles += cost;
+                    } else {
+                        ++tickLog.noAteTicks;
+                        tickLog.noAteCycles += cost;
+                    }
+                }
             }
             budget -= app::tickCost(window.gameplaySpeed(), drv.tickCycles(), drv.extraCycles(), soundFreeze);   // the tick's modelled cost (033-1c), or the same for every ordinary tick (Steady)
             changed = true;
@@ -348,6 +379,7 @@ bool runGame(core::GameDriver& drv, const datapack::Pack& pack, app::GameWindow&
             ++tickLog.secTicks;
             tickLog.secCost += app::tickCost(window.gameplaySpeed(), drv.tickCycles(), drv.extraCycles(), soundFreeze);
             tickLog.energizers += ev.energizer;
+            tickLog.secAte += ev.ate;
             {
                 const core::GameState& st = drv.core().state();
                 std::array<int, 10> pos{st.pacX(), st.pacY(), st.ghosts[0].x(), st.ghosts[0].y(), st.ghosts[1].x(), st.ghosts[1].y(), st.ghosts[2].x(), st.ghosts[2].y(), st.ghosts[3].x(), st.ghosts[3].y()};
@@ -356,8 +388,13 @@ bool runGame(core::GameDriver& drv, const datapack::Pack& pack, app::GameWindow&
                 tickLog.lastPos = pos;
             }
             tickLog.second(core::nowNanoseconds(), drv.core().ghostShared().e4 != 0);
-            if (gAidEnergizer && tickLog.ticks % 25 == 0) drv.core().state().requestedDirection() = static_cast<std::uint8_t>((tickLog.ticks / 25) % 4);   // test aid: Pac-Man wanders by himself
+            if ((gAidEnergizer || gAidWander) && tickLog.ticks % 150 == 0) drv.core().state().requestedDirection() = static_cast<std::uint8_t>((tickLog.ticks / 150) % 4);   // test aid: Pac-Man wanders by himself
             if (gAidEnergizer && tickLog.ticks == 900) for (auto& c : drv.core().state().map) if (c == 1) c = 2;   // test aid: the next item he meets is an energizer
+            if (gAidEndless) {
+                core::GameState& st = drv.core().state();
+                for (auto& c : st.map) if (c == 0) c = 1;
+                st.zp(0x56) = 200;
+            }
             if (gAidEnergizer && ev.energizer) for (auto& c : drv.core().state().map) if (c == 2) c = 1;
             window.setPage(drv.page());   // every tick is a picture the window may show (the window takes the newest one at its next frame)
             if (budget < -core::kDeathSequenceCycles * 2) budget = 0;
@@ -514,6 +551,8 @@ int wmain(int argc, wchar_t** argv) {
         else if (a == L"--display" && i + 1 < argc) displayArg = argv[++i];     // fullscreen | borderless | windowed (written to the settings like a change in the menu)
         else if (a == L"--skip-boot") skipBoot = true;
         else if (a == L"--aid-energizer") gAidEnergizer = true;
+        else if (a == L"--aid-wander") gAidWander = true;
+        else if (a == L"--aid-endless") { gAidEndless = true; gAidWander = true; }
         else if (a == L"--mute") mute = true;   // no sound (the same as F9 at the start); for running the real program in tests
         else return 64;
     }
