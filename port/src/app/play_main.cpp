@@ -31,6 +31,7 @@
 
 #include "audio.h"
 #include "pausegate.h"
+#include "precisesleep.h"
 #include "settings.h"
 #include "../core/attractflow.h"
 #include "../core/cartoon.h"
@@ -198,6 +199,17 @@ bool runGame(core::GameDriver& drv, const datapack::Pack& pack, app::GameWindow&
         explicit MenuAllowed(app::GameWindow& win) : w(win) { w.setMenuAllowed(true); }
         ~MenuAllowed() { w.setMenuAllowed(false); }
     } menuAllowed(window);
+    struct TickLog {   // for the real-program checks (--log): how many game ticks ran in how much real time, so that the game's speed can be compared between FPS settings
+        app::GameWindow& w;
+        std::int64_t firstNs = 0;   // the first tick (the jingle and READY come before it)
+        long ticks = 0;
+        ~TickLog() {
+            const double s = firstNs == 0 ? 0.0 : static_cast<double>(core::nowNanoseconds() - firstNs) / 1e9;
+            char buf[160];
+            std::snprintf(buf, sizeof(buf), "game: ticks=%ld seconds=%.3f", ticks, s);
+            w.logLine(buf);
+        }
+    } tickLog{window};
     SoundPlayer sounds;
     sounds.init(pack);
     core::CartoonPlayer cartoon;
@@ -224,7 +236,7 @@ bool runGame(core::GameDriver& drv, const datapack::Pack& pack, app::GameWindow&
             return false;
         }
         if (gate.update(window.menuOpen(), now, clock)) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            app::preciseSleepMs(5);
             continue;
         }
         budget += clock.cyclesDue(now);
@@ -254,11 +266,11 @@ bool runGame(core::GameDriver& drv, const datapack::Pack& pack, app::GameWindow&
                 seqActive = false;
                 if (drv.gameOverPending()) return true;   // GAME OVER and the wait after it are over: the attract loop starts again
             }
-            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            app::preciseSleepMs(2);
             continue;
         }
         if (cartoon.active() && budget < 0) {   // the level-end pause before the intermission (the original spends kLevelEndCycles there, measured 033-1b)
-            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            app::preciseSleepMs(2);
             continue;
         }
         if (cartoon.active()) {   // an intermission: the original does not read the keyboard meanwhile, a latched key is thrown away at the next level's start (docs/CARTOONS.md 7.1)
@@ -272,13 +284,14 @@ bool runGame(core::GameDriver& drv, const datapack::Pack& pack, app::GameWindow&
                 drv.nextLevel();
                 window.setPage(drv.page());
             }
-            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            app::preciseSleepMs(2);
             continue;
         }
         while (const auto key = window.popKey()) drv.core().input().pushKey(*key);
         bool changed = false;
         while (budget >= core::kTypicalTickCycles) {
             const core::TickEvents ev = liveTick(drv, &cartoon, &pack);
+            if (++tickLog.ticks == 1) tickLog.firstNs = core::nowNanoseconds();
             std::int64_t soundFreeze = 0;
             const bool audible = drv.core().input().soundOn() && !window.muted();
             const bool dying = !drv.sequence().empty();   // the animation schedules the six death sounds itself
@@ -303,10 +316,11 @@ bool runGame(core::GameDriver& drv, const datapack::Pack& pack, app::GameWindow&
             }
             budget -= drv.tickCycles() + drv.extraCycles() + soundFreeze;   // the tick's modelled cost (033-1c), not a flat mean
             changed = true;
+            window.setPage(drv.page());   // every tick is a picture the window may show (the window takes the newest one at its next frame)
             if (budget < -core::kDeathSequenceCycles * 2) budget = 0;
         }
         if (changed) window.setPage(drv.page());
-        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        app::preciseSleepMs(2);
     }
     return false;
 }
@@ -332,7 +346,7 @@ bool runMenus(core::AttractFlow& flow, const core::CharacterRom& rom, const data
             return false;
         }
         if (gate.update(window.menuOpen(), now, clock)) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            app::preciseSleepMs(5);
             continue;
         }
         if (const auto key = window.popKey()) flow.keyDown(*key);
@@ -375,7 +389,7 @@ bool runMenus(core::AttractFlow& flow, const core::CharacterRom& rom, const data
                 }
             }
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        app::preciseSleepMs(1);
     }
     (void)lastKind;
     return false;

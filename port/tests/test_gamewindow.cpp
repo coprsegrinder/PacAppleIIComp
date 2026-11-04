@@ -852,7 +852,7 @@ TEST(pause_menu_keyboard_navigation_pages_and_actions) {
     // Graphics Settings: its page, the toggle, Back and Esc return to the main page on the entry that led there
     m.show();
     m.key(PauseMenu::Key::Down);
-    CHECK(m.key(PauseMenu::Key::Select) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Graphics && m.selected() == 0 && m.itemCount() == 7);
+    CHECK(m.key(PauseMenu::Key::Select) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Graphics && m.selected() == 0 && m.itemCount() == 8);
     CHECK(m.key(PauseMenu::Key::Select) == PauseMenu::Action::NextDisplayMode && m.page() == PauseMenu::Page::Graphics);   // Display Mode: Enter = next
     CHECK(m.key(PauseMenu::Key::Right) == PauseMenu::Action::NextDisplayMode && m.key(PauseMenu::Key::Left) == PauseMenu::Action::PreviousDisplayMode);
     m.key(PauseMenu::Key::Down);
@@ -881,7 +881,9 @@ TEST(pause_menu_keyboard_navigation_pages_and_actions) {
     m.key(PauseMenu::Key::Select);
     CHECK(m.key(PauseMenu::Key::Back) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Graphics && m.selected() == 5);   // Esc from the CRT page
     m.key(PauseMenu::Key::Down);
-    CHECK(m.selected() == 6 && m.key(PauseMenu::Key::Left) == PauseMenu::Action::None);   // Back: left/right do nothing
+    CHECK(m.selected() == 6 && m.key(PauseMenu::Key::Left) == PauseMenu::Action::PreviousFps && m.key(PauseMenu::Key::Right) == PauseMenu::Action::NextFps && m.key(PauseMenu::Key::Select) == PauseMenu::Action::NextFps);   // FPS
+    m.key(PauseMenu::Key::Down);
+    CHECK(m.selected() == 7 && m.key(PauseMenu::Key::Left) == PauseMenu::Action::None);   // Back: left/right do nothing
     m.key(PauseMenu::Key::Select);   // Back
     CHECK(m.page() == PauseMenu::Page::Main && m.selected() == 1);
     m.key(PauseMenu::Key::Select);
@@ -927,7 +929,8 @@ TEST(pause_menu_mouse_selects_on_hover_activates_on_click_and_ignores_the_rest) 
         CHECK(m.pointerClick(crtItem(3).x, crtItem(3).y) == PauseMenu::Action::CrtOptionStep && m.crtOption() == app::CrtOption::Transition);
         CHECK(m.pointerClick(crtItem(10).x, crtItem(10).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Graphics);
     }
-    CHECK(m.pointerClick(graphicsItem(6).x, graphicsItem(6).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Main);
+    CHECK(m.pointerClick(graphicsItem(6).x, graphicsItem(6).y) == PauseMenu::Action::NextFps);
+    CHECK(m.pointerClick(graphicsItem(7).x, graphicsItem(7).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Main);
     // Quit Game -> Cancel by mouse, Quit Game -> Confirm by mouse
     CHECK(m.pointerClick(mainItem(2).x, mainItem(2).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Confirm);
     CHECK(m.pointerClick(confirmItem(1).x, confirmItem(1).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Main);
@@ -1090,7 +1093,7 @@ TEST(pause_menu_in_the_window_mouse_keyboard_graphics_page_and_quit_with_confirm
     // the mouse works at another window size too (the picture position is mapped through the viewport)
     SetWindowPos(h, nullptr, 0, 0, 1100, 800, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
     pump(20);
-    SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, graphicsItem(6).x, graphicsItem(6).y));   // Back
+    SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, graphicsItem(7).x, graphicsItem(7).y));   // Back
     SendMessageW(h, WM_MOUSEMOVE, 0, clientPos(h, mainItem(2).x, mainItem(2).y));
     SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, mainItem(2).x, mainItem(2).y));    // Quit Game: asks first
     CHECK(w.ok() && w.menuOpen());
@@ -4178,5 +4181,179 @@ TEST(crt_filter_is_set_from_the_pause_menu_kept_in_the_settings_and_restored_and
             }
         CHECK(lit > 100);
         if (mode == ColourMode::NativeMono) CHECK(offHue == 0);
+    }
+}
+
+// ---------------------------------------------------------------- TASK-034-11: the FPS setting
+
+#include "../src/app/fpsmode.h"
+#include "../src/app/precisesleep.h"
+
+TEST(fps_modes_have_words_periods_and_settings_and_the_native_period_is_the_apple_ii_video_frame) {
+    using app::FpsMode;
+    CHECK(app::kFpsModeCount == 6);
+    for (int i = 0; i < app::kFpsModeCount; ++i) {
+        const FpsMode m = static_cast<FpsMode>(i);
+        FpsMode back;
+        CHECK(app::parseFpsMode(app::fpsModeKey(m), back) && back == m);
+        CHECK(app::nextFpsMode(app::nextFpsMode(m, 1), -1) == m);
+        Settings s;
+        s.fps = m;
+        CHECK(SettingsStore::parse(SettingsStore::format(s)).fps == m);
+    }
+    CHECK(app::nextFpsMode(FpsMode::Unlocked, 1) == FpsMode::Native && app::nextFpsMode(FpsMode::Native, -1) == FpsMode::Unlocked);
+    CHECK(Settings{}.fps == FpsMode::Native && SettingsStore::parse("fps=7\n").fps == FpsMode::Native && SettingsStore::parse("fps=Unlocked\n").fps == FpsMode::Unlocked);
+    // Native: one video frame of 262 lines x 65 cycles = 17,030 cycles of the game's 1,022,727 Hz clock
+    const double nativeMs = static_cast<double>(app::fpsPeriodNs(FpsMode::Native)) / 1e6;
+    std::printf("    Native period %.4f ms = %.3f pictures a second\n", nativeMs, 1000.0 / nativeMs);
+    CHECK(app::kNativeFrameCycles == 17030 && nativeMs > 16.65 && nativeMs < 16.66);
+    CHECK(std::abs(static_cast<double>(app::fpsPeriodNs(FpsMode::Fps30)) / 1e6 - 33.333) < 0.01 && std::abs(static_cast<double>(app::fpsPeriodNs(FpsMode::Fps60)) / 1e6 - 16.667) < 0.01);
+    CHECK(std::abs(static_cast<double>(app::fpsPeriodNs(FpsMode::Fps120)) / 1e6 - 8.333) < 0.01 && std::abs(static_cast<double>(app::fpsPeriodNs(FpsMode::Fps144)) / 1e6 - 6.944) < 0.01);
+    CHECK(app::fpsPeriodNs(FpsMode::Unlocked) == 0);
+}
+
+TEST(precise_sleep_wakes_when_asked_unlike_the_ordinary_sleep) {
+    LARGE_INTEGER f, a, b;
+    QueryPerformanceFrequency(&f);
+    double worst = 0, sum = 0;
+    for (int i = 0; i < 50; ++i) {
+        QueryPerformanceCounter(&a);
+        app::preciseSleepMs(2);
+        QueryPerformanceCounter(&b);
+        const double ms = 1000.0 * static_cast<double>(b.QuadPart - a.QuadPart) / static_cast<double>(f.QuadPart);
+        worst = (std::max)(worst, ms);
+        sum += ms;
+    }
+    std::printf("    a 2 ms precise sleep: mean %.2f ms, worst %.2f ms\n", sum / 50, worst);
+    CHECK(sum / 50 < 4.0);   // (the ordinary sleep_for(2 ms) takes 15.6 ms on this Windows)
+}
+
+namespace {
+
+struct PacedRun {
+    GameWindow::FrameStats stats;
+    bool ok = false;
+};
+
+// Runs the window's paced loop for `ms` while another thread publishes a new picture every millisecond (more pictures than any frame rate asks for).
+PacedRun pacedRun(app::FpsMode mode, int ms) {
+    PacedRun r;
+    GameWindow w(GameWindowOptions{3, true});
+    if (!w.ok() || !w.usesDirect3d()) return r;
+    w.setFps(mode);
+    MSG stale;
+    while (PeekMessageW(&stale, nullptr, 0, 0, PM_REMOVE)) {   // (the windows of earlier tests left their quit messages in this thread's queue: WM_QUIT comes out last, and is thrown away)
+        if (stale.message == WM_QUIT) continue;
+        TranslateMessage(&stale);
+        DispatchMessageW(&stale);
+    }
+    std::atomic<bool> stop{false};
+    std::thread feeder([&] {
+        const hires::Page page = busyPage();
+        while (!stop.load()) {
+            w.setPage(page);
+            if (mode == app::FpsMode::Unlocked) Sleep(0);   // as many new pictures as the window can take
+            else app::preciseSleepMs(1);   // (an ordinary Sleep(1) lasts 15.6 ms here: only 64 new pictures a second)
+        }
+    });
+    const HWND h = w.hwnd();
+    std::thread closer([&] {
+        Sleep(300);   // let the window settle, then count
+        w.resetFrameStats();
+        Sleep(static_cast<DWORD>(ms));
+        stop = true;
+        PostMessageW(h, WM_CLOSE, 0, 0);
+    });
+    const DWORD t0 = GetTickCount();
+    const int code = w.run();
+    std::printf("    (run() returned %d after %lu ms)\n", code, static_cast<unsigned long>(GetTickCount() - t0));
+    closer.join();
+    feeder.join();
+    r.stats = w.frameStats();
+    r.ok = true;
+    return r;
+}
+
+}  // namespace
+
+TEST(fps_setting_paces_the_pictures_on_a_fixed_grid_and_unlocked_shows_every_new_picture) {
+    using app::FpsMode;
+    const int ms = 1500;
+    struct Case { FpsMode mode; double rate; };
+    const Case cases[] = {{FpsMode::Native, 60.05}, {FpsMode::Fps30, 30}, {FpsMode::Fps60, 60}, {FpsMode::Fps120, 120}, {FpsMode::Fps144, 144}};
+    for (const Case& c : cases) {
+        const PacedRun r = pacedRun(c.mode, ms);
+        CHECK(r.ok);
+        if (!r.ok) return;
+        const double perSecond = static_cast<double>(r.stats.frames) * 1000.0 / ms;
+        std::printf("    %-7s target %.2f: %.1f pictures a second, interval mean %.2f ms, worst %.2f ms, deviation %.2f ms\n", app::fpsModeLabel(c.mode), c.rate, perSecond, r.stats.meanMs, r.stats.maxMs, r.stats.deviationMs);
+        CHECK(perSecond > c.rate * 0.93 && perSecond < c.rate * 1.07);   // the rate asked for, not the 64 a second of the old window timer
+        CHECK(r.stats.deviationMs < 0.25 * (1000.0 / c.rate));            // steady: the grid does not wander
+    }
+    const PacedRun u = pacedRun(FpsMode::Unlocked, ms);
+    CHECK(u.ok);
+    const double uRate = static_cast<double>(u.stats.frames) * 1000.0 / ms;
+    std::printf("    UNLOCKED: %.1f pictures a second (the feeder publishes as fast as it can); per picture: drawing %.2f ms, Present %.2f ms\n", uRate, u.stats.drawMs, u.stats.presentMs);
+    CHECK(uRate > 200 && u.stats.meanMs < 5.0);   // far above every cap: a picture as soon as there is a new one
+}
+
+TEST(fps_setting_is_changed_from_the_pause_menu_kept_in_the_settings_and_restored) {
+    core::CharacterRom rom;
+    const bool haveFont = loadFont(rom);
+    const auto dir = scratchDir("fps");
+    SettingsStore store((dir / "settings.ini").wstring());
+    Settings start;
+    start.displayMode = DisplayMode::Windowed;
+    {
+        GameWindow w(GameWindowOptions{3, true});
+        CHECK(w.ok());
+        if (!w.ok()) return;
+        if (haveFont) w.setMenuFont(rom);
+        w.attachSettings(&store, start);
+        CHECK(w.fps() == app::FpsMode::Native);
+        const HWND h = w.hwnd();
+        SendMessageW(h, WM_KEYDOWN, VK_ESCAPE, 1);
+        SendMessageW(h, WM_KEYDOWN, VK_DOWN, 1);
+        SendMessageW(h, WM_KEYDOWN, VK_RETURN, 1);                              // Graphics Settings
+        for (int i = 0; i < 6; ++i) SendMessageW(h, WM_KEYDOWN, VK_DOWN, 1);   // FPS
+        SendMessageW(h, WM_KEYDOWN, VK_RIGHT, 1);
+        CHECK(w.fps() == app::FpsMode::Fps30 && w.menuOpen() && store.load().fps == app::FpsMode::Fps30);
+        SendMessageW(h, WM_KEYDOWN, VK_RETURN, 1);
+        SendMessageW(h, WM_KEYDOWN, VK_RETURN, 1);
+        SendMessageW(h, WM_KEYDOWN, VK_RETURN, 1);
+        CHECK(w.fps() == app::FpsMode::Fps144);
+        SendMessageW(h, WM_KEYDOWN, VK_LEFT, 1);
+        CHECK(w.fps() == app::FpsMode::Fps120);
+        SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, graphicsItem(6).x, graphicsItem(6).y));   // a click: next
+        CHECK(w.fps() == app::FpsMode::Fps144);
+    }
+    CHECK(store.load().fps == app::FpsMode::Fps144);
+    {
+        GameWindow w(GameWindowOptions{3, true});
+        CHECK(w.ok());
+        if (!w.ok()) return;
+        w.attachSettings(&store, store.load());
+        CHECK(w.fps() == app::FpsMode::Fps144);   // the next start
+    }
+    if (haveFont) {   // the entry shows the choice
+        PauseMenu m;
+        m.show();
+        m.key(PauseMenu::Key::Down);
+        m.key(PauseMenu::Key::Select);
+        PauseMenu::View a, b;
+        b.fps = app::FpsMode::Unlocked;
+        std::vector<std::uint8_t> pa, pb;
+        m.render(rom, a, pa);
+        m.render(rom, b, pb);
+        int rows = 0, elsewhere = 0;
+        for (int y = 0; y < 192; ++y) {
+            bool differs = false;
+            for (int x = 0; x < 280; ++x) differs |= pa[static_cast<std::size_t>(y) * 280 + static_cast<std::size_t>(x)] != pb[static_cast<std::size_t>(y) * 280 + static_cast<std::size_t>(x)];
+            if (differs) {
+                ++rows;
+                if (y < 14 * 8 || y >= 15 * 8) ++elsewhere;   // the FPS entry is text row 14
+            }
+        }
+        CHECK(rows > 0 && elsewhere == 0);
     }
 }

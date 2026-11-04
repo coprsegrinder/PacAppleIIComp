@@ -17,7 +17,7 @@ class PauseMenu {
 public:
     enum class Page { Closed, Main, Graphics, Crt, Confirm };
     enum class Key { Up, Down, Left, Right, Select, Back };
-    enum class Action { None, Resume, Quit, ToggleBorders, NextDisplayMode, PreviousDisplayMode, NextResolution, PreviousResolution, NextBackground, PreviousBackground, NextColourMode, PreviousColourMode, NextCrtPreset, PreviousCrtPreset, CrtOptionStep };
+    enum class Action { None, Resume, Quit, ToggleBorders, NextDisplayMode, PreviousDisplayMode, NextResolution, PreviousResolution, NextBackground, PreviousBackground, NextColourMode, PreviousColourMode, NextCrtPreset, PreviousCrtPreset, CrtOptionStep, NextFps, PreviousFps };
     struct Point { int x, y; };
     // What the pages show (the program's present state).
     struct View {
@@ -26,6 +26,7 @@ public:
         Background background = Background::Black;
         ColourMode colourMode = ColourMode::Original;
         CrtFilter crt;
+        FpsMode fps = FpsMode::Native;
         std::string resolution = "1920X1080 (16:9)";   // the Resolution entry's value: a listed size, CUSTOM WxH, or the desktop WxH in Borderless Fullscreen
     };
 

@@ -23,6 +23,7 @@
 #include "background_art.h"
 #include "colourmode.h"
 #include "crtfilter.h"
+#include "fpsmode.h"
 #include "framed_layout.h"
 #include "glow.h"
 #include "pausemenu.h"
@@ -83,6 +84,7 @@ public:
     bool resolutionFits(int w, int h) const;      // windowed: a window with this picture area fits the monitor's work area
     bool setResolution(int w, int h);             // false: Borderless Fullscreen is active (native resolution), or the size does not fit
     void cycleResolution(int dir);                // the next / previous listed size that fits; from a custom size the first / last that fits
+    void logLine(const std::string& text);   // any thread: appends a line to the log file (when there is one)
     void setLogFile(const std::wstring& path) { logPath_ = path; }   // appends a line for every display mode change (the mode and the picture area; for tests and reports)
     // Settings: starts with these (display mode, frame, window position and size), and from then on writes every change of them to the store (atomic file); the window's last
     // windowed place is written when the window closes.
@@ -104,6 +106,19 @@ public:
     void setCrt(const CrtFilter& f);
     void stepCrtOption(CrtOption o, int dir);
     void stepCrtPreset(int dir) { setCrt(crtPresetFilter(crtNextPreset(crtPresetOf(crt_), dir))); }
+    // FPS (TASK-034-11): how often the window shows the game's pictures: Native (the Apple II's 60.05 pictures a second), 30, 60, 120, 144, or Unlocked (a picture whenever the game has a new
+    // one). The game, its clock and the sound run on their own thread and never depend on it. Only effective while run() is the message loop.
+    FpsMode fps() const noexcept { return fps_; }
+    void setFps(FpsMode m);
+    void cycleFps(int dir) { setFps(nextFpsMode(fps_, dir)); }
+    struct FrameStats {   // the pictures shown by the paced loop since resetFrameStats()
+        unsigned long long frames = 0;
+        double meanMs = 0, maxMs = 0, deviationMs = 0;   // between two pictures (gaps over 250 ms, a still picture, are not counted)
+        double drawMs = 0, presentMs = 0;                // mean time inside the drawing calls and inside Present
+    };
+    FrameStats frameStats() const;
+    void resetFrameStats();
+    unsigned long long framesShown() const noexcept { return frames_.load(); }
     void setBackground(Background b);                  // what is drawn around the picture (window thread); written to the settings
     void cycleBackground(int dir);
     Background background() const noexcept { return background_; }
@@ -133,6 +148,8 @@ private:
     void menuChanged();                                // repaint, and tell the other threads
     bool menuKey(unsigned vk);                         // true if the menu used the key
     bool pictureCoords(LPARAM lp, int& px, int& py) const;   // client position -> picture pixel; false outside the picture
+    bool renderFrame();                                // Direct3D: draws the newest picture and presents it
+    void pacedFrame(bool everySlot);                   // one step of the paced loop
     void currentPixels(std::uint32_t* out, double glowDtSeconds);   // the 280 x 192 picture to show (page or image), marks it as painted
 
     HWND hwnd_ = nullptr;
@@ -149,7 +166,16 @@ private:
     Background background_ = Background::Black;
     ColourMode colour_ = ColourMode::Original;
     CrtFilter crt_, crtDraw_;
+    FpsMode fps_ = FpsMode::Native;
+    bool paced_ = false;                      // run() is the message loop: pictures are paced by fps_ instead of the window timer
+    bool inModalLoop_ = false;                // the user is dragging or sizing the window (Windows runs its own loop then)
+    std::atomic<unsigned long long> frames_{0};
+    std::int64_t lastFrameNs_ = 0;
+    double sumMs_ = 0, sumSqMs_ = 0, maxMs_ = 0;
+    unsigned long long intervals_ = 0;
+    double drawSumMs_ = 0, presentSumMs_ = 0;
     std::vector<std::uint32_t> trailPrev_, trailPrevMono_;   // the afterglow: the last pictures shown
+    bool glowStale_ = true;                                   // the ambient glow was not kept up to date (another background): start it from the current picture
     bool afterglowBusy_ = false;                              // a trail is still fading: keep repainting
     std::vector<std::uint8_t> monoDots_;       // the dot positions of the screen shown by setImage (when the program gave them), guarded by mutex_
     bool monoDotsValid_ = false;
@@ -186,6 +212,7 @@ private:
     bool savedZoomed_ = false;
     LONG savedStyle_ = 0;
 
+    std::mutex logMutex_;
     std::mutex mutex_;                  // guards page_, pageVersion_, keys_
     hires::Page page_;
     std::vector<std::uint32_t> image_;

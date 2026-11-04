@@ -14,6 +14,7 @@
 #include <windowsx.h>
 
 #include "../video/colour.h"
+#include "precisesleep.h"
 
 namespace pacman::app {
 namespace {
@@ -107,6 +108,34 @@ void GameWindow::setColourMode(ColourMode m) {
     settings_.colourMode = m;
     if (hwnd_) InvalidateRect(hwnd_, nullptr, FALSE);
     saveSettings();
+}
+
+void GameWindow::setFps(FpsMode m) {
+    fps_ = m;
+    settings_.fps = m;
+    saveSettings();
+}
+
+GameWindow::FrameStats GameWindow::frameStats() const {
+    FrameStats s;
+    s.frames = frames_.load();
+    if (intervals_ > 0) {
+        s.meanMs = sumMs_ / static_cast<double>(intervals_);
+        s.maxMs = maxMs_;
+        s.drawMs = drawSumMs_ / static_cast<double>(intervals_);
+        s.presentMs = presentSumMs_ / static_cast<double>(intervals_);
+        const double var = sumSqMs_ / static_cast<double>(intervals_) - s.meanMs * s.meanMs;
+        s.deviationMs = var > 0 ? std::sqrt(var) : 0;
+    }
+    return s;
+}
+
+void GameWindow::resetFrameStats() {
+    frames_ = 0;
+    lastFrameNs_ = 0;
+    sumMs_ = sumSqMs_ = maxMs_ = 0;
+    drawSumMs_ = presentSumMs_ = 0;
+    intervals_ = 0;
 }
 
 void GameWindow::setCrt(const CrtFilter& f) {
@@ -336,6 +365,7 @@ const Settings& GameWindow::settings() {
     settings_.background = background_;
     settings_.colourMode = colour_;
     settings_.crt = crt_;
+    settings_.fps = fps_;
     settings_.desktopScale = desk_.scale;
     settings_.desktopX = desk_.offX;
     settings_.desktopY = desk_.offY;
@@ -345,6 +375,13 @@ const Settings& GameWindow::settings() {
 
 void GameWindow::saveSettings() {
     if (store_) store_->save(settings());
+}
+
+void GameWindow::logLine(const std::string& text) {
+    if (logPath_.empty()) return;
+    std::lock_guard<std::mutex> lock(logMutex_);
+    std::ofstream f{std::filesystem::path(logPath_), std::ios::app};
+    f << text << "\n";
 }
 
 void GameWindow::logMode(const char* what) {
@@ -429,6 +466,7 @@ void GameWindow::attachSettings(SettingsStore* store, const Settings& initial) {
     background_ = initial.background;
     colour_ = initial.colourMode;
     crt_ = initial.crt;
+    fps_ = initial.fps;
     desk_.scale = initial.desktopScale;
     desk_.offX = initial.desktopX;
     desk_.offY = initial.desktopY;
@@ -568,8 +606,13 @@ void GameWindow::currentPixels(std::uint32_t* out, double glowDtSeconds) {
         trailPrevMono_.clear();
         afterglowBusy_ = false;
     }
-    glow_.update(pixels.data(), glowDtSeconds, GlowField::kBlurRadius);   // the backdrop of the ambient glow: from the game's own picture, before the menu is put over it
-    glow_.updateEdges(pixels.data());
+    if (background_ == Background::AmbientGlow) {   // the backdrop of the ambient glow: from the game's own picture, before the menu is put over it (only worked out while it is shown: it is the dearest part of a picture)
+        glow_.update(pixels.data(), glowStale_ ? 1e9 : glowDtSeconds, GlowField::kBlurRadius);
+        glow_.updateEdges(pixels.data());
+        glowStale_ = false;
+    } else {
+        glowStale_ = true;   // the next time it is shown it starts from the picture of that moment
+    }
     if (menu_.open()) {   // the game dimmed to a quarter, the menu panel in black with white text
         std::vector<std::uint8_t> lit;
         PauseMenu::View view;
@@ -578,6 +621,7 @@ void GameWindow::currentPixels(std::uint32_t* out, double glowDtSeconds) {
         view.background = background_;
         view.colourMode = colour_;
         view.crt = crt_;
+        view.fps = fps_;
         {
             const RenderInfo ri = renderInfo();
             view.resolution = fullscreen_ ? std::to_string(ri.displayW) + "X" + std::to_string(ri.displayH) : resolutionLabel(ri.displayW, ri.displayH);
@@ -625,6 +669,8 @@ void GameWindow::menuAction(PauseMenu::Action a) {
     case PauseMenu::Action::NextCrtPreset: stepCrtPreset(1); break;
     case PauseMenu::Action::PreviousCrtPreset: stepCrtPreset(-1); break;
     case PauseMenu::Action::CrtOptionStep: stepCrtOption(menu_.crtOption(), menu_.crtDir()); break;
+    case PauseMenu::Action::NextFps: cycleFps(1); break;
+    case PauseMenu::Action::PreviousFps: cycleFps(-1); break;
     case PauseMenu::Action::NextBackground: cycleBackground(1); break;
     case PauseMenu::Action::PreviousBackground: cycleBackground(-1); break;
     case PauseMenu::Action::NextResolution: cycleResolution(1); break;
@@ -716,9 +762,71 @@ bool GameWindow::captureFrame(std::vector<std::uint32_t>& argb, int& w, int& h) 
     return d3d_->readBack(argb, w, h);
 }
 
+namespace {
+std::int64_t nowNsQpc() {
+    static const double freq = [] {
+        LARGE_INTEGER f;
+        QueryPerformanceFrequency(&f);
+        return static_cast<double>(f.QuadPart);
+    }();
+    LARGE_INTEGER c;
+    QueryPerformanceCounter(&c);
+    return static_cast<std::int64_t>(static_cast<double>(c.QuadPart) * 1e9 / freq);
+}
+}  // namespace
+
+bool GameWindow::renderFrame() {
+    if (!d3d_ || !hwnd_) return false;
+    std::array<std::uint32_t, kW * kH> pixels{};
+    const std::int64_t now = nowNsQpc();
+    const double dt = lastPaintNs_ == 0 ? 1e9 : std::min(1.0, static_cast<double>(now - lastPaintNs_) / 1e9);   // (real time between two pictures: the glow and the afterglow follow it)
+    lastPaintNs_ = now;
+    currentPixels(pixels.data(), dt);
+    RECT rc{};
+    GetClientRect(hwnd_, &rc);
+    d3d_->resize(static_cast<int>(rc.right), static_cast<int>(rc.bottom));
+    const Viewport vp = viewportFor(d3d_->width(), d3d_->height());
+    if (!d3d_->draw(pixels.data(), vp, backgroundFrame(d3d_->width(), d3d_->height(), vp), colour_ == ColourMode::NativeMono ? mono560_.data() : nullptr, &crtDraw_)) return false;
+    const std::int64_t drawn = nowNsQpc();
+    if (!d3d_->present()) return false;
+    const std::int64_t presented = nowNsQpc();
+    drawSumMs_ += static_cast<double>(drawn - now) / 1e6;
+    presentSumMs_ += static_cast<double>(presented - drawn) / 1e6;
+    ++frames_;
+    if (lastFrameNs_ != 0 && now - lastFrameNs_ < 250'000'000) {   // (a longer gap is a still picture: nothing new to show, not a slow frame)
+        const double ms = static_cast<double>(now - lastFrameNs_) / 1e6;
+        sumMs_ += ms;
+        sumSqMs_ += ms * ms;
+        maxMs_ = std::max(maxMs_, ms);
+        ++intervals_;
+    }
+    lastFrameNs_ = now;
+    return true;
+}
+
+void GameWindow::pacedFrame(bool everySlot) {   // a fixed rate shows a picture at every time of its grid (the same picture again when the game has nothing new); Unlocked shows a picture when there is a new one
+    bool changed;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        changed = pageVersion_ != paintedVersion_ || afterglowBusy_;
+    }
+    if (!changed && !everySlot) return;
+    if (d3d_) {
+        renderFrame();
+        ValidateRect(hwnd_, nullptr);
+    } else {
+        InvalidateRect(hwnd_, nullptr, FALSE);
+    }
+}
+
 void GameWindow::paint() {
     PAINTSTRUCT ps;
     HDC dc = BeginPaint(hwnd_, &ps);
+    if (d3d_) {   // Direct3D 11: same picture, same whole-number scale, same bars
+        renderFrame();
+        EndPaint(hwnd_, &ps);
+        return;
+    }
     std::array<std::uint32_t, kW * kH> pixels{};
     const std::int64_t nowNs = static_cast<std::int64_t>(GetTickCount64()) * 1'000'000;
     const double dt = lastPaintNs_ == 0 ? 1e9 : std::min(1.0, static_cast<double>(nowNs - lastPaintNs_) / 1e9);
@@ -726,13 +834,6 @@ void GameWindow::paint() {
     currentPixels(pixels.data(), dt);
     RECT rc{};
     GetClientRect(hwnd_, &rc);
-    if (d3d_) {   // Direct3D 11: same picture, same whole-number scale, same bars
-        d3d_->resize(static_cast<int>(rc.right), static_cast<int>(rc.bottom));
-        const Viewport vp = viewportFor(d3d_->width(), d3d_->height());
-        if (d3d_->draw(pixels.data(), vp, backgroundFrame(d3d_->width(), d3d_->height(), vp), colour_ == ColourMode::NativeMono ? mono560_.data() : nullptr, &crtDraw_)) d3d_->present();
-        EndPaint(hwnd_, &ps);
-        return;
-    }
     const int s = effectiveScale();
     const int w = kW * s, h = kH * s;
     const Viewport gv = viewportFor(static_cast<int>(rc.right), static_cast<int>(rc.bottom));   // (the GDI drawing has no frames, only black bars)
@@ -838,11 +939,13 @@ LRESULT GameWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
         if (d3d_ && wp != SIZE_MINIMIZED) d3d_->resize(static_cast<int>(LOWORD(lp)), static_cast<int>(HIWORD(lp)));
         rememberWindowRect();
         return 0;
+    case WM_ENTERSIZEMOVE: inModalLoop_ = true; return 0;
+    case WM_EXITSIZEMOVE: inModalLoop_ = false; return 0;
     case WM_MOVE:
         rememberWindowRect();
         return 0;
     case WM_TIMER:
-        if (wp == kRefreshTimer) {
+        if (wp == kRefreshTimer && (!paced_ || inModalLoop_)) {
             bool changed;
             {
                 std::lock_guard<std::mutex> lock(mutex_);
@@ -879,6 +982,11 @@ LRESULT GameWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
         return 0;
     }
     case WM_DESTROY:
+        if (!logPath_.empty() && frames_.load() > 0) {   // what the paced loop did (for the real-program checks and reports)
+            const FrameStats fs = frameStats();
+            std::ofstream f{std::filesystem::path(logPath_), std::ios::app};
+            f << "frames: fps=" << fpsModeKey(fps_) << " shown=" << fs.frames << " mean_ms=" << fs.meanMs << " max_ms=" << fs.maxMs << " deviation_ms=" << fs.deviationMs << "\n";
+        }
         KillTimer(hwnd_, kRefreshTimer);
         saveSettings();   // the window's last place and size, the modes: written once more on the way out
         d3d_.reset();
@@ -904,12 +1012,47 @@ LRESULT CALLBACK GameWindow::proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 }
 
 int GameWindow::run() {
-    MSG m;
-    while (GetMessageW(&m, nullptr, 0, 0) > 0) {
-        TranslateMessage(&m);
-        DispatchMessageW(&m);
+    // The paced message loop: pictures are shown on a fixed grid of times (the FPS setting), not when a window timer happens to fire (about every 15.6 ms). The next time is always the
+    // previous one plus the period, so a late wake-up does not shift the grid; after a long stall the grid restarts instead of showing a burst of pictures.
+    paced_ = true;
+    PreciseTimer timer;
+    std::int64_t next = nowNsQpc();
+    int code = 0;
+    for (;;) {
+        MSG m;
+        bool quit = false;
+        while (PeekMessageW(&m, nullptr, 0, 0, PM_REMOVE)) {
+            if (m.message == WM_QUIT) {
+                code = static_cast<int>(m.wParam);
+                quit = true;
+                break;
+            }
+            TranslateMessage(&m);
+            DispatchMessageW(&m);
+        }
+        if (quit) break;
+        const std::int64_t period = fpsPeriodNs(fps_);
+        const std::int64_t now = nowNsQpc();
+        if (period == 0 || now >= next) {
+            pacedFrame(period != 0);
+            if (period != 0) {
+                next += period;
+                if (now - next > 2 * period) next = now + period;   // far behind (the process was stopped): start the grid again
+            }
+        }
+        const std::int64_t wait = period == 0 ? 500'000 : std::max<std::int64_t>(0, next - nowNsQpc());
+        if (timer.handle()) {
+            LARGE_INTEGER due;
+            due.QuadPart = -std::max<std::int64_t>(1, wait / 100);
+            SetWaitableTimer(timer.handle(), &due, 0, nullptr, nullptr, FALSE);
+            const HANDLE th = timer.handle();
+            MsgWaitForMultipleObjectsEx(1, &th, INFINITE, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+        } else {
+            MsgWaitForMultipleObjectsEx(0, nullptr, static_cast<DWORD>(std::max<std::int64_t>(1, wait / 1'000'000)), QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+        }
     }
-    return 0;
+    paced_ = false;
+    return code;
 }
 
 void GameWindow::close() {

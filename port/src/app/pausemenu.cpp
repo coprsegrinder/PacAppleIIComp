@@ -18,7 +18,7 @@ constexpr int kHintRow = 19;
 int PauseMenu::itemCount() const noexcept {
     switch (page_) {
     case Page::Main: return 3;       // Resume, Graphics Settings, Quit Game
-    case Page::Graphics: return 7;   // Display Mode, Resolution, Window Borders, Background, Colour Mode, CRT Filter, Back
+    case Page::Graphics: return 8;   // Display Mode, Resolution, Window Borders, Background, Colour Mode, CRT Filter, FPS, Back
     case Page::Crt: return 11;       // Preset, the nine options, Back
     case Page::Confirm: return 2;    // Confirm, Cancel
     case Page::Closed: break;
@@ -75,6 +75,7 @@ PauseMenu::Action PauseMenu::activate() {
             selected_ = 0;
             return Action::None;
         }
+        if (selected_ == 6) return Action::NextFps;
         page_ = Page::Main;
         selected_ = 1;
         return Action::None;
@@ -109,6 +110,7 @@ PauseMenu::Action PauseMenu::key(Key k) {
         if (page_ == Page::Graphics && selected_ == 3) return k == Key::Left ? Action::PreviousBackground : Action::NextBackground;
         if (page_ == Page::Graphics && selected_ == 4) return k == Key::Left ? Action::PreviousColourMode : Action::NextColourMode;
         if (page_ == Page::Graphics && selected_ == 5) return k == Key::Left ? Action::PreviousCrtPreset : Action::NextCrtPreset;
+        if (page_ == Page::Graphics && selected_ == 6) return k == Key::Left ? Action::PreviousFps : Action::NextFps;
         if (page_ == Page::Crt) return crtStep(k == Key::Left ? -1 : 1);
         return Action::None;
     case Key::Select: return activate();
@@ -180,7 +182,7 @@ void PauseMenu::render(const core::CharacterRom& rom, const View& view, std::vec
         title = "GRAPHICS SETTINGS";
         items = {std::string("DISPLAY MODE: ") + displayModeLabel(view.displayMode), "RESOLUTION: " + view.resolution, view.borders ? "WINDOW BORDERS: ON" : "WINDOW BORDERS: OFF", std::string("BACKGROUND: ") + backgroundLabel(view.background),
                  std::string("COLOUR MODE: ") + colourModeLabel(view.colourMode),
-                 std::string("CRT FILTER: ") + crtPresetLabel(crtPresetOf(view.crt)) + " >", "BACK"};
+                 std::string("CRT FILTER: ") + crtPresetLabel(crtPresetOf(view.crt)) + " >", std::string("FPS: ") + fpsModeLabel(view.fps), "BACK"};
         hint = "UP DOWN  LEFT RIGHT CHANGE  ESC BACK";
         break;
     case Page::Crt:
