@@ -6,7 +6,9 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
+#include <cstdio>
 #include <chrono>
 #include <thread>
 #include <vector>
@@ -221,4 +223,149 @@ TEST(gamewindow_accepts_pages_from_another_thread) {
     const auto px = grab(w.hwnd(), cw, ch);
     CHECK(px.size() == static_cast<std::size_t>(560 * 384));
     if (px.size() == static_cast<std::size_t>(560 * 384)) CHECK(px[(0 * 2 + 1) * 560 + 1 * 2 + 1] == 0xFFFFFF);
+}
+
+// ---- TASK-034-0/1: the picture through Direct3D 11, and where it sits ----
+#include <cstdlib>
+
+#include "../src/app/display_layout.h"
+#include "../src/video/colour.h"
+
+namespace {
+
+// A page with every byte different in a repeatable way: all colours, palette bits and neighbouring pixels occur.
+hires::Page busyPage() {
+    hires::Page p;
+    std::uint32_t s = 12345;
+    for (std::size_t i = 0; i < hires::kPageBytes; ++i) {
+        s = s * 1664525u + 1013904223u;
+        p.set(i, static_cast<std::uint8_t>(s >> 24));
+    }
+    return p;
+}
+
+// What the window must show: the picture scaled by a whole number (nearest neighbour), centred, black around it.
+std::vector<unsigned> expected(const hires::Page& page, int cw, int ch) {
+    std::array<std::uint32_t, 280 * 192> px{};
+    video::renderArgb(page, px);
+    std::vector<unsigned> out(static_cast<std::size_t>(cw) * static_cast<std::size_t>(ch), 0u);
+    const app::Viewport vp = app::computeViewport(cw, ch);
+    for (int y = 0; y < vp.h; ++y)
+        for (int x = 0; x < vp.w; ++x) out[static_cast<std::size_t>(vp.y + y) * static_cast<std::size_t>(cw) + static_cast<std::size_t>(vp.x + x)] = px[static_cast<std::size_t>(y / vp.scale) * 280 + static_cast<std::size_t>(x / vp.scale)] & 0xFFFFFF;
+    return out;
+}
+
+std::size_t differences(const std::vector<std::uint32_t>& got, const std::vector<unsigned>& want) {
+    if (got.size() != want.size()) return got.size() + want.size() + 1;
+    std::size_t bad = 0;
+    for (std::size_t i = 0; i < got.size(); ++i) bad += (got[i] & 0xFFFFFF) != want[i];
+    return bad;
+}
+
+}  // namespace
+
+TEST(display_layout_whole_number_scale_centred_bars_on_every_aspect_ratio) {
+    struct Case { int cw, ch, scale, x, y; const char* name; };
+    const Case cases[] = {
+        {840, 576, 3, 0, 0, "exact 3x"},
+        {1920, 1080, 5, 260, 60, "16:9 1080p"},
+        {2560, 1080, 5, 580, 60, "21:9 2560x1080"},
+        {3440, 1440, 7, 740, 48, "21:9 3440x1440"},
+        {5120, 1440, 7, 1580, 48, "32:9"},
+        {3840, 2160, 11, 380, 24, "16:9 4K"},
+        {1920, 1200, 6, 120, 24, "16:10"},
+        {1024, 768, 3, 92, 96, "4:3 1024x768"},
+        {1280, 960, 4, 80, 96, "4:3 1280x960"},
+        {1280, 720, 3, 220, 72, "16:9 720p"},
+        {280, 192, 1, 0, 0, "exactly 1x"},
+    };
+    for (const Case& c : cases) {
+        const app::Viewport v = app::computeViewport(c.cw, c.ch);
+        const bool ok = v.scale == c.scale && v.w == 280 * c.scale && v.h == 192 * c.scale && v.x == c.x && v.y == c.y;
+        if (!ok) std::printf("    %s: scale %d at %d,%d size %dx%d\n", c.name, v.scale, v.x, v.y, v.w, v.h);
+        CHECK(ok);
+        CHECK(v.x >= 0 && v.y >= 0 && v.x + v.w <= c.cw && v.y + v.h <= c.ch);                  // inside the screen
+        CHECK(std::abs(v.x - (c.cw - v.x - v.w)) <= 1 && std::abs(v.y - (c.ch - v.y - v.h)) <= 1);   // centred
+    }
+    // smaller than 1x: shrunk by the largest fraction that fits, still 280:192, never larger than the area
+    for (const auto& s : {std::pair<int, int>{200, 100}, std::pair<int, int>{100, 300}, std::pair<int, int>{279, 191}, std::pair<int, int>{50, 50}}) {
+        const app::Viewport v = app::computeViewport(s.first, s.second);
+        CHECK(v.scale == 0 && !v.empty() && v.w <= s.first && v.h <= s.second);
+        CHECK(std::abs(static_cast<double>(v.w) / v.h - 280.0 / 192.0) < 0.05);
+    }
+    CHECK(app::computeViewport(0, 100).empty() && app::computeViewport(100, -5).empty());
+}
+
+TEST(direct3d_picture_equals_the_cpu_scaled_picture_byte_for_byte) {
+    GameWindow w(GameWindowOptions{3, false});
+    CHECK(w.ok());
+    if (!w.ok()) return;
+    CHECK_MSG(w.usesDirect3d(), "Direct3D 11 (hardware or WARP) could not start on this machine");
+    if (!w.usesDirect3d()) return;
+    const hires::Page page = busyPage();
+    w.setPage(page);
+    std::vector<std::uint32_t> got;
+    int cw = 0, ch = 0;
+    CHECK(w.captureFrame(got, cw, ch));
+    CHECK(cw == 840 && ch == 576);
+    std::size_t bad = differences(got, expected(page, cw, ch));
+    std::printf("    3x window 840 x 576: %zu of %zu pixels differ\n", bad, got.size());
+    CHECK(bad == 0);
+    // a client area of another shape: bars on every side
+    const SIZE sizes[] = {{1000, 700}, {1920, 1080}, {2560, 1080}, {1024, 768}, {1280, 720}};
+    for (const SIZE& s : sizes) {
+        RECT r{0, 0, s.cx, s.cy};
+        AdjustWindowRect(&r, static_cast<DWORD>(GetWindowLongW(w.hwnd(), GWL_STYLE)), FALSE);
+        SetWindowPos(w.hwnd(), nullptr, 0, 0, r.right - r.left, r.bottom - r.top, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+        pump(30);
+        CHECK(w.captureFrame(got, cw, ch));
+        CHECK(cw == s.cx && ch == s.cy);
+        bad = differences(got, expected(page, cw, ch));
+        std::printf("    client %ld x %ld: scale %d, %zu pixels differ\n", s.cx, s.cy, app::computeViewport(cw, ch).scale, bad);
+        CHECK(bad == 0);
+    }
+}
+
+TEST(direct3d_full_screen_toggle_keeps_the_picture_and_the_game_untouched) {
+    GameWindow w(GameWindowOptions{3, false});
+    CHECK(w.ok());
+    if (!w.ok() || !w.usesDirect3d()) return;
+    const hires::Page page = busyPage();
+    w.setPage(page);
+    for (int round = 0; round < 3; ++round) {
+        CHECK(w.handleHotkey(VK_RETURN, false, true));   // Alt+Enter: full screen
+        pump(30);
+        std::vector<std::uint32_t> got;
+        int cw = 0, ch = 0;
+        CHECK(w.captureFrame(got, cw, ch));
+        MONITORINFO mi{};
+        mi.cbSize = sizeof(mi);
+        GetMonitorInfoW(MonitorFromWindow(w.hwnd(), MONITOR_DEFAULTTONEAREST), &mi);
+        CHECK(cw == mi.rcMonitor.right - mi.rcMonitor.left && ch == mi.rcMonitor.bottom - mi.rcMonitor.top);
+        const std::size_t bad = differences(got, expected(page, cw, ch));
+        std::printf("    round %d full screen %d x %d: %zu pixels differ\n", round, cw, ch, bad);
+        CHECK(bad == 0);
+        CHECK(w.handleHotkey(VK_RETURN, false, true));   // and back
+        pump(30);
+        CHECK(w.captureFrame(got, cw, ch));
+        CHECK(cw == 840 && ch == 576 && differences(got, expected(page, cw, ch)) == 0);
+    }
+}
+
+TEST(gdi_fallback_still_draws_when_direct3d_is_switched_off) {
+    _putenv_s("PACMAN_GDI", "1");
+    {
+        GameWindow w(GameWindowOptions{3, true});
+        CHECK(w.ok());
+        if (w.ok()) {
+            CHECK(!w.usesDirect3d());
+            w.setPage(whiteBlock());
+            pump(250);
+            int cw = 0, ch = 0;
+            const auto px = grab(w.hwnd(), cw, ch);
+            CHECK(px.size() == static_cast<std::size_t>(840 * 576));
+            if (px.size() == static_cast<std::size_t>(840 * 576)) CHECK(px[(0 * 3 + 1) * 840 + 1 * 3 + 1] == 0xFFFFFF && px[(10 * 3) * 840 + 100 * 3] == 0x000000);
+        }
+    }
+    _putenv_s("PACMAN_GDI", "");
 }

@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdlib>
 #include <cstring>
 
 #include "../video/colour.h"
@@ -43,6 +44,14 @@ GameWindow::GameWindow(const GameWindowOptions& options) {
     refreshHz_ = hz >= 24 && hz <= 500 ? static_cast<unsigned>(hz) : 60u;
     // WM_TIMER is coarse (about 15.6 ms); good enough for the first version, a better refresh source can replace it later
     SetTimer(hwnd_, kRefreshTimer, std::max(1u, 1000u / refreshHz_), nullptr);
+    char* gdiOnly = nullptr;
+    _dupenv_s(&gdiOnly, nullptr, "PACMAN_GDI");
+    const bool useGdi = gdiOnly != nullptr && gdiOnly[0] != 0 && gdiOnly[0] != '0';   // PACMAN_GDI=1 forces the GDI fallback
+    free(gdiOnly);
+    if (!useGdi) {   // Direct3D 11 draws the picture; GDI stays as the fallback
+        auto renderer = std::make_unique<D3dRenderer>();
+        if (renderer->init(hwnd_)) d3d_ = std::move(renderer);
+    }
     if (options.visible) {
         ShowWindow(hwnd_, SW_SHOW);
         UpdateWindow(hwnd_);
@@ -145,24 +154,45 @@ bool GameWindow::handleHotkey(unsigned vk, bool ctrl, bool alt) {
     return false;
 }
 
+void GameWindow::currentPixels(std::uint32_t* out) {
+    std::array<std::uint32_t, kW * kH> pixels{};
+    hires::Page copy;
+    bool image = false;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        image = useImage_ && image_.size() >= pixels.size();
+        if (image) std::copy(image_.begin(), image_.begin() + static_cast<std::ptrdiff_t>(pixels.size()), pixels.begin());
+        else copy = page_;
+        paintedVersion_ = pageVersion_;
+    }
+    if (!image) video::renderArgb(copy, pixels);
+    std::copy(pixels.begin(), pixels.end(), out);
+}
+
+bool GameWindow::captureFrame(std::vector<std::uint32_t>& argb, int& w, int& h) {
+    if (!d3d_ || !hwnd_) return false;
+    RECT rc{};
+    GetClientRect(hwnd_, &rc);
+    d3d_->resize(static_cast<int>(rc.right), static_cast<int>(rc.bottom));
+    std::array<std::uint32_t, kW * kH> pixels{};
+    currentPixels(pixels.data());
+    if (!d3d_->draw(pixels.data(), computeViewport(d3d_->width(), d3d_->height()))) return false;
+    return d3d_->readBack(argb, w, h);
+}
+
 void GameWindow::paint() {
     PAINTSTRUCT ps;
     HDC dc = BeginPaint(hwnd_, &ps);
     std::array<std::uint32_t, kW * kH> pixels{};
-    {
-        hires::Page copy;
-        bool image = false;
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            image = useImage_ && image_.size() >= pixels.size();
-            if (image) std::copy(image_.begin(), image_.begin() + static_cast<std::ptrdiff_t>(pixels.size()), pixels.begin());
-            else copy = page_;
-            paintedVersion_ = pageVersion_;
-        }
-        if (!image) video::renderArgb(copy, pixels);
-    }
+    currentPixels(pixels.data());
     RECT rc{};
     GetClientRect(hwnd_, &rc);
+    if (d3d_) {   // Direct3D 11: same picture, same whole-number scale, same bars
+        d3d_->resize(static_cast<int>(rc.right), static_cast<int>(rc.bottom));
+        if (d3d_->draw(pixels.data(), computeViewport(d3d_->width(), d3d_->height()))) d3d_->present();
+        EndPaint(hwnd_, &ps);
+        return;
+    }
     const int s = effectiveScale();
     const int w = kW * s, h = kH * s;
     const int ox = std::max(0, (static_cast<int>(rc.right) - w) / 2), oy = std::max(0, (static_cast<int>(rc.bottom) - h) / 2);
@@ -186,6 +216,9 @@ LRESULT GameWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
     case WM_PAINT: paint(); return 0;
     case WM_ERASEBKGND: return 1;
+    case WM_SIZE:
+        if (d3d_ && wp != SIZE_MINIMIZED) d3d_->resize(static_cast<int>(LOWORD(lp)), static_cast<int>(HIWORD(lp)));
+        return 0;
     case WM_TIMER:
         if (wp == kRefreshTimer) {
             bool changed;
@@ -220,6 +253,7 @@ LRESULT GameWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
     }
     case WM_DESTROY:
         KillTimer(hwnd_, kRefreshTimer);
+        d3d_.reset();
         hwnd_ = nullptr;
         PostQuitMessage(0);
         return 0;

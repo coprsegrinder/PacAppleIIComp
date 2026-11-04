@@ -7,12 +7,15 @@
 
 #include <cstdint>
 #include <deque>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <span>
 #include <vector>
 
 #include "../hires/hires.h"
+#include "d3drenderer.h"
+#include "display_layout.h"
 
 namespace pacman::app {
 
@@ -48,6 +51,8 @@ public:
     int run();                                         // message loop until the window closes; returns the exit code
     void close();
     unsigned refreshHz() const noexcept { return refreshHz_; }
+    bool usesDirect3d() const noexcept { return d3d_ != nullptr; }   // false: the GDI fallback draws (no usable Direct3D 11 device, or PACMAN_GDI=1)
+    bool captureFrame(std::vector<std::uint32_t>& argb, int& w, int& h);   // tests: draws the current picture with the active renderer and returns the client area (Direct3D only)
 
 private:
     static LRESULT CALLBACK proc(HWND, UINT, WPARAM, LPARAM);
@@ -55,12 +60,14 @@ private:
     void pushKey(std::uint8_t code);
     void applyWindowedSize();
     void paint();
+    void currentPixels(std::uint32_t* out);   // the 280 x 192 picture to show (page or image), marks it as painted
 
     HWND hwnd_ = nullptr;
     int scale_ = 3;
     bool fullscreen_ = false;
     bool muted_ = false;
     unsigned refreshHz_ = 60;
+    std::unique_ptr<D3dRenderer> d3d_;
     WINDOWPLACEMENT saved_{};
     LONG savedStyle_ = 0;
 
