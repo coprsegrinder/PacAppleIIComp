@@ -33,6 +33,7 @@ GameWindow::GameWindow(const GameWindowOptions& options) {
     }
     scale_ = std::clamp(options.scale, 1, 8);
     muted_ = options.muted;
+    menuAllowed_ = options.menuAllowed;
     const HINSTANCE inst = GetModuleHandleW(nullptr);
     WNDCLASSW wc{};
     wc.lpfnWndProc = &GameWindow::proc;
@@ -296,6 +297,13 @@ void GameWindow::menuAction(PauseMenu::Action a) {
 }
 
 bool GameWindow::menuKey(unsigned vk) {
+    if (!menuAllowed_.load()) {   // no game is running: no menu, and Esc is not an Apple II key any more either
+        if (menu_.open()) {
+            menu_.hide();
+            menuChanged();
+        }
+        return vk == VK_ESCAPE;
+    }
     if (vk == VK_ESCAPE) {
         if (!menu_.open()) menu_.show();
         else menuAction(menu_.key(PauseMenu::Key::Back));

@@ -26,6 +26,7 @@ struct GameWindowOptions {
     int scale = 3;         // whole-number scale 1..8 for the windowed mode
     bool visible = true;   // false: create hidden (used by tests)
     bool muted = false;    // start with the sound off (--mute: for tests that run the real program)
+    bool menuAllowed = true;   // the pause menu can be opened; the program starts with false and allows it while a game is running
 };
 
 class GameWindow {
@@ -53,6 +54,7 @@ public:
     // setBorders(false) removes the title bar and frame; the window is still resizable at its edges and can be moved by dragging the picture. The picture does not move or change size.
     // The pause menu (TASK-034-3): Esc opens it (the original Esc pause is replaced), the keyboard and the mouse drive it, the game threads stand still while menuOpen() is true.
     bool menuOpen() const noexcept { return menuOpen_.load(); }   // any thread
+    void setMenuAllowed(bool on) noexcept { menuAllowed_ = on; }   // any thread: false = Esc does nothing (boot menus, attract loop, prompts); the program allows the menu from the start of a game to its end
     void setMenuFont(const core::CharacterRom& rom) { font_ = rom; }   // before the window is used: the Apple II character ROM the menu is drawn with
     bool borders() const noexcept { return borders_; }
     void setBorders(bool on);
@@ -93,6 +95,7 @@ private:
     PauseMenu menu_;
     core::CharacterRom font_;
     std::atomic<bool> menuOpen_{false};
+    std::atomic<bool> menuAllowed_{true};
     bool muted_ = false;
     unsigned refreshHz_ = 60;
     std::unique_ptr<D3dRenderer> d3d_;

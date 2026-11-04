@@ -189,6 +189,11 @@ std::int64_t extraFreeze(core::SoundId id) {
 
 // One game, from the intro jingle to the end of the GAME OVER wait. Returns true when the game is over (the program goes back to the attract loop), false when the window closed.
 bool runGame(core::GameDriver& drv, const datapack::Pack& pack, app::GameWindow& window, std::atomic<bool>& quit, int seconds, std::int64_t begin) {
+    struct MenuAllowed {   // Esc opens the pause menu from the start of a game until it is over (and back in the attract loop it does nothing again)
+        app::GameWindow& w;
+        explicit MenuAllowed(app::GameWindow& win) : w(win) { w.setMenuAllowed(true); }
+        ~MenuAllowed() { w.setMenuAllowed(false); }
+    } menuAllowed(window);
     SoundPlayer sounds;
     sounds.init(pack);
     core::CartoonPlayer cartoon;
@@ -472,6 +477,7 @@ int wmain(int argc, wchar_t** argv) {
     app::GameWindowOptions options;
     options.scale = scale;
     options.muted = mute;
+    options.menuAllowed = false;   // the pause menu belongs to a running game (runGame allows it)
     app::GameWindow window(options);
     if (!window.ok()) return 4;
     core::CharacterRom menuFont;   // the pause menu is drawn with the Apple II character ROM

@@ -1106,3 +1106,34 @@ TEST(pause_audio_stands_still_and_continues_from_the_same_sample) {
     CHECK(!audio.busy());             // done: it finished about 1 s later than it would have without the pause
     audio.close();
 }
+
+TEST(pause_menu_only_while_a_game_is_running_esc_does_nothing_before_that) {
+    GameWindowOptions o{3, false};
+    o.menuAllowed = false;   // as the program starts: boot menus, attract loop, prompts
+    GameWindow w(o);
+    CHECK(w.ok());
+    if (!w.ok()) return;
+    SendMessageW(w.hwnd(), WM_KEYDOWN, VK_ESCAPE, 1);
+    SendMessageW(w.hwnd(), WM_CHAR, 0x1B, 0);
+    CHECK(!w.menuOpen());
+    CHECK(!w.popKey().has_value());   // and the original Esc pause does not come back either
+    SendMessageW(w.hwnd(), WM_CHAR, 'a', 0);   // other keys still reach the program (the boot menus need them)
+    CHECK(w.popKey().has_value());
+    for (unsigned vk : {unsigned(VK_UP), unsigned(VK_DOWN), unsigned(VK_RETURN)}) SendMessageW(w.hwnd(), WM_KEYDOWN, vk, 1);
+    SendMessageW(w.hwnd(), WM_CHAR, 0x0D, 0);
+    CHECK(w.popKey().has_value() && !w.menuOpen());   // Enter etc. are ordinary keys here
+    w.setMenuAllowed(true);                           // a game starts
+    SendMessageW(w.hwnd(), WM_KEYDOWN, VK_ESCAPE, 1);
+    CHECK(w.menuOpen());
+    SendMessageW(w.hwnd(), WM_KEYDOWN, VK_ESCAPE, 1);
+    CHECK(!w.menuOpen());
+    w.setMenuAllowed(false);                          // the game is over
+    SendMessageW(w.hwnd(), WM_KEYDOWN, VK_ESCAPE, 1);
+    CHECK(!w.menuOpen());
+    w.setMenuAllowed(true);                           // a menu that is open when the game ends is closed
+    SendMessageW(w.hwnd(), WM_KEYDOWN, VK_ESCAPE, 1);
+    CHECK(w.menuOpen());
+    w.setMenuAllowed(false);
+    SendMessageW(w.hwnd(), WM_KEYDOWN, VK_DOWN, 1);
+    CHECK(!w.menuOpen());
+}

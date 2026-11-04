@@ -9,6 +9,14 @@ public class W3 {
   [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr h, out RECT r);
   [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, uint m, IntPtr w, IntPtr l);
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; }
+  public static bool MenuVisible(IntPtr h) {   // the white frame of the panel (picture row 44, x 40..239 at scale 3 = client row 132..134)
+    RECT r; GetClientRect(h, out r);
+    Bitmap bmp = new Bitmap(r.R - r.L, r.B - r.T);
+    Graphics g = Graphics.FromImage(bmp); IntPtr dc = g.GetHdc(); PrintWindow(h, dc, 3); g.ReleaseHdc(dc); g.Dispose();
+    int white = 0; int[] xs = { 200, 300, 400, 500, 600 };
+    foreach (int x in xs) { Color c = bmp.GetPixel(x, 133); if (c.R == 255 && c.G == 255 && c.B == 255) white++; }
+    bmp.Dispose(); return white == xs.Length;
+  }
   public static byte[] Shot(IntPtr h, string path) {
     RECT r; GetClientRect(h, out r);
     Bitmap bmp = new Bitmap(r.R - r.L, r.B - r.T);
@@ -21,7 +29,29 @@ public class W3 {
 }
 "@
 function Key($h, $vk) { [void][W3]::PostMessage($h, 0x0100, [IntPtr]$vk, [IntPtr]0); Start-Sleep -Milliseconds 150; [void][W3]::PostMessage($h, 0x0101, [IntPtr]$vk, [IntPtr]0); Start-Sleep -Milliseconds 150 }
+function Chars($h, $text) { foreach ($c in $text.ToCharArray()) { [void][W3]::PostMessage($h, 0x0102, [IntPtr][int]$c, [IntPtr]0); Start-Sleep -Milliseconds 200 } }
 function Same($a, $b) { if ($a.Length -ne $b.Length) { return $false }; for ($i = 0; $i -lt $a.Length; $i++) { if ($a[$i] -ne $b[$i]) { return $false } }; return $true }
+# Part A: before a game has started Esc does nothing (no menu); once a game runs, Esc opens it
+$root = Split-Path -Parent $PSScriptRoot
+$dir = Join-Path $root "scratch"
+$exeA = Join-Path $root "out\bat\pacman_play.exe"
+$argsA = "--pack `"$dir\local.pmpk`" --scale 3 --seconds 120 --skip-boot --mute"
+$pa = Start-Process -FilePath $exeA -ArgumentList $argsA -WorkingDirectory $root -PassThru
+Start-Sleep -Seconds 3; $pa.Refresh(); $ha = $pa.MainWindowHandle
+if ($ha -eq 0) { "no window"; Stop-Process -Id $pa.Id -Force; exit 1 }
+Key $ha 0x1B; Start-Sleep -Milliseconds 400
+"attract loop: Esc shows no menu: " + (-not [W3]::MenuVisible($ha))
+Chars $ha " "; Start-Sleep -Milliseconds 800
+Key $ha 0x1B; Start-Sleep -Milliseconds 400
+"player prompt: Esc shows no menu: " + (-not [W3]::MenuVisible($ha))
+Chars $ha "1"; Start-Sleep -Milliseconds 500
+Chars $ha ([string][char]13); Start-Sleep -Seconds 2   # Return: the game starts
+Key $ha 0x1B; Start-Sleep -Milliseconds 500
+"game started: Esc opens the menu: " + [W3]::MenuVisible($ha)
+Key $ha 0x1B; Start-Sleep -Milliseconds 400
+"Esc again closes it: " + (-not [W3]::MenuVisible($ha))
+Stop-Process -Id $pa.Id -Force
+
 $root = Split-Path -Parent $PSScriptRoot
 $exe = "F:\Ports\Pac-Man - Apple II\out\bat\pacman_play.exe"
 $dir = Join-Path $root "scratch"
