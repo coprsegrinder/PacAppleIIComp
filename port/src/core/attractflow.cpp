@@ -1,6 +1,8 @@
 #include "attractflow.h"
 
 #include <algorithm>
+#include <string>
+#include <vector>
 
 namespace pacman::core {
 
@@ -77,10 +79,66 @@ void AttractFlow::playersScreen() {
     monitor_.gameVtab();
     const auto s = pack_->find(0x427C, 84);
     if (s.size() >= kPlayersLen) monitor_.gamePrint(s.first(kPlayersLen), 0x427C);
+    padExtras_ = false;
+    if (padWords()) printPlayersExtras();
     monitor_.addCycles(6);
     monitor_.call(kRdkey);
     mode_ = Mode::Players;
     ctrlV_ = false;
+}
+
+// the lines of the controller under "HOW MANY PLAYERS?": the number to choose and what the buttons do; the cursor goes back behind the question (the digit of the keyboard is echoed there)
+void AttractFlow::printPlayersExtras() {
+    const auto put = [&](int row, const std::string& text) {
+        std::vector<std::uint8_t> t;
+        for (char c : text) t.push_back(static_cast<std::uint8_t>(c | 0x80));
+        monitor_.poke(0x24, 0);
+        monitor_.poke(0x25, static_cast<std::uint8_t>(row));
+        monitor_.addCycles(6);
+        monitor_.gameVtab();
+        monitor_.gamePrint(t, 0x427C);
+    };
+    put(2, std::string("      < ") + static_cast<char>('0' + padPlayers_) + (padPlayers_ == 1 ? " PLAYER >   " : " PLAYERS >  "));
+    put(4, "LEFT / RIGHT: CHANGE THE NUMBER   ");
+    put(5, std::string(1, padLetter_) + ": CONTINUE (OR TYPE 1 - 5)      ");
+    monitor_.poke(0x24, static_cast<std::uint8_t>(kPlayersLen));
+    monitor_.poke(0x25, 0);
+    monitor_.addCycles(6);
+    monitor_.gameVtab();
+    padExtras_ = true;
+}
+
+void AttractFlow::padPlayersStep(int delta) {
+    if (!padWords() || mode_ != Mode::Players) return;
+    padPlayers_ = (padPlayers_ - 1 + delta + 5) % 5 + 1;
+    playersScreen();
+    busy_ = 0;
+    syncText();
+}
+
+// $4299: the prompt under the question (row 11). With a controller its words name the buttons: the keyboard's keys are still named, they still work.
+void AttractFlow::printPressReturn(bool clearFirst) {
+    monitor_.poke(0x24, 0);
+    monitor_.poke(0x25, 0x0B);
+    monitor_.addCycles(6);
+    monitor_.gameVtab();
+    if (clearFirst) {
+        monitor_.gamePrint(std::vector<std::uint8_t>(80, 0xA0), 0x4299);
+        monitor_.poke(0x24, 0);
+        monitor_.poke(0x25, 0x0B);
+        monitor_.addCycles(6);
+        monitor_.gameVtab();
+    }
+    const auto s = pack_->find(0x427C, 84);
+    if (padWords()) {
+        const std::string back = padLetter_ == 'X' ? "CIRCLE" : "B";
+        const std::string text = std::string("PRESS <RETURN> OR ") + padLetter_ + " TO PLAY<SPACE> OR " + back + ": BACK TO DEMO.  ";
+        std::vector<std::uint8_t> t;
+        for (char c : text) t.push_back(c == '' ? std::uint8_t{0x8D} : static_cast<std::uint8_t>(c | 0x80));
+        monitor_.gamePrint(t, 0x4299);
+    } else if (s.size() >= kPlayersLen + kPressLen) {
+        monitor_.gamePrint(s.subspan(kPlayersLen, kPressLen), 0x4299);
+    }
 }
 
 // $4147: the same with row 0 and "RANK OR CARTOON? " (from $41DC), then JSR $FD6F
@@ -124,10 +182,57 @@ void AttractFlow::bootModeScreen() {
     monitor_.addCycles(6);
     monitor_.gameVtab();
     const auto s = pack_->find(0x48D9, 86);
-    monitor_.gamePrintZ(s, 0x48D9);
+    if (modernBoot_) {
+        std::vector<std::uint8_t> t;
+        const auto line = [&](const char* text) {
+            for (const char* c = text; *c; ++c) t.push_back(static_cast<std::uint8_t>(*c | 0x80));
+            t.push_back(0x8D);
+        };
+        line(" PACMAN CAN BE PLAYED WITH");
+        t.push_back(0x8D);
+        line(" SPACE. KEYBOARD");
+        if (padLetter_ != 0) {
+            const std::string c = std::string(" ") + padLetter_ + ". CONTROLLER";
+            line(c.c_str());
+        } else {
+            line(" (NO CONTROLLER FOUND)");
+        }
+        t.push_back(0x8D);
+        t.push_back(0x8D);
+        t.push_back(0x8D);
+        const std::string prompt = padLetter_ != 0 ? std::string("CHOOSE A MODE (SPACE OR ") + padLetter_ + ") " : std::string("PRESS SPACE ");
+        for (char c : prompt) t.push_back(static_cast<std::uint8_t>(c | 0x80));
+        t.push_back(0);
+        monitor_.gamePrintZ(t, 0x48D9);
+    } else {
+        monitor_.gamePrintZ(s, 0x48D9);
+    }
     monitor_.addCycles(6);
     monitor_.call(kRdkey);
     mode_ = Mode::BootMode;
+}
+
+void AttractFlow::setBootMenu(bool modern, char controllerLetter) {
+    const bool changed = modern != modernBoot_ || controllerLetter != padLetter_;
+    modernBoot_ = modern;
+    padLetter_ = controllerLetter;
+    if (changed && modernBoot_ && mode_ == Mode::BootMode) {   // the words change while the menu is on the screen (a controller plugged in or pulled out)
+        bootModeScreen();
+        busy_ = 0;
+        syncText();
+    }
+    if (changed && modernBoot_ && mode_ == Mode::Players && busy_ <= 0) {   // the same for the players prompt
+        playersScreen();
+        busy_ = 0;
+        syncText();
+    }
+    if (changed && modernBoot_ && mode_ == Mode::PressReturn && busy_ <= 0) {   // and for the PRESS RETURN prompt (the lines of the players screen are gone by then)
+        printPressReturn(true);
+        monitor_.addCycles(6);
+        monitor_.call(kRdkey);
+        busy_ = 0;
+        syncText();
+    }
 }
 
 // $492F: JSR $4868, JSR $6F3C, the cursor to the top left, VTAB, the 38 characters of $4A01, JSR $FD0C
@@ -171,7 +276,7 @@ void AttractFlow::finishBoot() {
 void AttractFlow::afterBootKey(std::uint8_t k) {
     if (mode_ == Mode::BootMode) {                 // $48C5
         monitor_.addCycles(2);
-        if (k == 0xB1) {                           // BEQ $48D2: LDA #0, STA $F5, JMP $492F
+        if (k == 0xB1 || (modernBoot_ && k == 0xA0)) {   // BEQ $48D2 (the controls section: Space is the keyboard's key): LDA #0, STA $F5, JMP $492F
             monitor_.addCycles(3 + 2 + 3 + 3);
             monitor_.poke(0xF5, 0);
             bootKeyboardScreen();
@@ -393,12 +498,16 @@ void AttractFlow::afterPlayersKey(std::uint8_t k) {
         mem_.players = players_;                      // `$51` stays: the attract game that follows shows this many players (TASK-033-6c)
         monitor_.poke(0x51, static_cast<std::uint8_t>(players_));
         monitor_.addCycles(2 + 3 + 2 + 3);       // LDA #0, STA $24, LDA #$0B, STA $25
-        monitor_.poke(0x24, 0);
-        monitor_.poke(0x25, 0x0B);
-        monitor_.addCycles(6);
-        monitor_.gameVtab();
-        const auto s = pack_->find(0x427C, 84);
-        if (s.size() >= kPlayersLen + kPressLen) monitor_.gamePrint(s.subspan(kPlayersLen, kPressLen), 0x4299);
+        if (padExtras_) {                        // the controller's lines of the players screen go (the number is chosen)
+            for (int row = 2; row <= 6; ++row) {
+                monitor_.poke(0x24, 0);
+                monitor_.poke(0x25, static_cast<std::uint8_t>(row));
+                monitor_.gameVtab();
+                monitor_.gamePrint(std::vector<std::uint8_t>(40, 0xA0), 0x427C);
+            }
+            padExtras_ = false;
+        }
+        printPressReturn(false);
         monitor_.addCycles(6);
         monitor_.call(kRdkey);
         mode_ = Mode::PressReturn;

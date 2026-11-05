@@ -45,6 +45,7 @@ add_library(pacman_core_verify STATIC
   src/core/ghostmode.cpp
   src/core/ghostdecide_gen.cpp
   src/core/gamedriver.cpp
+  src/core/achievements.cpp
   src/video/colour.cpp
   src/video/monochrome.cpp
   src/video/screens.cpp)
@@ -64,8 +65,8 @@ if(WIN32)
   target_link_options(pacman_view PRIVATE /ENTRY:wmainCRTStartup /SUBSYSTEM:WINDOWS)
 
   add_executable(pacman_play src/app/play_main.cpp src/app/gamewindow.cpp src/app/d3drenderer.cpp src/app/pausemenu.cpp
-    src/app/crtfilter.cpp src/app/background_art.cpp src/app/settings.cpp src/app/audio.cpp)
-  target_link_libraries(pacman_play PRIVATE pacman_core_verify user32 gdi32 winmm ole32 d3d11 dxgi d3dcompiler)
+    src/app/crtfilter.cpp src/app/background_art.cpp src/app/settings.cpp src/app/audio.cpp src/app/gamepad.cpp src/app/achievementbook.cpp)
+  target_link_libraries(pacman_play PRIVATE pacman_core_verify user32 gdi32 winmm ole32 hid setupapi comdlg32 d3d11 dxgi d3dcompiler)
   target_link_options(pacman_play PRIVATE /ENTRY:wmainCRTStartup /SUBSYSTEM:WINDOWS)
 endif()
 
@@ -90,6 +91,8 @@ add_executable(pacman_tests
   tests/test_textscreen.cpp
   tests/test_gamewindow.cpp
   tests/test_settings.cpp
+  tests/test_gamepad.cpp
+  tests/test_achievements.cpp
   tests/test_cycleclock.cpp
   tests/test_ticktrace.cpp
   tests/test_gamestate.cpp
@@ -110,10 +113,10 @@ add_executable(pacman_tests
   tests/test_ghostdecide.cpp
   tests/test_gamedriver.cpp
   src/app/gamewindow.cpp src/app/d3drenderer.cpp src/app/pausemenu.cpp
-    src/app/crtfilter.cpp src/app/background_art.cpp src/app/settings.cpp src/app/audio.cpp
+    src/app/crtfilter.cpp src/app/background_art.cpp src/app/settings.cpp src/app/audio.cpp src/app/gamepad.cpp src/app/achievementbook.cpp
   tests/test_video.cpp
   tests/test_real_image.cpp)
-target_link_libraries(pacman_tests PRIVATE pacman_core_verify user32 gdi32 ole32 d3d11 dxgi d3dcompiler)
+target_link_libraries(pacman_tests PRIVATE pacman_core_verify user32 gdi32 ole32 hid setupapi d3d11 dxgi d3dcompiler)
 
 enable_testing()
 add_test(NAME unit COMMAND pacman_tests)

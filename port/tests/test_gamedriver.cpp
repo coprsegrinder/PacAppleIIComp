@@ -510,23 +510,19 @@ TEST(pac_mans_pellets_and_steps_a_second_are_the_same_before_and_after_the_ghost
             double cycles = 0;
             long pellets = 0, acted = 0;
             int stuck = 0;
-            unsigned ticksSinceAct = 0;
             std::uint8_t lx = s.pacX(), ly = s.pacY();
             for (int t = 0; t < 3000; ++t) {
                 GameState& st = drv.core().state();
                 for (auto& c : st.map) c = dots ? (c == 0 ? 1 : c) : 0;   // dots everywhere Pac-Man goes, or none at all
                 st.zp(0x56) = 200;
                 if (blue) for (auto& g : st.ghosts) if (g.b[9] == 0) g.b[8] = 1;
+                const int ghostEffect = static_cast<int>(StepTimer::reloadValue(drv.core().state(), steps)) - static_cast<int>(StepTimer::calmReloadValue(drv.core().state(), steps));
                 const TickEvents ev = drv.tick();
                 if (ev.caught || ev.levelComplete || ev.ghostEaten[0] || ev.ghostEaten[1] || ev.ghostEaten[2] || ev.ghostEaten[3]) { drv.newGame(); break; }
-                const std::int64_t cost = app::tickCost(mode == 1, pacer, drv.tickCycles(), drv.extraCycles(), 0, StepTimer::reloadValue(drv.core().state(), steps), StepTimer::calmReloadValue(drv.core().state(), steps));
+                const std::int64_t cost = app::tickCost(mode == 1, pacer, drv.tickCycles(), drv.extraCycles(), 0);
                 cycles += static_cast<double>(cost);
                 pellets += ev.ate && !ev.energizer;
-                ++ticksSinceAct;
-                if (ev.acted) {
-                    pacer.act(ticksSinceAct, StepTimer::reloadValue(drv.core().state(), steps));
-                    ticksSinceAct = 0;
-                }
+                if (ev.acted) pacer.startStep(drv.core().state().pacStepCounter(), ghostEffect);
                 acted += ev.acted;
                 if (ev.acted) {   // keep him walking: a new direction when he stands still
                     GameState& after = drv.core().state();
@@ -648,4 +644,61 @@ TEST(the_energizers_are_on_the_background_page_as_on_the_page_when_a_game_starts
     }
     std::printf("    the top left energizer is lit in %d of %d pictures of the page and in %d of the background page\n", pageLit, samples, bgLit);
     CHECK(pageLit > 0 && pageLit == bgLit);
+}
+
+// A game that ended with GAME OVER leaves the driver with the "start a new game" flag and the GAME OVER sequence; the next game (drv.newGame(), as the program starts it from the menu) must not
+// play them: after the READY screen Pac-Man died at once, the words GAME OVER came again, and the new game began with the words still on the screen.
+TEST(a_new_game_after_game_over_starts_clean_no_old_sequence_no_death_no_words_on_the_screen) {
+    if (testfw::config().image.empty()) {
+        std::printf("    SKIPPED (needs --image)\n");
+        return;
+    }
+    const auto built = datapack::buildPack(readAll(testfw::config().image), verify::referenceExpected(), datapack::dataManifest());
+    CHECK_MSG(built.ok, built.reason);
+    if (!built.ok) return;
+    const auto loaded = datapack::loadPack(built.bytes, verify::referenceExpected());
+    CHECK_MSG(loaded.ok, loaded.reason);
+    if (!loaded.ok) return;
+    GameDriver fresh;
+    CHECK(fresh.init(loaded.pack));
+    CHECK(fresh.newGame());
+    GameDriver drv;
+    CHECK(drv.init(loaded.pack));
+    CHECK(drv.newGame());
+    drv.setPlayDeath(true);
+    for (int i = 0; i < 20; ++i) drv.tick();
+    GameState& s = drv.core().state();
+    s.zp(0x58) = 0x81;   // the last life
+    for (auto& g : s.ghosts) {   // all four ghosts on Pac-Man
+        g.b[0] = s.pacX();
+        g.b[1] = s.pacY();
+    }
+    TickEvents ev;
+    for (int i = 0; i < 3 && !ev.caught; ++i) ev = drv.tick();
+    CHECK(ev.caught && ev.gameOver && !drv.sequence().empty() && drv.gameOverPending());
+    const std::vector<SequenceStep> seq = drv.sequence();
+    for (const SequenceStep& st : seq) drv.applySequenceStep(st);   // the program plays the sequence: the words GAME OVER are on the page
+    CHECK(drv.gameOverPending());
+    // the program goes back to the menus and starts the next game
+    CHECK(drv.newGame(1, 1));
+    CHECK(!drv.gameOverPending() && drv.sequence().empty());
+    drv.showReady();
+    drv.rebuildScreen();
+    {   // the screen of a new game: nothing of the old one on it (the words GAME OVER were drawn at column 15, row 105, 7 rows of 4 and 4 bytes; the high score is kept on purpose)
+        bool same = true;
+        for (int row = 105; row < 105 + 7; ++row)
+            for (int col = 15; col < 25; ++col) {
+                const std::size_t off = hires::rowOffset(row) + static_cast<std::size_t>(col);
+                same = same && drv.page().byte(off) == fresh.page().byte(off);
+            }
+        CHECK(same);
+    }
+    int caught = 0, withSequence = 0;
+    for (int t = 0; t < 400; ++t) {
+        const TickEvents e = drv.tick();
+        caught += e.caught;
+        withSequence += !drv.sequence().empty();
+    }
+    std::printf("    in the first 400 ticks of the new game: %d catches, %d ticks with a sequence\n", caught, withSequence);
+    CHECK(caught == 0 && withSequence == 0 && drv.core().state().lives() == 0x83);
 }

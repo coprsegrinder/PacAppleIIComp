@@ -21,7 +21,7 @@ namespace {
 
 constexpr int kW = 280;
 constexpr int kH = 192;
-constexpr UINT_PTR kRefreshTimer = 1;
+constexpr UINT_PTR kRefreshTimer = 1, kPadTimer = 2;
 constexpr const wchar_t* kClass = L"PacmanApplePortGameWindow";
 constexpr std::size_t kMaxQueuedKeys = 64;
 constexpr int kMinClientW = kW / 2, kMinClientH = kH / 2;   // smallest picture area: half size
@@ -58,6 +58,7 @@ GameWindow::GameWindow(const GameWindowOptions& options) {
     refreshHz_ = hz >= 24 && hz <= 500 ? static_cast<unsigned>(hz) : 60u;
     // WM_TIMER is coarse (about 15.6 ms); good enough for the first version, a better refresh source can replace it later
     SetTimer(hwnd_, kRefreshTimer, std::max(1u, 1000u / refreshHz_), nullptr);
+    SetTimer(hwnd_, kPadTimer, 8, nullptr);   // the controller: edges and the menu's repeats (coarse, like the refresh timer: a menu does not need more)
     char* gdiOnly = nullptr;
     _dupenv_s(&gdiOnly, nullptr, "PACMAN_GDI");
     const bool useGdi = gdiOnly != nullptr && gdiOnly[0] != 0 && gdiOnly[0] != '0';   // PACMAN_GDI=1 forces the GDI fallback
@@ -186,6 +187,68 @@ std::optional<std::uint8_t> GameWindow::popKey() {
     const std::uint8_t k = keys_.front();
     keys_.pop_front();
     return k;
+}
+
+std::optional<GameWindow::PadPress> GameWindow::popPadPress() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (padQueue_.empty()) return std::nullopt;
+    const PadPress p = padQueue_.front();
+    padQueue_.pop_front();
+    return p;
+}
+
+// The controller, once for every tick of the pad timer. Menu button: opens the pause menu in a game and closes it again. Menu open: the D-pad or stick moves (and repeats while held), confirm
+// selects, back goes back. Menu not allowed (the boot menus, the attract loop, the prompts): the presses wait for the program (popPadPress).
+void GameWindow::pollPad() {
+    if (!pad_) return;
+    const PadState st = pad_->state();
+    const PadState prev = prevPad_;
+    prevPad_ = st;
+    if (st.kind != PadKind::None && st.anyInput) inputDevice_ = st.kind == PadKind::XInput ? 1 : 2;
+    menu_.setInUseDevice(inputDevice_.load());
+    if (st.kind == PadKind::None || (st.kind != prev.kind && prev.kind == PadKind::None && st.anyInput)) {   // (a controller that has just appeared with a button held does not press anything)
+        if (st.kind == PadKind::None) return;
+        prevPad_ = st;
+        return;
+    }
+    const auto nowMs = static_cast<std::int64_t>(GetTickCount64());
+    const bool menuEdge = st.menu && !prev.menu, confirmEdge = st.confirm && !prev.confirm, backEdge = st.back && !prev.back;
+    if (menuAllowed_.load()) {
+        if (menuEdge) {
+            if (menu_.open()) menu_.hide();
+            else menuKey(VK_ESCAPE);
+            menuChanged();
+            return;
+        }
+        if (!menu_.open()) return;
+        const bool held[4] = {st.up, st.down, st.left, st.right};
+        const bool was[4] = {prev.up, prev.down, prev.left, prev.right};
+        const PauseMenu::Key keys[4] = {PauseMenu::Key::Up, PauseMenu::Key::Down, PauseMenu::Key::Left, PauseMenu::Key::Right};
+        for (int i = 0; i < 4; ++i) {
+            if (!held[i]) continue;
+            if (!was[i]) {
+                padRepeatAtMs_[i] = nowMs + 380;
+            } else if (nowMs >= padRepeatAtMs_[i]) {
+                padRepeatAtMs_[i] = nowMs + 130;
+            } else {
+                continue;
+            }
+            menuAction(menu_.key(keys[i]));
+        }
+        if (confirmEdge) menuAction(menu_.key(PauseMenu::Key::Select));
+        if (backEdge) menuAction(menu_.key(PauseMenu::Key::Back));
+        return;
+    }
+    std::lock_guard<std::mutex> lock(mutex_);
+    const auto push = [&](PadPress p) {
+        if (padQueue_.size() < 16) padQueue_.push_back(p);
+    };
+    if (confirmEdge) push(PadPress::Confirm);
+    if (backEdge) push(PadPress::Back);
+    if (st.up && !prev.up) push(PadPress::Up);
+    if (st.down && !prev.down) push(PadPress::Down);
+    if (st.left && !prev.left) push(PadPress::Left);
+    if (st.right && !prev.right) push(PadPress::Right);
 }
 
 void GameWindow::pushKey(std::uint8_t code) {
@@ -495,8 +558,8 @@ void GameWindow::attachSettings(SettingsStore* store, const Settings& initial) {
     background_ = initial.background;
     colour_ = initial.colourMode;
     crt_ = initial.crt;
-    fps_ = initial.fps;
-    fpsAtomic_ = initial.fps;
+    fps_ = FpsMode::Native;   // the only picture rate: the original's (the other FPS settings were removed; an old settings file's fps key is ignored)
+    fpsAtomic_ = FpsMode::Native;
     desk_.scale = initial.desktopScale;
     desk_.offX = initial.desktopX;
     desk_.offY = initial.desktopY;
@@ -652,6 +715,7 @@ void GameWindow::currentPixels(std::uint32_t* out, double glowDtSeconds) {
         view.colourMode = colour_;
         view.crt = crt_;
         view.fps = fps_;
+        view.achievements = book_ ? book_->mask() : 0;
         {
             const RenderInfo ri = renderInfo();
             view.resolution = fullscreen_ ? std::to_string(ri.displayW) + "X" + std::to_string(ri.displayH) : resolutionLabel(ri.displayW, ri.displayH);
@@ -671,6 +735,20 @@ void GameWindow::currentPixels(std::uint32_t* out, double glowDtSeconds) {
                     }
                 }
             }
+    }
+    if (book_) {   // the pop-up of an achievement just unlocked: a box at the top of the picture, over the game and over the menu
+        std::int64_t age = 0;
+        if (const auto t = book_->toast(static_cast<std::int64_t>(GetTickCount64()), &age)) {
+            std::vector<std::uint8_t> lit;
+            PauseMenu::renderToast(font_, *t, lit);
+            for (int y = PauseMenu::kToastY; y < PauseMenu::kToastY + PauseMenu::kToastH; ++y)
+                for (int x = PauseMenu::kToastX; x < PauseMenu::kToastX + PauseMenu::kToastW; ++x) {
+                    const bool on = lit[static_cast<std::size_t>(y) * kW + static_cast<std::size_t>(x)] != 0;
+                    pixels[static_cast<std::size_t>(y) * kW + static_cast<std::size_t>(x)] = on ? 0xFFFFFFFFu : 0xFF000000u;
+                    if (colour_ == ColourMode::NativeMono)
+                        for (int k = 0; k < 2; ++k) mono560_[static_cast<std::size_t>(y) * video::kDotsW + static_cast<std::size_t>(2 * x + k)] = on ? video::phosphorArgb(255) : 0xFF000000u;
+                }
+        }
     }
     crtDraw_ = crt_;
     if (colour_ == ColourMode::NativeMono) crtDraw_.blend = 0;   // colour blending is about colours: the one phosphor colour has nothing to blend
@@ -699,12 +777,13 @@ void GameWindow::menuAction(PauseMenu::Action a) {
     case PauseMenu::Action::NextCrtPreset: stepCrtPreset(1); break;
     case PauseMenu::Action::PreviousCrtPreset: stepCrtPreset(-1); break;
     case PauseMenu::Action::CrtOptionStep: stepCrtOption(menu_.crtOption(), menu_.crtDir()); break;
-    case PauseMenu::Action::NextFps: cycleFps(1); break;
-    case PauseMenu::Action::PreviousFps: cycleFps(-1); break;
     case PauseMenu::Action::NextBackground: cycleBackground(1); break;
     case PauseMenu::Action::PreviousBackground: cycleBackground(-1); break;
     case PauseMenu::Action::NextResolution: cycleResolution(1); break;
     case PauseMenu::Action::PreviousResolution: cycleResolution(-1); break;
+    case PauseMenu::Action::ResetAchievements:
+        if (book_) book_->reset();
+        break;
     case PauseMenu::Action::Quit: close(); break;   // the normal way out: the window closes, the game threads end, everything is released in order
     case PauseMenu::Action::None: break;
     }
@@ -845,17 +924,44 @@ const GameWindow::Conv& GameWindow::converted(const Snap& s, bool mono) {
 
 // The sprite of an actor: the pixels of the picture that differ from the background in the rectangle around the place of its step (see-through elsewhere). At the place of the step it
 // reproduces the original's picture exactly (the background plus these pixels is the picture).
-void GameWindow::extractSprite(int actor, const Snap& s, int x, int y, bool mono) {
+void GameWindow::extractSprite(int actor, const Snap& s, const FrameMove& mv, bool mono) {
+    const int x = mv.x, y = mv.y;
     SpriteImg& out = sprites_[static_cast<std::size_t>(actor)];
     out.valid = false;
     const Conv& cv = converted(s, mono);
+    // the picture this actor's draw makes: the background with this actor alone (another actor near it is not part of this sprite); without it: the whole picture
+    std::vector<std::uint32_t> solo;
+    if (mv.hasSolo) {
+        if (mono) {
+            monoPicture(mv.solo, solo);
+        } else {
+            solo.assign(static_cast<std::size_t>(kW) * kH, 0);
+            video::renderArgb(mv.solo, solo);
+        }
+    }
+    const std::vector<std::uint32_t>& comp = mv.hasSolo ? solo : cv.comp;
+    // which pixels are the sprite's: the lit pixels of the actor's image drawn alone. (Taking every pixel that differs from the background dragged along the background dots and walls whose
+    // colour the sprite's byte changes: they smeared across the maze while the sprite glided.) Without the image: the pixels that differ.
+    std::vector<std::uint32_t> mask;
+    if (mono) {
+        monoPicture(mv.image, mask);
+    } else {
+        mask.assign(static_cast<std::size_t>(kW) * kH, 0);
+        video::renderArgb(mv.image, mask);
+    }
+    bool anyMask = false;
+    for (std::uint32_t p : mask)
+        if ((p & 0xFFFFFF) != 0) {
+            anyMask = true;
+            break;
+        }
     const int per = mono ? 2 : 1, tw = kW * per;
     const int x0 = (std::max)(0, x - 14), y0 = (std::max)(0, y - 8), x1 = (std::min)(kW, x + 24), y1 = (std::min)(kH, y + 14);
     int minx = 1 << 30, miny = 1 << 30, maxx = -1, maxy = -1;
     for (int yy = y0; yy < y1; ++yy)
         for (int tx = x0 * per; tx < x1 * per; ++tx) {
             const std::size_t i = static_cast<std::size_t>(yy) * static_cast<std::size_t>(tw) + static_cast<std::size_t>(tx);
-            if (cv.comp[i] == cv.bg[i]) continue;
+            if (!(anyMask ? ((mask[i] & 0xFFFFFF) != 0 || comp[i] != cv.bg[i]) : comp[i] != cv.bg[i])) continue;
             minx = (std::min)(minx, tx);
             maxx = (std::max)(maxx, tx);
             miny = (std::min)(miny, yy);
@@ -866,10 +972,17 @@ void GameWindow::extractSprite(int actor, const Snap& s, int x, int y, bool mono
     out.h = maxy - miny + 1;
     if (out.w > 96 || out.h > 32) return;
     out.argb.assign(static_cast<std::size_t>(out.w) * static_cast<std::size_t>(out.h), 0);
+    out.onWall.assign(out.argb.size(), 0);
     for (int yy = miny; yy <= maxy; ++yy)
         for (int tx = minx; tx <= maxx; ++tx) {
             const std::size_t i = static_cast<std::size_t>(yy) * static_cast<std::size_t>(tw) + static_cast<std::size_t>(tx);
-            if (cv.comp[i] != cv.bg[i]) out.argb[static_cast<std::size_t>(yy - miny) * static_cast<std::size_t>(out.w) + static_cast<std::size_t>(tx - minx)] = cv.comp[i];
+            const std::size_t o = static_cast<std::size_t>(yy - miny) * static_cast<std::size_t>(out.w) + static_cast<std::size_t>(tx - minx);
+            const bool own = anyMask && (mask[i] & 0xFFFFFF) != 0;   // a pixel of the actor's own image
+            if (!own && comp[i] == cv.bg[i]) continue;
+            out.argb[o] = comp[i];
+            // not the actor's own and something of the background under it: the colour fringe the original's picture has on the walls and dots beside the sprite (the sprite's byte changes their
+            // colour). It goes with the sprite only where the background has such a pixel under it at the place of the moment: otherwise it smeared across the empty maze while the sprite glided.
+            if (!own && (cv.bg[i] & 0xFFFFFF) != 0) out.onWall[o] = 1;
         }
     out.relX = static_cast<float>(minx) / static_cast<float>(per) - static_cast<float>(x);
     out.relY = static_cast<float>(miny) - static_cast<float>(y);
@@ -932,18 +1045,29 @@ bool GameWindow::buildSmooth(std::int64_t nowNs) {
                 if (s->seq == pl.seq) {
                     // the place of the step: the last one of the actor in that picture
                     for (const FrameMove& m : s->moves)
-                        if (m.actor == a) extractSprite(a, *s, m.x, m.y, mono);
+                        if (m.actor == a) extractSprite(a, *s, m, mono);
                     break;
                 }
             if (!sp.valid) continue;
         }
         D3dRenderer::SpriteDraw d;
-        d.argb = sp.argb.data();
         d.w = sp.w;
         d.h = sp.h;
         d.x = pl.x + sp.relX;
         d.y = pl.y + sp.relY;
         d.texelsPerPixel = mono ? 2 : 1;
+        sp.drawArgb = sp.argb;
+        {   // the recoloured pixels of the background only where the background has something now
+            const int per = mono ? 2 : 1, bw = kW * per;
+            const int X0 = static_cast<int>(std::lround(d.x * static_cast<float>(per))), Y0 = static_cast<int>(std::lround(d.y));
+            for (std::size_t k = 0; k < sp.onWall.size(); ++k) {
+                if (!sp.onWall[k]) continue;
+                const int bx = X0 + static_cast<int>(k % static_cast<std::size_t>(sp.w)), by = Y0 + static_cast<int>(k / static_cast<std::size_t>(sp.w));
+                const bool under = bx >= 0 && by >= 0 && bx < bw && by < kH && (smoothBg_[static_cast<std::size_t>(by) * static_cast<std::size_t>(bw) + static_cast<std::size_t>(bx)] & 0xFFFFFF) != 0;
+                if (!under) sp.drawArgb[k] = 0;
+            }
+        }
+        d.argb = sp.drawArgb.data();
         spriteDraws_.push_back(d);
         signature = signature * 1099511628211ull + static_cast<std::uint64_t>(std::lround(pl.x * 16.0f)) * 131 + static_cast<std::uint64_t>(std::lround(pl.y * 16.0f)) + static_cast<std::uint64_t>(a) * 7919ull;
     }
@@ -1143,17 +1267,23 @@ LRESULT GameWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
         rememberWindowRect();
         return 0;
     case WM_TIMER:
+        if (wp == kPadTimer) {
+            pollPad();
+            return 0;
+        }
         if (wp == kRefreshTimer && (!paced_ || inModalLoop_)) {
             bool changed;
             {
                 std::lock_guard<std::mutex> lock(mutex_);
                 changed = pageVersion_ != paintedVersion_ || afterglowBusy_;
             }
-            if (changed) InvalidateRect(hwnd_, nullptr, FALSE);
+            if (changed || (book_ && book_->toastWaiting())) InvalidateRect(hwnd_, nullptr, FALSE);   // (a pop-up is timed by the clock, not by the game's pictures)
         }
         return 0;
     case WM_KEYDOWN:
     case WM_SYSKEYDOWN: {
+        inputDevice_ = 0;   // the keyboard is the device in use
+        menu_.setInUseDevice(0);
         const bool ctrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
         const bool alt = msg == WM_SYSKEYDOWN || (lp & (1 << 29)) != 0;   // from the message itself (bit 29: Alt was down when the key was pressed), not from the keyboard now
         const bool repeat = (lp & (1 << 30)) != 0;   // key held down: the full screen switch must not flicker back and forth
@@ -1186,6 +1316,7 @@ LRESULT GameWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
             f << "frames: fps=" << fpsModeKey(fps_) << " shown=" << fs.frames << " distinct=" << distinct_.load() << " smooth_frames=" << smoothFrames_ << " mean_ms=" << fs.meanMs << " max_ms=" << fs.maxMs << " deviation_ms=" << fs.deviationMs << " draw_ms=" << fs.drawMs << " present_ms=" << fs.presentMs << "\n";
         }
         KillTimer(hwnd_, kRefreshTimer);
+        KillTimer(hwnd_, kPadTimer);
         saveSettings();   // the window's last place and size, the modes: written once more on the way out
         d3d_.reset();
         hwnd_ = nullptr;

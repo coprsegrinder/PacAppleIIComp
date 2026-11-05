@@ -24,7 +24,9 @@
 #include "background_art.h"
 #include "colourmode.h"
 #include "crtfilter.h"
+#include "achievementbook.h"
 #include "fpsmode.h"
+#include "gamepad.h"
 #include "framed_layout.h"
 #include "motion.h"
 #include "glow.h"
@@ -59,8 +61,23 @@ public:
     // taken apart like that (false: it was rebuilt or drawn by a sequence), and when the game made the tick (its own clock, nanoseconds on the performance counter). Shown like setPage().
     struct FrameMove {
         int actor, x, y;
+        hires::Page image;   // the actor's image alone (which pixels are its own: the sprite is these and nothing else; empty = the pixels that differ from the background)
+        hires::Page solo;    // the background with this actor's image alone on it (hasSolo): the sprite takes its fringe from it, so another actor standing near is not carried along
+        bool hasSolo = false;
     };
     void setFrame(const hires::Page& page, const hires::Page& background, std::span<const FrameMove> moves, bool interpolatable, std::int64_t tNs);
+    // Controllers (gamepad.h). The window reads the hub on a timer: the menu button opens and closes the pause menu, the D-pad / stick, confirm and back drive the menu while it is open, and
+    // before the game (the boot menus, the attract loop, the prompts) the presses wait for the program in popPadPress(). The last device that gave input (keyboard or a controller) is
+    // inputDevice(): 0 keyboard, 1 Xbox, 2 PlayStation, for the controls page.
+    enum class PadPress : std::uint8_t { Confirm, Back, Up, Down, Left, Right };
+    void setGamepad(GamepadHub* hub) noexcept { pad_ = hub; }
+    GamepadHub* gamepad() const noexcept { return pad_; }
+    // The achievements (core/achievements.h): the book holds the progress and the pop-ups; the window draws a pop-up over the picture and the menu's Achievements page reads the progress.
+    void setAchievements(AchievementBook* book) noexcept { book_ = book; }
+    AchievementBook* achievements() const noexcept { return book_; }
+    std::optional<PadPress> popPadPress();
+    int inputDevice() const noexcept { return inputDevice_.load(); }
+    void padTickForTests() { pollPad(); }   // tests: one reading of the controller
     std::optional<std::uint8_t> popKey();             // next Apple II key code (7-bit ASCII with bit 7 set) or nothing
 
     // --- window thread ---
@@ -147,6 +164,7 @@ private:
     static LRESULT CALLBACK proc(HWND, UINT, WPARAM, LPARAM);
     LRESULT handle(UINT msg, WPARAM wp, LPARAM lp);
     void pushKey(std::uint8_t code);
+    void pollPad();                       // the timer: the controller's edges and repeats (window thread)
     void applyWindowedSize();
     LONG windowedStyle() const;                        // the style of the windowed mode for the current borders_ setting (without WS_VISIBLE)
     RECT outerRect(int clientX, int clientY, int clientW, int clientH) const;   // the window rectangle that has this client area, in the current windowed style
@@ -174,6 +192,8 @@ private:
         int w = 0, h = 0;
         float relX = 0, relY = 0;   // where its top left is, from the place of the step (game pixels)
         std::vector<std::uint32_t> argb;
+        std::vector<std::uint8_t> onWall;           // 1 = a pixel of the background (a wall, a dot) that the sprite recolours (the Apple II's colour fringe): drawn only where the background has something at the sprite's place of the moment
+        std::vector<std::uint32_t> drawArgb;        // argb for the moment (the recoloured pixels that have nothing under them removed)
     };
     struct Conv {   // a published picture and its background as colour (or monochrome) pictures
         std::uint64_t seq = 0;
@@ -182,7 +202,7 @@ private:
     };
     bool buildSmooth(std::int64_t nowNs);              // the background and the sprites of the smooth motion for this time; false: draw the picture as it is
     const Conv& converted(const Snap& s, bool mono);
-    void extractSprite(int actor, const Snap& s, int x, int y, bool mono);
+    void extractSprite(int actor, const Snap& s, const FrameMove& m, bool mono);
     bool renderFrame();                                // Direct3D: draws the newest picture and presents it
     void pacedFrame(bool everySlot);                   // one step of the paced loop
     void currentPixels(std::uint32_t* out, double glowDtSeconds);   // the 280 x 192 picture to show (page or image), marks it as painted
@@ -258,6 +278,12 @@ private:
     core::CharacterRom font_;
     std::atomic<bool> menuOpen_{false};
     std::atomic<bool> menuAllowed_{true};
+    GamepadHub* pad_ = nullptr;
+    AchievementBook* book_ = nullptr;
+    PadState prevPad_;
+    std::atomic<int> inputDevice_{0};
+    std::deque<PadPress> padQueue_;                // (guarded by mutex_)
+    std::int64_t padRepeatAtMs_[4] = {0, 0, 0, 0};   // the menu's key repeat for up / down / left / right
     bool muted_ = false;
     unsigned refreshHz_ = 60;
     std::unique_ptr<D3dRenderer> d3d_;

@@ -23,6 +23,20 @@ using app::GameWindowOptions;
 
 namespace {
 
+// The real mouse pointer is parked in the top left corner while a test runs and put back afterwards: in full screen a pointer resting in the middle of the picture would sit on the menu panel
+// and select an entry by hovering before the test presses a key.
+struct CursorParked {
+    POINT old{};
+    bool ok = false;
+    CursorParked() {
+        ok = GetCursorPos(&old) != 0;
+        SetCursorPos(0, 0);
+    }
+    ~CursorParked() {
+        if (ok) SetCursorPos(old.x, old.y);
+    }
+};
+
 void pump(int ms) {
     const auto end = std::chrono::steady_clock::now() + std::chrono::milliseconds(ms);
     MSG m;
@@ -810,6 +824,8 @@ POINT itemPointOn(PauseMenu::Page page, int index) {
     } else if (page == PauseMenu::Page::Confirm) {
         m.key(PauseMenu::Key::Down);
         m.key(PauseMenu::Key::Down);
+        m.key(PauseMenu::Key::Down);
+        m.key(PauseMenu::Key::Down);
         m.key(PauseMenu::Key::Select);
     }
     const PauseMenu::Point c = m.itemCenter(index);
@@ -833,16 +849,20 @@ TEST(pause_menu_keyboard_navigation_pages_and_actions) {
     PauseMenu m;
     CHECK(!m.open() && m.key(PauseMenu::Key::Down) == PauseMenu::Action::None);   // closed: keys do nothing
     m.show();
-    CHECK(m.open() && m.page() == PauseMenu::Page::Main && m.selected() == 0 && m.itemCount() == 3);
-    // the three entries in the specified order, selection wraps round
+    CHECK(m.open() && m.page() == PauseMenu::Page::Main && m.selected() == 0 && m.itemCount() == 5);
+    // the five entries in order (Resume, Graphics Settings, Controls, Achievements, Quit Game), selection wraps round
     m.key(PauseMenu::Key::Down);
     CHECK(m.selected() == 1);
     m.key(PauseMenu::Key::Down);
     CHECK(m.selected() == 2);
     m.key(PauseMenu::Key::Down);
+    CHECK(m.selected() == 3);
+    m.key(PauseMenu::Key::Down);
+    CHECK(m.selected() == 4);
+    m.key(PauseMenu::Key::Down);
     CHECK(m.selected() == 0);
     m.key(PauseMenu::Key::Up);
-    CHECK(m.selected() == 2);
+    CHECK(m.selected() == 4);
     // Resume closes it
     m.show();
     CHECK(m.key(PauseMenu::Key::Select) == PauseMenu::Action::Resume && !m.open());
@@ -852,7 +872,7 @@ TEST(pause_menu_keyboard_navigation_pages_and_actions) {
     // Graphics Settings: its page, the toggle, Back and Esc return to the main page on the entry that led there
     m.show();
     m.key(PauseMenu::Key::Down);
-    CHECK(m.key(PauseMenu::Key::Select) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Graphics && m.selected() == 0 && m.itemCount() == 8);
+    CHECK(m.key(PauseMenu::Key::Select) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Graphics && m.selected() == 0 && m.itemCount() == 7);
     CHECK(m.key(PauseMenu::Key::Select) == PauseMenu::Action::NextDisplayMode && m.page() == PauseMenu::Page::Graphics);   // Display Mode: Enter = next
     CHECK(m.key(PauseMenu::Key::Right) == PauseMenu::Action::NextDisplayMode && m.key(PauseMenu::Key::Left) == PauseMenu::Action::PreviousDisplayMode);
     m.key(PauseMenu::Key::Down);
@@ -881,21 +901,63 @@ TEST(pause_menu_keyboard_navigation_pages_and_actions) {
     m.key(PauseMenu::Key::Select);
     CHECK(m.key(PauseMenu::Key::Back) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Graphics && m.selected() == 5);   // Esc from the CRT page
     m.key(PauseMenu::Key::Down);
-    CHECK(m.selected() == 6 && m.key(PauseMenu::Key::Left) == PauseMenu::Action::PreviousFps && m.key(PauseMenu::Key::Right) == PauseMenu::Action::NextFps && m.key(PauseMenu::Key::Select) == PauseMenu::Action::NextFps);   // FPS
-    m.key(PauseMenu::Key::Down);
-    CHECK(m.selected() == 7 && m.key(PauseMenu::Key::Left) == PauseMenu::Action::None);   // Back: left/right do nothing
+    CHECK(m.selected() == 6 && m.key(PauseMenu::Key::Left) == PauseMenu::Action::None);   // Back: left/right do nothing (there is no FPS entry any more)
     m.key(PauseMenu::Key::Select);   // Back
     CHECK(m.page() == PauseMenu::Page::Main && m.selected() == 1);
     m.key(PauseMenu::Key::Select);
     CHECK(m.page() == PauseMenu::Page::Graphics);
     CHECK(m.key(PauseMenu::Key::Back) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Main && m.selected() == 1 && m.open());
-    // Quit Game asks first; Cancel is selected, so Enter twice does not quit; Esc cancels; Confirm quits
+    // Controls: the page opens on the device in use; Left / Right browse the three devices; Back returns to the entry
     m.key(PauseMenu::Key::Down);
     CHECK(m.selected() == 2);
-    CHECK(m.key(PauseMenu::Key::Select) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Confirm && m.selected() == 1);
-    CHECK(m.key(PauseMenu::Key::Select) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Main && m.selected() == 2);   // Cancel: back to the menu
+    m.setInUseDevice(2);
+    CHECK(m.key(PauseMenu::Key::Select) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Controls && m.itemCount() == 2 && m.controlsDevice() == 2);
+    m.key(PauseMenu::Key::Right);
+    CHECK(m.controlsDevice() == 0);
+    m.key(PauseMenu::Key::Left);
+    CHECK(m.controlsDevice() == 2);
+    m.setInUseDevice(1);   // the player picks up another device: the page follows
+    CHECK(m.controlsDevice() == 1);
+    m.key(PauseMenu::Key::Select);   // Enter on the device entry also goes on to the next one
+    CHECK(m.controlsDevice() == 2);
+    CHECK(m.key(PauseMenu::Key::Back) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Main && m.selected() == 2);
     m.key(PauseMenu::Key::Select);
-    CHECK(m.key(PauseMenu::Key::Back) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Main && m.selected() == 2);   // Esc = cancel
+    m.key(PauseMenu::Key::Down);
+    CHECK(m.selected() == 1 && m.key(PauseMenu::Key::Select) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Main && m.selected() == 2);   // Back entry
+    // Achievements: a list of 22 followed by Credits, Reset Progress and Back; it scrolls with the selection
+    m.key(PauseMenu::Key::Down);
+    CHECK(m.selected() == 3);
+    CHECK(m.key(PauseMenu::Key::Select) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Achievements && m.itemCount() == 25 && m.selected() == 0 && m.scrollTop() == 0);
+    for (int i = 0; i < 7; ++i) m.key(PauseMenu::Key::Down);
+    CHECK(m.selected() == 7 && m.scrollTop() == 0);        // the eighth row is the last one visible
+    m.key(PauseMenu::Key::Down);
+    CHECK(m.selected() == 8 && m.scrollTop() == 1);        // the list scrolls
+    m.key(PauseMenu::Key::Up);
+    CHECK(m.selected() == 7 && m.scrollTop() == 1);        // (and does not jump back)
+    for (int i = 0; i < 9; ++i) m.key(PauseMenu::Key::Up);
+    CHECK(m.selected() == 23 && m.scrollTop() == 17);      // up from the top wraps to the end: Back is 24, this is Reset Progress
+    CHECK(m.key(PauseMenu::Key::Select) == PauseMenu::Action::None && m.page() == PauseMenu::Page::ResetConfirm && m.selected() == 1);   // the safe answer first
+    CHECK(m.key(PauseMenu::Key::Select) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Achievements && m.selected() == 23);   // cancel
+    m.key(PauseMenu::Key::Select);
+    m.key(PauseMenu::Key::Up);
+    CHECK(m.selected() == 0 && m.key(PauseMenu::Key::Select) == PauseMenu::Action::ResetAchievements && m.page() == PauseMenu::Page::Achievements);   // confirm
+    m.key(PauseMenu::Key::Up);
+    CHECK(m.selected() == 22 && m.key(PauseMenu::Key::Select) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Credits);
+    CHECK(m.key(PauseMenu::Key::Back) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Achievements && m.selected() == 22);
+    m.key(PauseMenu::Key::Select);
+    CHECK(m.key(PauseMenu::Key::Select) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Achievements && m.selected() == 22);   // Enter on its Back entry
+    m.key(PauseMenu::Key::Down);
+    m.key(PauseMenu::Key::Down);
+    CHECK(m.selected() == 24 && m.key(PauseMenu::Key::Select) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Main && m.selected() == 3);
+    m.key(PauseMenu::Key::Select);
+    CHECK(m.key(PauseMenu::Key::Back) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Main && m.selected() == 3);
+    // Quit Game asks first; Cancel is selected, so Enter twice does not quit; Esc cancels; Confirm quits
+    m.key(PauseMenu::Key::Down);
+    CHECK(m.selected() == 4);
+    CHECK(m.key(PauseMenu::Key::Select) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Confirm && m.selected() == 1);
+    CHECK(m.key(PauseMenu::Key::Select) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Main && m.selected() == 4);   // Cancel: back to the menu
+    m.key(PauseMenu::Key::Select);
+    CHECK(m.key(PauseMenu::Key::Back) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Main && m.selected() == 4);   // Esc = cancel
     m.key(PauseMenu::Key::Select);
     m.key(PauseMenu::Key::Up);
     CHECK(m.selected() == 0);
@@ -929,12 +991,19 @@ TEST(pause_menu_mouse_selects_on_hover_activates_on_click_and_ignores_the_rest) 
         CHECK(m.pointerClick(crtItem(3).x, crtItem(3).y) == PauseMenu::Action::CrtOptionStep && m.crtOption() == app::CrtOption::Transition);
         CHECK(m.pointerClick(crtItem(10).x, crtItem(10).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Graphics);
     }
-    CHECK(m.pointerClick(graphicsItem(6).x, graphicsItem(6).y) == PauseMenu::Action::NextFps);
-    CHECK(m.pointerClick(graphicsItem(7).x, graphicsItem(7).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Main);
+    CHECK(m.pointerClick(graphicsItem(6).x, graphicsItem(6).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Main);   // Back
     // Quit Game -> Cancel by mouse, Quit Game -> Confirm by mouse
-    CHECK(m.pointerClick(mainItem(2).x, mainItem(2).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Confirm);
+    CHECK(m.pointerClick(mainItem(4).x, mainItem(4).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Confirm);
     CHECK(m.pointerClick(confirmItem(1).x, confirmItem(1).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Main);
-    m.pointerClick(mainItem(2).x, mainItem(2).y);
+    CHECK(m.pointerClick(mainItem(2).x, mainItem(2).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Controls);   // Controls by mouse, and its two entries
+    CHECK(m.pointerClick(m.itemCenter(0).x, m.itemCenter(0).y) == PauseMenu::Action::None && m.controlsDevice() == 1);
+    CHECK(m.pointerClick(m.itemCenter(1).x, m.itemCenter(1).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Main);
+    // the Achievements page by mouse: the first rows are on the screen, the rows scrolled out are not there to click
+    CHECK(m.pointerClick(mainItem(3).x, mainItem(3).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Achievements);
+    CHECK(m.pointerClick(m.itemCenter(2).x, m.itemCenter(2).y) == PauseMenu::Action::None && m.selected() == 2);
+    CHECK(m.itemAt(m.itemCenter(0).x, m.itemCenter(7).y) == 7 && m.itemAt(140, 8 * 14 + 4) == -1);   // (row 14 is under the list)
+    m.key(PauseMenu::Key::Back);
+    m.pointerClick(mainItem(4).x, mainItem(4).y);
     CHECK(m.pointerClick(confirmItem(0).x, confirmItem(0).y) == PauseMenu::Action::Quit);
     // Resume by mouse
     m.show();
@@ -1093,9 +1162,9 @@ TEST(pause_menu_in_the_window_mouse_keyboard_graphics_page_and_quit_with_confirm
     // the mouse works at another window size too (the picture position is mapped through the viewport)
     SetWindowPos(h, nullptr, 0, 0, 1100, 800, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
     pump(20);
-    SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, graphicsItem(7).x, graphicsItem(7).y));   // Back
-    SendMessageW(h, WM_MOUSEMOVE, 0, clientPos(h, mainItem(2).x, mainItem(2).y));
-    SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, mainItem(2).x, mainItem(2).y));    // Quit Game: asks first
+    SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, graphicsItem(6).x, graphicsItem(6).y));   // Back
+    SendMessageW(h, WM_MOUSEMOVE, 0, clientPos(h, mainItem(4).x, mainItem(4).y));
+    SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, mainItem(4).x, mainItem(4).y));    // Quit Game: asks first
     CHECK(w.ok() && w.menuOpen());
     SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, confirmItem(1).x, confirmItem(1).y));    // Cancel
     CHECK(w.ok() && w.menuOpen());
@@ -1106,10 +1175,14 @@ TEST(pause_menu_in_the_window_mouse_keyboard_graphics_page_and_quit_with_confirm
     CHECK(w.menuOpen());
     SendMessageW(h, WM_KEYDOWN, VK_DOWN, 1);
     SendMessageW(h, WM_KEYDOWN, VK_DOWN, 1);
+    SendMessageW(h, WM_KEYDOWN, VK_DOWN, 1);
+    SendMessageW(h, WM_KEYDOWN, VK_DOWN, 1);
     CHECK(w.menuOpen());
     SendMessageW(h, WM_KEYDOWN, VK_RETURN, 1);
     SendMessageW(h, WM_KEYDOWN, VK_RETURN, 1);
     CHECK(w.menuOpen() && w.ok());
+    SendMessageW(h, WM_KEYDOWN, VK_UP, 1);
+    SendMessageW(h, WM_KEYDOWN, VK_UP, 1);
     SendMessageW(h, WM_KEYDOWN, VK_UP, 1);
     SendMessageW(h, WM_KEYDOWN, VK_UP, 1);
     SendMessageW(h, WM_KEYDOWN, VK_RETURN, 1);   // Resume
@@ -1304,6 +1377,7 @@ TEST(display_mode_f11_and_alt_enter_go_between_the_window_and_borderless_fullscr
 }
 
 TEST(display_mode_is_changed_from_the_pause_menu_with_keys_and_mouse_and_the_menu_stays) {
+    const CursorParked parked;
     core::CharacterRom rom;
     const bool haveFont = loadFont(rom);
     GameWindow w(GameWindowOptions{3, true});
@@ -1661,6 +1735,7 @@ TEST(resolution_cycling_goes_round_the_sizes_that_fit_and_a_custom_size_is_label
 }
 
 TEST(resolution_is_changed_from_the_pause_menu_and_kept_in_the_settings) {
+    const CursorParked parked;
     core::CharacterRom rom;
     const bool haveFont = loadFont(rom);
     const auto dir = scratchDir("resolution");
@@ -3385,7 +3460,7 @@ TEST(monochrome_dots_of_a_hires_picture_are_exactly_the_lit_dots_none_lost_none_
     std::size_t lost = 0, litColour = 0;
     for (int y = 0; y < 192; ++y)
         for (int x = 0; x < 280; ++x)
-            if ((colour[static_cast<std::size_t>(y) * 280 + static_cast<std::size_t>(x)] & 0xFFFFFF) != 0) {
+            if ((colour[static_cast<std::size_t>(y) * 280 + static_cast<std::size_t>(x)] & 0xFFFFFF) != 0 && ((p.byte(hires::rowOffset(y) + static_cast<std::size_t>(x / 7)) >> (x % 7)) & 1) != 0) {   // (the lit bits; the colour picture also fills the unlit pixel between two lit ones of the same colour)
                 ++litColour;
                 const int shift = (p.byte(hires::rowOffset(y) + static_cast<std::size_t>(x / 7)) & 0x80) ? 1 : 0;
                 const int pos = 2 * x + shift;
@@ -4197,12 +4272,11 @@ TEST(fps_modes_have_words_periods_and_settings_and_the_native_period_is_the_appl
         FpsMode back;
         CHECK(app::parseFpsMode(app::fpsModeKey(m), back) && back == m);
         CHECK(app::nextFpsMode(app::nextFpsMode(m, 1), -1) == m);
-        Settings s;
-        s.fps = m;
-        CHECK(SettingsStore::parse(SettingsStore::format(s)).fps == m);
     }
+    // the FPS setting was removed (only Native is left): the settings file neither writes nor reads it
+    CHECK(SettingsStore::format(Settings{}).find("fps") == std::string::npos);
     CHECK(app::nextFpsMode(FpsMode::Unlocked, 1) == FpsMode::Native && app::nextFpsMode(FpsMode::Native, -1) == FpsMode::Unlocked);
-    CHECK(Settings{}.fps == FpsMode::Native && SettingsStore::parse("fps=7\n").fps == FpsMode::Native && SettingsStore::parse("fps=Unlocked\n").fps == FpsMode::Unlocked);
+    CHECK(Settings{}.fps == FpsMode::Native && SettingsStore::parse("fps=7\n").fps == FpsMode::Native && SettingsStore::parse("fps=Unlocked\n").fps == FpsMode::Native && SettingsStore::parse("fps=60\n").fps == FpsMode::Native);
     // Native: one video frame of 262 lines x 65 cycles = 17,030 cycles of the game's 1,022,727 Hz clock
     const double nativeMs = static_cast<double>(app::fpsPeriodNs(FpsMode::Native)) / 1e6;
     std::printf("    Native period %.4f ms = %.3f pictures a second\n", nativeMs, 1000.0 / nativeMs);
@@ -4297,72 +4371,11 @@ TEST(fps_setting_paces_the_pictures_on_a_fixed_grid_and_unlocked_shows_every_new
     CHECK(uRate > 200 && u.stats.meanMs < 5.0);   // far above every cap: a picture as soon as there is a new one
 }
 
-TEST(fps_setting_is_changed_from_the_pause_menu_kept_in_the_settings_and_restored) {
-    core::CharacterRom rom;
-    const bool haveFont = loadFont(rom);
-    const auto dir = scratchDir("fps");
-    SettingsStore store((dir / "settings.ini").wstring());
-    Settings start;
-    start.displayMode = DisplayMode::Windowed;
-    {
-        GameWindow w(GameWindowOptions{3, true});
-        CHECK(w.ok());
-        if (!w.ok()) return;
-        if (haveFont) w.setMenuFont(rom);
-        w.attachSettings(&store, start);
-        CHECK(w.fps() == app::FpsMode::Native);
-        const HWND h = w.hwnd();
-        SendMessageW(h, WM_KEYDOWN, VK_ESCAPE, 1);
-        SendMessageW(h, WM_KEYDOWN, VK_DOWN, 1);
-        SendMessageW(h, WM_KEYDOWN, VK_RETURN, 1);                              // Graphics Settings
-        for (int i = 0; i < 6; ++i) SendMessageW(h, WM_KEYDOWN, VK_DOWN, 1);   // FPS
-        SendMessageW(h, WM_KEYDOWN, VK_RIGHT, 1);
-        CHECK(w.fps() == app::FpsMode::Fps30 && w.menuOpen() && store.load().fps == app::FpsMode::Fps30);
-        SendMessageW(h, WM_KEYDOWN, VK_RETURN, 1);
-        SendMessageW(h, WM_KEYDOWN, VK_RETURN, 1);
-        SendMessageW(h, WM_KEYDOWN, VK_RETURN, 1);
-        CHECK(w.fps() == app::FpsMode::Fps144);
-        SendMessageW(h, WM_KEYDOWN, VK_LEFT, 1);
-        CHECK(w.fps() == app::FpsMode::Fps120);
-        SendMessageW(h, WM_LBUTTONDOWN, MK_LBUTTON, clientPos(h, graphicsItem(6).x, graphicsItem(6).y));   // a click: next
-        CHECK(w.fps() == app::FpsMode::Fps144);
-    }
-    CHECK(store.load().fps == app::FpsMode::Fps144);
-    {
-        GameWindow w(GameWindowOptions{3, true});
-        CHECK(w.ok());
-        if (!w.ok()) return;
-        w.attachSettings(&store, store.load());
-        CHECK(w.fps() == app::FpsMode::Fps144);   // the next start
-    }
-    if (haveFont) {   // the entry shows the choice
-        PauseMenu m;
-        m.show();
-        m.key(PauseMenu::Key::Down);
-        m.key(PauseMenu::Key::Select);
-        PauseMenu::View a, b;
-        b.fps = app::FpsMode::Unlocked;
-        std::vector<std::uint8_t> pa, pb;
-        m.render(rom, a, pa);
-        m.render(rom, b, pb);
-        int rows = 0, elsewhere = 0;
-        for (int y = 0; y < 192; ++y) {
-            bool differs = false;
-            for (int x = 0; x < 280; ++x) differs |= pa[static_cast<std::size_t>(y) * 280 + static_cast<std::size_t>(x)] != pb[static_cast<std::size_t>(y) * 280 + static_cast<std::size_t>(x)];
-            if (differs) {
-                ++rows;
-                if (y < 14 * 8 || y >= 15 * 8) ++elsewhere;   // the FPS entry is text row 14
-            }
-        }
-        CHECK(rows > 0 && elsewhere == 0);
-    }
-}
-
-// ---------------------------------------------------------------- Pacing of the modern FPS modes (pacing.h)
+// ---------------------------------------------------------------- Pacing of the modern FPS modes (pacing.h: no longer reachable from the menu; kept with its tests)
 
 #include "../src/app/pacing.h"
 
-TEST(modern_pacing_locks_pac_mans_step_in_real_time_keeps_the_originals_average_pace_without_its_hitches_and_native_is_unchanged) {
+TEST(modern_pacing_is_a_fixed_rule_of_the_game_not_a_measurement_pac_mans_step_takes_the_same_real_time_and_native_is_unchanged) {
     // Native: exactly the old timing for every sound and a range of ticks
     app::SmoothPacer pacer;
     for (int i = 0; i < static_cast<int>(core::SoundId::Count); ++i) {
@@ -4372,51 +4385,36 @@ TEST(modern_pacing_locks_pac_mans_step_in_real_time_keeps_the_originals_average_
     }
     for (std::int64_t tick : {2987, 4870, 9000, 24463})
         for (std::int64_t extra : {0, 4330065, 6043263})
-            for (std::int64_t stand : {0, 8990, 179070}) CHECK(app::tickCost(false, pacer, tick, extra, stand, 11, 9) == tick + extra + stand);
+            for (std::int64_t stand : {0, 8990, 179070}) CHECK(app::tickCost(false, pacer, tick, extra, stand) == tick + extra + stand);
     // modern: the ghost-eaten stand-still stays (the points stay on the screen for the sound), the short ones of the energizer, fruit and bonus life go
     CHECK(app::soundStandStill(true, core::SoundId::GhostEaten) == core::soundFreezeCycles(core::SoundId::GhostEaten) && core::soundFreezeCycles(core::SoundId::GhostEaten) > 100000);
     CHECK(app::soundStandStill(true, core::SoundId::Energizer) == 0 && app::soundStandStill(true, core::SoundId::Fruit) == 0 && app::soundStandStill(true, core::SoundId::BonusLife) == 0);
-    // a stretch like the original's: idle ticks (2,987), moving ticks (7,000) and a dot tick (16,200) every twelfth tick; the pace is its average and the hitches are gone
-    app::SmoothPacer p;
-    std::vector<std::int64_t> original, modern;
-    for (int i = 0; i < 4000; ++i) {
-        const std::int64_t c = (i % 12 == 0) ? 16200 : (i % 3 == 0 ? 7000 : 2987);
-        original.push_back(c);
-        modern.push_back(app::tickCost(true, p, c, 0, 0, 9, 9));
+    // NOTHING IS LEARNED: whatever the original's ticks cost (2,987 .. 24,463, a thousand of them), the tick time of a step is the same, and it is the constant at the calm countdown
+    app::SmoothPacer fixed;
+    fixed.startStep(9, 0);
+    CHECK(fixed.duration() == app::kModernTickCycles);
+    std::int64_t lo = 1LL << 60, hi = 0;
+    for (int i = 0; i < 1000; ++i) {
+        const std::int64_t c = (i * 7919) % 21477 + 2987;
+        const std::int64_t m = app::tickCost(true, fixed, c, 0, 0);
+        lo = (std::min)(lo, m);
+        hi = (std::max)(hi, m);
     }
-    double so = 0, sm = 0;
-    std::int64_t mn = 1LL << 60, mx = 0;
-    for (std::size_t i = 1000; i < original.size(); ++i) {   // (after the first few hundred ticks, which start from the typical value)
-        so += static_cast<double>(original[i]);
-        sm += static_cast<double>(modern[i]);
-        mn = (std::min)(mn, modern[i]);
-        mx = (std::max)(mx, modern[i]);
-    }
-    const double n = static_cast<double>(original.size() - 1000);
-    std::printf("    original mean %.0f cycles a tick, modern mean %.0f; modern tick times %lld .. %lld (original 2,987 .. 16,200)\n", so / n, sm / n, static_cast<long long>(mn), static_cast<long long>(mx));
-    CHECK(std::abs(so / n - sm / n) < 0.01 * so / n);   // the same pace over a stretch (within 1 %)
-    CHECK(mx - mn < 0.05 * so / n);                      // and no hitches: the tick time moves by less than 5 % of itself
-    // THE LOCK: the ghosts turn blue (the countdown goes from 9 to 11 ticks, the original's own ticks get 17 % shorter): Pac-Man's step takes the same real time at once and stays so,
-    // whatever the cost of the ticks does; a fixed tick time would make it 22 % longer
-    app::SmoothPacer q;
-    for (int i = 0; i < 1000; ++i) app::tickCost(true, q, 4900, 0, 0, 9, 9);
-    const double calmStep = 9.0 * static_cast<double>(q.duration(9, 9));
-    for (unsigned reload : {9u, 10u, 11u, 8u, 7u}) {
-        for (int i = 0; i < 300; ++i) app::tickCost(true, q, reload == 9 ? 4900 : 4100, 0, 0, reload, 9);   // (the original's ticks of that phase are cheaper: the pacer must not follow them)
-        const double step = static_cast<double>(reload) * static_cast<double>(q.duration(reload, 9));
-        CHECK(std::abs(step / calmStep - 1.0) < 0.01);   // Pac-Man's step takes the same time (within 1 %) with 0, 1, 2 frightened ghosts or with eyes
-        std::printf("    countdown %u: tick %lld cycles, Pac-Man's step %.0f cycles (calm %.0f)\n", reload, static_cast<long long>(q.duration(reload, 9)), step, calmStep);
-    }
+    CHECK(lo == hi && lo == app::kModernTickCycles);
+    // THE LOCK: whatever the ghosts add to the countdown (blue: +1 or +2, eyes: -1 or -2) and whatever the meal adds (the penalty and the extra tick), the whole step takes the time of the calm one
+    for (unsigned meal : {0u, 1u, 3u, 4u})
+        for (int effect : {0, 1, 2, -1, -2}) {
+            const unsigned countdown = 9 + static_cast<unsigned>(effect) + meal;
+            app::SmoothPacer q;
+            q.startStep(countdown, effect);
+            const double step = static_cast<double>(countdown) * static_cast<double>(q.duration());
+            const double calmStep = static_cast<double>(9 + meal) * static_cast<double>(app::kModernTickCycles);
+            CHECK(std::abs(step / calmStep - 1.0) < 0.001 * 4);   // (a tick is a whole number of cycles: well under 0.1 %)
+            if (meal == 0 && effect == 2) std::printf("    countdown %u (two blue ghosts): tick %lld cycles, Pac-Man's step %.0f cycles (calm %.0f)\n", countdown, static_cast<long long>(q.duration()), step, calmStep);
+        }
     CHECK(11.0 * 4870 / (9.0 * 4870) - 1.0 > 0.2);   // (a fixed tick time: +22 % at a power pill)
-    // Pac-Man's eating adds ticks to his steps (the delay of the item, one more tick on the reloads after it): the pacer learns them from his steps and keeps the whole step the same
-    app::SmoothPacer e;
-    for (int i = 0; i < 1000; ++i) app::tickCost(true, e, 4900, 0, 0, 9, 9);
-    for (int i = 0; i < 40; ++i) e.act(12, 9);   // every step took 12 ticks, 3 more than the countdown of 9
-    CHECK(std::abs(e.eatingTicks() - 3.0) < 0.05);
-    CHECK(std::abs(11.0 * 0 + (11.0 + 3.0) * static_cast<double>(e.duration(11, 9)) / ((9.0 + 3.0) * static_cast<double>(e.duration(9, 9))) - 1.0) < 0.01);   // the whole step, delay included
-    // the long sequences (death, level end) are not smoothed and do not disturb the pace
-    const std::int64_t before = q.duration(9, 9);
-    CHECK(app::tickCost(true, q, 8917, 6043263, 0, 9, 9) == 8917 + 6043263 && q.duration(9, 9) == before);
+    // the long sequences (death, level end) are not smoothed
+    CHECK(app::tickCost(true, fixed, 8917, 6043263, 0) == 8917 + 6043263);
 }
 
 TEST(the_fps_setting_chooses_the_timing_native_is_the_originals_and_the_modern_modes_the_smoothed_pace) {
@@ -4431,7 +4429,7 @@ TEST(the_fps_setting_chooses_the_timing_native_is_the_originals_and_the_modern_m
     }
     // the settings file has no gameplay-speed key any more (an old file's key is ignored)
     Settings s = SettingsStore::parse("gameplay_speed=steady_fast\nfps=60\n");
-    CHECK(s.fps == app::FpsMode::Fps60);
+    CHECK(s.fps == app::FpsMode::Native);   // (the FPS key is ignored too: only Native is left)
     CHECK(SettingsStore::format(s).find("gameplay_speed") == std::string::npos);
 }
 
@@ -4631,4 +4629,314 @@ TEST(window_shows_a_gliding_actor_in_the_modern_fps_modes_and_steps_in_native) {
         std::printf("    at the time of a step the smooth picture differs from the original's page in %d pixels\n", differs);
         CHECK(differs == 0);
     }
+}
+
+TEST(an_actor_close_to_another_does_not_carry_the_other_ones_pixels_along) {
+    // two actors within the reach of each other's window (14 .. 24 pixels) moving towards each other: each sprite must carry only its own pixels (and the fringe of its own image), not the
+    // other actor's, or the other one is seen again where this one glides
+    for (const ColourMode mode : {ColourMode::Original, ColourMode::NativeMono}) {
+        GameWindow w(GameWindowOptions{4, true});
+        CHECK(w.ok());
+        if (!w.ok() || !w.usesDirect3d()) return;
+        setClient(w.hwnd(), 280 * 4, 192 * 4);
+        pump(30);
+        w.setColourMode(mode);
+        constexpr std::int64_t ms = 1'000'000;
+        const std::int64_t t0 = 9'000'000'000LL;
+        hires::Page bg;
+        for (int k = 0; k < 12; ++k) {
+            hires::Page page, i1, i2;
+            blob(page, 60 + 2 * k, 80);
+            blob(page, 90 - 2 * k, 80);
+            blob(i1, 60 + 2 * k, 80);
+            blob(i2, 90 - 2 * k, 80);
+            const app::GameWindow::FrameMove mv[2] = {{1, 60 + 2 * k, 80, i1, i1, true}, {2, 90 - 2 * k, 80, i2, i2, true}};   // (the background is empty: each actor's solo page is its image)
+            w.setFrame(page, bg, std::span<const app::GameWindow::FrameMove>(mv, 2), true, t0 + k * 60 * ms);
+        }
+        w.setFps(app::FpsMode::Fps144);
+        std::vector<std::uint32_t> got;
+        int cw = 0, ch = 0;
+        const app::Viewport vp = w.renderInfo().viewport;
+        int worst = 0, pictures = 0;
+        for (int t = 280; t <= 480; t += 3) {
+            w.setInterpolationClockForTests(t0 + t * ms);
+            CHECK(w.captureFrame(got, cw, ch));
+            // the lit game pixels (a column of the picture counts when its middle row is lit) in the row of the middle of the blocks: two blocks of 5 (or fewer where they overlap)
+            int lit = 0;
+            for (int gx = 0; gx < 280; ++gx) {
+                const std::uint32_t px = got[static_cast<std::size_t>(vp.y + 82 * vp.scale + vp.scale / 2) * static_cast<std::size_t>(cw) + static_cast<std::size_t>(vp.x + gx * vp.scale + vp.scale / 2)] & 0xFFFFFF;
+                lit += ((px >> 8) & 0xFF) > 0x80;
+            }
+            worst = (std::max)(worst, lit);
+            ++pictures;
+        }
+        std::printf("    %s: the most lit pixels in the row over %d pictures: %d (two blocks of 5 dots: at most 10 ... 12 with the fringe of the dots)\n", mode == ColourMode::NativeMono ? "monochrome" : "colour", pictures, worst);
+        CHECK(worst <= 12);
+    }
+}
+
+TEST(an_actor_drawn_into_the_rebuilt_background_is_not_shown_twice_when_it_takes_its_first_step) {
+    // after a rebuilt screen (a new life, READY, a level start) the game's background still holds the images of the actors (they are only erased with their first step); the window shows an
+    // older background for a moment while the actor's sprite is already on its way: the actor must not be seen in two places
+    for (const ColourMode mode : {ColourMode::Original, ColourMode::NativeMono}) {
+        GameWindow w(GameWindowOptions{4, true});
+        CHECK(w.ok());
+        if (!w.ok() || !w.usesDirect3d()) return;
+        setClient(w.hwnd(), 280 * 4, 192 * 4);
+        pump(30);
+        w.setColourMode(mode);
+        constexpr std::int64_t ms = 1'000'000;
+        const std::int64_t t0 = 9'000'000'000LL;
+        hires::Page first;
+        blob(first, 100, 80);
+        w.setFrame(first, first, std::span<const app::GameWindow::FrameMove>(), false, t0);   // the rebuilt picture: the actor is part of the background
+        for (int k = 1; k <= 6; ++k) {
+            hires::Page bg, page, image;
+            blob(page, 100 + 2 * k, 80);
+            blob(image, 100 + 2 * k, 80);
+            const app::GameWindow::FrameMove mv{1, 100 + 2 * k, 80, image};
+            w.setFrame(page, bg, std::span<const app::GameWindow::FrameMove>(&mv, 1), true, t0 + k * 60 * ms);
+        }
+        w.setFps(app::FpsMode::Fps144);
+        std::vector<std::uint32_t> got;
+        int cw = 0, ch = 0;
+        const app::Viewport vp = w.renderInfo().viewport;
+        int doubled = 0, shown = 0;
+        for (int t = 61; t <= 300; t += 4) {   // from just after the first step was published
+            w.setInterpolationClockForTests(t0 + t * ms);
+            CHECK(w.captureFrame(got, cw, ch));
+            // the leftmost lit pixel in the row: the old place of the actor is x 100 .. 104; its sprite never goes left of 102 on its way
+            const int left = leftmostLit(got, cw, vp, 82);
+            ++shown;
+            if (left >= 0 && left < 102 * vp.scale - vp.scale / 2 && left / vp.scale < 102) ++doubled;
+        }
+        std::printf("    %s: in %d pictures after the first step, the old image (baked into the background) was seen next to the sprite in %d\n", mode == ColourMode::NativeMono ? "monochrome" : "colour", shown, doubled);
+        CHECK(doubled == 0);
+    }
+}
+
+TEST(the_colour_fringe_a_sprite_casts_on_a_wall_is_shown_at_the_step_and_follows_only_where_the_wall_is) {
+    // a ghost's image changes the palette of its bytes, so the wall pixels beside it change colour (the purple shadow on the walls): at the time of a step the smooth picture has them exactly as the
+    // original's page, and while it glides they appear only on wall pixels (never on the empty maze)
+    for (const ColourMode mode : {ColourMode::Original, ColourMode::NativeMono}) {
+        GameWindow w(GameWindowOptions{4, true});
+        CHECK(w.ok());
+        if (!w.ok() || !w.usesDirect3d()) return;
+        setClient(w.hwnd(), 280 * 4, 192 * 4);
+        pump(30);
+        w.setColourMode(mode);
+        constexpr std::int64_t ms = 1'000'000;
+        const std::int64_t t0 = 7'000'000'000LL;
+        hires::Page bg;
+        for (int y = 70; y < 92; ++y) hires::plotPixel(bg, 62, y);   // a wall
+        const auto pageAt = [&](int k) {
+            hires::Page comp = bg;
+            blob(comp, 40 + 2 * k, 80);
+            const std::size_t at = hires::rowOffset(82) + static_cast<std::size_t>(hires::pixelCell(62).column);
+            comp.set(at, static_cast<std::uint8_t>(comp.byte(at) & 0x7F));   // the wall's byte beside the sprite changes its palette
+            return comp;
+        };
+        for (int k = 0; k < 14; ++k) {
+            hires::Page image;
+            blob(image, 40 + 2 * k, 80);
+            const app::GameWindow::FrameMove mv{0, 40 + 2 * k, 80, image};
+            w.setFrame(pageAt(k), bg, std::span<const app::GameWindow::FrameMove>(&mv, 1), true, t0 + k * 60 * ms);
+        }
+        w.setFps(app::FpsMode::Fps144);
+        w.setInterpolationClockForTests(t0 + 6 * 60 * ms + 72 * ms);
+        std::vector<std::uint32_t> got, plain;
+        int cw = 0, ch = 0, cw2 = 0, ch2 = 0;
+        CHECK(w.captureFrame(got, cw, ch));
+        GameWindow w2(GameWindowOptions{4, true});
+        CHECK(w2.ok());
+        if (!w2.ok()) return;
+        setClient(w2.hwnd(), 280 * 4, 192 * 4);
+        pump(30);
+        w2.setColourMode(mode);
+        w2.setPage(pageAt(6));
+        CHECK(w2.captureFrame(plain, cw2, ch2));
+        int differs = 0;
+        for (int y = 0; y < ch; ++y)
+            for (int x = 0; x < cw; ++x) differs += (got[static_cast<std::size_t>(y) * static_cast<std::size_t>(cw) + static_cast<std::size_t>(x)] & 0xFFFFFF) != (plain[static_cast<std::size_t>(y) * static_cast<std::size_t>(cw2) + static_cast<std::size_t>(x)] & 0xFFFFFF);
+        std::printf("    %s: at the step the smooth picture differs from the original's page in %d pixels\n", mode == ColourMode::NativeMono ? "monochrome" : "colour", differs);
+        CHECK(differs == 0);
+    }
+}
+
+TEST(a_gliding_sprite_carries_only_its_own_pixels_not_the_background_dots_its_byte_recolours) {
+    struct Variant { ColourMode mode; bool withImage; };
+    // (the last one: without the actor's image the window falls back to every pixel that differs from the background, the way that smeared: the test must see the smear there)
+    for (const Variant v : {Variant{ColourMode::Original, true}, Variant{ColourMode::NativeMono, true}, Variant{ColourMode::Original, false}}) {
+        const ColourMode mode = v.mode;
+        GameWindow w(GameWindowOptions{4, true});
+        CHECK(w.ok());
+        if (!w.ok() || !w.usesDirect3d()) return;
+        setClient(w.hwnd(), 280 * 4, 192 * 4);
+        pump(30);
+        w.setColourMode(mode);
+        constexpr std::int64_t ms = 1'000'000;
+        const std::int64_t t0 = 7'000'000'000LL;
+        hires::Page bg;
+        hires::plotPixel(bg, 60, 82);   // a lone dot (violet): the background
+        for (int k = 0; k < 14; ++k) {
+            hires::Page comp = bg, image;
+            blob(comp, 40 + 2 * k, 80);
+            blob(image, 40 + 2 * k, 80);
+            // the sprite's byte also has its palette bit changed where the dot is: the dot is drawn violet in the page, blue in the background (what a ghost's image does to the dots in its bytes)
+            const std::size_t at = hires::rowOffset(82) + static_cast<std::size_t>(hires::pixelCell(60).column);
+            comp.set(at, static_cast<std::uint8_t>(comp.byte(at) & 0x7F));
+            const app::GameWindow::FrameMove mv{0, 40 + 2 * k, 80, v.withImage ? image : hires::Page()};
+            w.setFrame(comp, bg, std::span<const app::GameWindow::FrameMove>(&mv, 1), true, t0 + k * 60 * ms);
+        }
+        w.setFps(app::FpsMode::Fps144);
+        std::vector<std::uint32_t> got;
+        int cw = 0, ch = 0;
+        const app::Viewport vp = w.renderInfo().viewport;
+        long recoloured = 0, sprites = 0;
+        for (int i = 0; i <= 40; ++i) {
+            w.setInterpolationClockForTests(t0 + 300 * ms + 72 * ms + i * 60 * ms / 5);
+            CHECK(w.captureFrame(got, cw, ch));
+            for (int y = 0; y < vp.h; ++y)
+                for (int x = 0; x < vp.w; ++x) {
+                    const std::uint32_t p = got[static_cast<std::size_t>(vp.y + y) * static_cast<std::size_t>(cw) + static_cast<std::size_t>(vp.x + x)];
+                    // (the dot's own place: the colour fringe of the sprite may recolour the dot itself while the sprite is on it; anywhere else the colour would be a smear)
+                    const bool onTheDot = x / 4 >= 59 && x / 4 <= 61 && y / 4 >= 81 && y / 4 <= 83;
+                    if (mode == ColourMode::Original && !(v.withImage && onTheDot) && (p & 0xFFFFFF) == (video::kColour[1] & 0xFFFFFF)) {   // the recoloured dot's colour (violet) anywhere in the picture
+                        if (recoloured == 0) std::printf("      first violet pixel: picture %d at (%d, %d) game (%d, %d), smooth %d, sprites %zu\n", i, x, y, x / 4, y / 4, w.smoothMotion() ? 1 : 0, w.smoothSpriteCount());
+                        ++recoloured;
+                    }
+                    sprites += ((p >> 8) & 0xFF) > 0x80 && x < 62 * 4;   // (lit: white, or the phosphor's green)
+                }
+        }
+        std::printf("    %s: in 41 pictures of the glide, pixels of the recoloured dot's colour: %ld (they would be dragged along with the sprite if it took the background's pixels); sprite pixels seen: %ld\n", mode == ColourMode::NativeMono ? "monochrome" : "colour", recoloured, sprites);
+        if (v.withImage) CHECK(recoloured == 0 && sprites > 1000);
+        else CHECK(recoloured > 0);   // (the old way: the dot's recoloured copy travels with the sprite)
+    }
+}
+
+// ---------------------------------------------------------------- Controllers in the window (gamepad.h)
+
+TEST(a_controller_opens_and_drives_the_pause_menu_and_before_a_game_its_presses_wait_for_the_program) {
+    GameWindow w(GameWindowOptions{3, true});
+    CHECK(w.ok());
+    if (!w.ok()) return;
+    app::GamepadHub hub;
+    w.setGamepad(&hub);
+    const auto pad = [&](std::uint16_t buttons, bool present = true) {
+        app::PadState s;
+        app::parseXInput(buttons, 0, 0, s);
+        hub.injectForTests(s, present);
+        w.padTickForTests();
+    };
+    pad(0);   // an idle controller
+    CHECK(!w.menuOpen() && w.inputDevice() == 0);
+    // Start opens the menu; the device in use is now the Xbox controller; Start again closes it
+    pad(0x0010);
+    CHECK(w.menuOpen() && w.inputDevice() == 1);
+    pad(0);
+    pad(0x0010);
+    CHECK(!w.menuOpen());
+    pad(0);
+    // Start, D-pad down, A on Graphics Settings, B (back) to the main page, A on Resume
+    pad(0x0010);
+    pad(0);
+    pad(0x0002);   // down: Graphics Settings
+    pad(0);
+    pad(0x1000);   // A: opens that page
+    pad(0);
+    pad(0x2000);   // B: back to the main page
+    pad(0);
+    CHECK(w.menuOpen());
+    pad(0x0001);   // up: Resume
+    pad(0);
+    pad(0x1000);   // A: Resume
+    pad(0);
+    CHECK(!w.menuOpen());
+    // the keyboard is the device in use again after a key
+    SendMessageW(w.hwnd(), WM_KEYDOWN, VK_SPACE, 1);
+    CHECK(w.inputDevice() == 0);
+    // a PlayStation pad is device 2
+    {
+        app::PadState s;
+        const std::uint8_t r[64] = {0x01, 128, 128, 128, 128, 0x28, 0, 0};   // cross held (0x20) with no direction (hat 8)
+        app::parseDualShock4(r, sizeof(r), s);
+        hub.injectForTests(s, true);
+        w.padTickForTests();
+        CHECK(w.inputDevice() == 2);
+    }
+    // no game running (the boot menus, the attract loop, the prompts): no menu, the presses are for the program
+    w.setMenuAllowed(false);
+    pad(0);
+    pad(0x0010);
+    CHECK(!w.menuOpen());
+    pad(0);
+    CHECK(!w.popPadPress());
+    pad(0x1000);
+    pad(0);
+    pad(0x2000);
+    pad(0);
+    pad(0x0004);   // left
+    CHECK(w.popPadPress() == GameWindow::PadPress::Confirm);
+    CHECK(w.popPadPress() == GameWindow::PadPress::Back);
+    CHECK(w.popPadPress() == GameWindow::PadPress::Left);
+    CHECK(!w.popPadPress());
+    // a controller that is held while it appears does not press anything; none at all: nothing happens
+    pad(0, false);
+    pad(0x1000);
+    CHECK(!w.popPadPress());
+}
+
+// ---------------------------------------------------------------- Achievements in the window
+
+#include "../src/app/achievementbook.h"
+#include "../src/core/achievements.h"
+
+TEST(an_unlocked_achievement_shows_a_pop_up_over_the_picture_and_the_page_shows_the_progress) {
+    const std::filesystem::path dir = std::filesystem::temp_directory_path() / "pacman_ach_window_test";
+    std::filesystem::remove_all(dir);
+    app::AchievementBook book((dir / "achievements.ini").wstring());
+    book.load();
+    GameWindow w(GameWindowOptions{4, true});
+    CHECK(w.ok());
+    if (!w.ok() || !w.usesDirect3d()) return;
+    core::CharacterRom rom;
+    if (!loadFont(rom)) return;
+    w.setMenuFont(rom);
+    w.setAchievements(&book);
+    setClient(w.hwnd(), 280 * 4, 192 * 4);
+    pump(30);
+    hires::Page page;
+    w.setPage(page);   // an empty (black) picture
+    std::vector<std::uint32_t> got;
+    int cw = 0, ch = 0;
+    const auto litIn = [&](int x0, int y0, int x1, int y1) {
+        CHECK(w.captureFrame(got, cw, ch));
+        const app::Viewport vp = w.renderInfo().viewport;
+        long lit = 0;
+        for (int y = y0; y < y1; ++y)
+            for (int x = x0; x < x1; ++x) lit += (got[static_cast<std::size_t>(vp.y + y * vp.scale + vp.scale / 2) * static_cast<std::size_t>(cw) + static_cast<std::size_t>(vp.x + x * vp.scale + vp.scale / 2)] & 0xFFFFFF) != 0;
+        return lit;
+    };
+    const int x0 = PauseMenu::kToastX, y0 = PauseMenu::kToastY, x1 = x0 + PauseMenu::kToastW, y1 = y0 + PauseMenu::kToastH;
+    CHECK(litIn(x0, y0, x1, y1) == 0);                         // nothing before an achievement
+    CHECK(book.unlock(core::kCherry));
+    const long shown = litIn(x0, y0, x1, y1);
+    std::printf("    the pop-up lights %ld dots of its box\n", shown);
+    CHECK(shown > 300);                                        // the frame, the trophies, two lines of text
+    CHECK(litIn(0, 40, 280, 192) == 0);                        // and nothing outside the box
+    // the menu's page counts what is unlocked
+    PauseMenu m;
+    m.show();
+    m.key(PauseMenu::Key::Down);
+    m.key(PauseMenu::Key::Down);
+    m.key(PauseMenu::Key::Down);
+    m.key(PauseMenu::Key::Select);
+    PauseMenu::View v;
+    std::vector<std::uint8_t> a, b;
+    v.achievements = 0;
+    m.render(rom, v, a);
+    v.achievements = book.mask();
+    m.render(rom, v, b);
+    CHECK(a != b);   // a check mark instead of a lock, and the totals in the title
+    std::filesystem::remove_all(dir);
 }

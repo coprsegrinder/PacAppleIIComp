@@ -1,0 +1,73 @@
+// TASK-034-CONTROLS (modernization): game controllers. Three kinds are supported: XInput controllers (Xbox 360 / One / Series and everything that presents itself as one), the Sony DualShock 4
+// and the Sony DualSense (wired or over Bluetooth, read as raw HID reports). The reports are turned into one PadState (directions from the D-pad or the left stick, "confirm", "back" and
+// "menu" buttons) by pure functions that the tests drive with made-up reports; GamepadHub is the part that talks to Windows (it finds the devices by itself, also when one is plugged in or
+// pulled out while the program runs, and reads them on its own thread). Nothing here touches the game: the program reads PadState and turns it into the original's own input (a joystick
+// direction for the key poll, Apple II keys at the menus).
+#pragma once
+
+#include <atomic>
+#include <cstdint>
+#include <memory>
+#include <optional>
+
+namespace pacman::app {
+
+enum class PadKind : std::uint8_t { None, XInput, DualShock4, DualSense };
+
+inline const char* padKindName(PadKind k) noexcept {
+    switch (k) {
+    case PadKind::XInput: return "XBOX CONTROLLER";
+    case PadKind::DualShock4: return "DUALSHOCK 4";
+    case PadKind::DualSense: return "DUALSENSE";
+    case PadKind::None: break;
+    }
+    return "NONE";
+}
+
+// What the program asks of a controller. The buttons are by meaning, not by position: "confirm" is the bottom face button (A on an Xbox pad, the cross on a Sony pad), "back" the right face
+// button (B, the circle), "menu" the menu button (Start, Options).
+struct PadState {
+    PadKind kind = PadKind::None;
+    bool up = false, down = false, left = false, right = false;   // a direction held on the D-pad or the left stick (the menus use these)
+    bool dpadUp = false, dpadDown = false, dpadLeft = false, dpadRight = false;   // the D-pad alone (it wins over the stick in padDirection())
+    bool confirm = false, back = false, menu = false;
+    bool anyInput = false;                                         // any button or a stick/D-pad out of its middle (the device in use)
+    int stickX = 0, stickY = 0;                                    // the left stick, -127..127 (right / down positive)
+    bool operator==(const PadState&) const = default;
+};
+
+// The direction code of the original's key poll for the state: 0 = down, 1 = up, 2 = right, 3 = left (docs/CONTROLS.md); nothing when no direction is held. The D-pad wins over the stick; a
+// diagonal gives the horizontal direction on the D-pad and the stronger axis on the stick.
+std::optional<std::uint8_t> padDirection(const PadState& s) noexcept;
+
+// The report parsers. `data` is the report as the device gives it, with the report id as the first byte. Returns false when the report is not an input report of the device.
+//   DualShock 4: id 0x01 (USB, and the short report of Bluetooth) and id 0x11 (Bluetooth, full)
+//   DualSense:   id 0x01 (USB, 64 bytes; over Bluetooth the short report, `bluetooth` = true) and id 0x31 (Bluetooth, full)
+bool parseDualShock4(const std::uint8_t* data, std::size_t size, PadState& out) noexcept;
+bool parseDualSense(const std::uint8_t* data, std::size_t size, bool bluetooth, PadState& out) noexcept;
+// XInput: the fields of XINPUT_GAMEPAD
+bool parseXInput(std::uint16_t buttons, std::int16_t thumbLX, std::int16_t thumbLY, PadState& out) noexcept;
+
+// The controllers the program knows of and what the newest input came from. Thread-safe: the reading thread writes, any thread reads.
+class GamepadHub {
+public:
+    GamepadHub();
+    ~GamepadHub();
+    GamepadHub(const GamepadHub&) = delete;
+    GamepadHub& operator=(const GamepadHub&) = delete;
+    void start();                       // opens the devices and starts the reading thread (no-op when running)
+    void stop();
+    PadState state() const;             // the state of the controller in use (the one that gave input last; else the first found); kind None when there is none
+    PadKind connected() const;          // the kind of the controller in use (None: no controller)
+    bool has(PadKind k) const;          // a controller of this kind is plugged in
+    std::uint32_t changeCount() const;  // grows when a controller is plugged in or pulled out (the boot menu re-draws its words)
+
+    // tests and the program's other inputs
+    void injectForTests(const PadState& s, bool present);   // replaces the devices by this one state (start() must not have been called)
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> d_;
+};
+
+}  // namespace pacman::app

@@ -39,6 +39,14 @@ public:
     // `romPath`: the Autostart Monitor ROM dump (341-0020, 2,048 bytes, $F800-$FFFF)
     bool start(const datapack::Pack& pack, const std::string& romPath);   // the first turn, at its cycle 0 ($52BB), as after the boot menus with "1" and "N" (the state of the random counter, the default keys)
     bool startBoot(const datapack::Pack& pack, const std::string& romPath);   // the program from its first instruction ($4027): the two boot menus, then the first turn
+    // The first menu in the words of the controls section: "SPACE. KEYBOARD" and "X. CONTROLLER" (the letter of the controller's confirm button: X for a PlayStation pad, A for an Xbox pad; 0 = no
+    // controller found). Space chooses the keyboard, the program sends the digit 2 (key $B2) when the controller's confirm button is pressed. Off by default: the oracle tests use the game's words.
+    void setBootMenu(bool modern, char controllerLetter);
+    // The two prompts after the attract loop in the words of the plugged-in controller: "HOW MANY PLAYERS?" gets a line to choose the number with the D-pad (left / right) and the
+    // confirm button, "PRESS <RETURN> TO PLAY" names the confirm button and the back button. Keyboard keys keep working (the words say so). padPlayersStep changes the number shown;
+    // padPlayers() is the number the confirm button chooses.
+    void padPlayersStep(int delta);
+    int padPlayers() const noexcept { return padPlayers_; }
     int inputDevice() const noexcept { return monitor_.peek(0xF5); }          // `$F5`: 0 = keyboard, 1 = joystick (the first menu)
     // the four key codes of the keyboard mode (`$6FBA`, `$6FB6`, `$6FB2`, `$6FBE`): left, right, up, down; the customised keyboard changes them (defaults $88, $95, $C1, $DA)
     std::uint8_t keyLeft() const noexcept { return monitor_.peek(0x6FBA); }
@@ -110,6 +118,13 @@ private:
     void endTransition(std::int64_t startCycles);
     void syncText();
     void newTurn();
+    bool modernBoot_ = false;
+    char padLetter_ = 0;
+    int padPlayers_ = 1;
+    bool padExtras_ = false;     // the players screen shows the controller's lines (rows 2-6)
+    bool padWords() const noexcept { return modernBoot_ && padLetter_ != 0; }
+    void printPressReturn(bool clearFirst);   // the PRESS RETURN prompt (row 11), in the words of the controller when there is one
+    void printPlayersExtras();
     const datapack::Pack* pack_ = nullptr;
     AttractTurn turn_;
     Monitor monitor_;

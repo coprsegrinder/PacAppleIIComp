@@ -77,7 +77,11 @@ public:
     const hires::Page& page() const noexcept { return page_; }
     // For the smooth motion of the window (src/app/motion.h): the page without the images of Pac-Man and the ghosts (the same page, minus what the sprite draws of the ordinary ticks put
     // on it), where the actors moved to in the last tick, and whether the last tick was an ordinary one (false: the page was rebuilt or drawn by a sequence; the window shows it as it is).
-    struct ActorMove { int actor, x, y; };
+    struct ActorMove {
+        int actor, x, y;
+        hires::Page image;   // the actor's image alone, drawn on an empty page: which pixels are the sprite's (and not the background's)
+        hires::Page solo;    // the background with this actor's image alone drawn on it (no other actor): what the picture is by this actor's draw, whoever else stands near
+    };
     const hires::Page& backgroundPage() const noexcept { return bgPage_; }
     const std::vector<ActorMove>& lastMoves() const noexcept { return moves_; }
     bool interpolatable() const noexcept { return interpOk_; }

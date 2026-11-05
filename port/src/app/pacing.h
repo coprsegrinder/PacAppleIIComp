@@ -1,17 +1,15 @@
 // TASK-034-11 (modernization): how long the game's ticks last in real time, for the modern FPS modes (30, 60, 120, 144, Unlocked). Native keeps the original's timing exactly as it was.
 //
-// WHY THE GAME'S TICKS HAVE DIFFERENT LENGTHS, AND WHY A FIXED TICK TIME IS WRONG (found by investigation, 2026-11-04):
-// The original's pace is not "one tick = one fixed time". A tick takes as long as the drawing it does (2,987 cycles when nothing is drawn, about 7,000 when something moves, about 16,000
-// when a dot is eaten), and the original's logic is TUNED TO THAT: Pac-Man's step countdown is reloaded with 9 ticks (level 1), plus one for each frightened ghost among ghosts 2 and 4 =
-// 11 ticks while the ghosts are blue (docs/PACMAN_RULES.md: 797 of 797 reloads matched). Blue ghosts are drawn less, so the ticks of that phase are about 17 % shorter; the longer
-// countdown and the shorter ticks nearly cancel. A fixed tick time (the first "Steady") removed the shorter ticks but kept the longer countdown: Pac-Man became about 20 % slower at a
-// power pill. Every fixed number is wrong in some situation.
+// WHY THE GAME'S TICKS HAVE DIFFERENT LENGTHS (found by investigation, 2026-11-04): the original's pace is not "one tick = one fixed time". A tick takes as long as the drawing it does
+// (2,987 cycles when nothing is drawn, about 7,000 when something moves, about 16,000 when a dot is eaten), and the original's logic is TUNED TO THAT: Pac-Man's step countdown is 9 ticks
+// (level 1), plus one for each frightened ghost among ghosts 2 and 4 = 11 ticks while the ghosts are blue, while the ticks get about 17 % shorter. A fixed tick time makes Pac-Man about 20 %
+// slower at a power pill.
 //
-// WHAT THE MODERN MODES DO (user, 2026-11-05: Pac-Man's pace and the pellets must not change when a power pill is eaten, in every mode but Native): the time of a tick is
-//     (the running average of what the original's ticks cost while nothing changes the countdown)  x  (the calm countdown / the countdown now),
-// so Pac-Man's step takes exactly the same real time whatever the ghosts are doing (calm: 9 x t; blue: 11 x t x 9/11 = 9 x t), and the pace of the game as a whole is the original's
-// average. The ghosts keep their own rule (their delay tables are in ticks: blue ghosts stay about half as fast as calm ones, relative to Pac-Man exactly as the original's logic says).
-// The average is taken over about 128 ticks (0.6 s) of calm play, so a dot eaten (16 ms) no longer stops the game for a frame. The game's logic never sees the tick time.
+// WHAT THE MODERN MODES DO (user, 2026-11-05: the gameplay speed is constant, independent of the rendering and of recent computational costs): NOTHING IS MEASURED OR LEARNED. The length of
+// a tick is a constant (kModernTickCycles, the original's mean cost of an ordinary tick in calm play) times  (the countdown Pac-Man's step would have without the ghosts' effects) /
+// (the countdown the game gave his step): a step takes the same real time, calm or at a power pill, eating or not, whatever the ticks of the original cost. The countdown is the game's own
+// state ($59 after the tick in which he acted; the effect of the ghosts is read before that tick, as the reload sees it): a rule of the game, not a measurement. The ghosts keep their own
+// rule (their delay tables are in ticks). The cycles here are the Apple II's (the model of the original's timing); the host's speed does not enter.
 #pragma once
 
 #include <algorithm>
@@ -23,41 +21,25 @@
 
 namespace pacman::app {
 
+// The mean cost of the original's ordinary ticks in calm play (the per-second means of real play, level 1: 4,961 .. 4,998; the average of those runs). Fixed.
+inline constexpr std::int64_t kModernTickCycles = 4'960;
+
 class SmoothPacer {
 public:
-    static constexpr int kWindowTicks = 128;   // the average forgets the older ticks over about this many ticks
-    void reset() noexcept {
-        calm256_ = core::kTypicalTickCycles * 256;
-        extra_ = 0.0;
-        lastReload_ = 0;
+    void reset() noexcept { calm_ = now_ = 1; }
+    // Pac-Man's step countdown was loaded in the tick that just ran: `countdown` = the ticks it gave him ($59 after the tick: reload, the extra tick of a recent meal and the delay of the
+    // item eaten in that tick), `ghostEffect` = what the ghosts' states added to the reload (reloadValue - calmReloadValue, as before that tick). The step is then paced as if the ghosts'
+    // effect were not there.
+    void startStep(unsigned countdown, int ghostEffect) noexcept {
+        now_ = (std::max)(1u, countdown);
+        calm_ = (std::max)(1, static_cast<int>(now_) - ghostEffect);
     }
-    // `tickCycles` = what the original spent on the tick; only ticks with nothing changing the countdown (reloadNow == reloadCalm) teach the average (the others are the original's
-    // compensation for its own shorter ticks, which this pacing replaces).
-    void observe(std::int64_t tickCycles, unsigned reloadNow, unsigned reloadCalm) noexcept {
-        if (reloadNow == reloadCalm) calm256_ += (tickCycles * 256 - calm256_) / kWindowTicks;
-    }
-    // Pac-Man acted (his step countdown ran out): `ticksSincePrev` = the ticks since he acted the time before, `reloadNow` = the countdown he was given. The ticks of a step beyond the
-    // countdown are what his eating adds (the delay of the item, one more tick on the reloads after it): learned, an average over about 8 steps.
-    void act(unsigned ticksSincePrev, unsigned reloadNow) noexcept {
-        if (lastReload_ != 0) {
-            const double sample = static_cast<double>(ticksSincePrev) - static_cast<double>(lastReload_);
-            extra_ += (std::clamp(sample, 0.0, 12.0) - extra_) / 8.0;
-        }
-        lastReload_ = reloadNow;
-    }
-    // The tick time that gives Pac-Man's whole step (countdown and eating delay) the same real time as in calm play: the calm tick average times
-    // (calm countdown + eating ticks) / (countdown now + eating ticks).
-    std::int64_t duration(unsigned reloadNow, unsigned reloadCalm) const noexcept {
-        if (reloadNow == 0 || reloadCalm == 0) return (calm256_ + 128) / 256;
-        const double ratio = (static_cast<double>(reloadCalm) + extra_) / (static_cast<double>(reloadNow) + extra_);
-        return static_cast<std::int64_t>(static_cast<double>(calm256_) * ratio / 256.0 + 0.5);
-    }
-    double eatingTicks() const noexcept { return extra_; }
+    // The length of a tick of the step in progress.
+    std::int64_t duration() const noexcept { return static_cast<std::int64_t>(std::llround(static_cast<double>(kModernTickCycles) * static_cast<double>(calm_) / static_cast<double>(now_))); }
 
 private:
-    std::int64_t calm256_ = core::kTypicalTickCycles * 256;
-    double extra_ = 0.0;
-    unsigned lastReload_ = 0;
+    int calm_ = 1;
+    int now_ = 1;
 };
 
 // How many cycles beyond the ordinary tick cost the game stands still for a sound. The dot sound is part of the measured tick cost and the six death steps are part of the measured death
@@ -84,11 +66,9 @@ inline std::int64_t soundStandStill(bool modern, core::SoundId id) noexcept {
 
 
 // The time one tick takes. `tick` = the modelled cost of the tick itself (what the original spent), `extra` = the long sequence of that tick (death, level end; 0 for an ordinary tick),
-// `standStill` = the sum of soundStandStill() of its sounds, `reloadNow` / `reloadCalm` = Pac-Man's step countdown now and without ghost effects (StepTimer::reloadValue). The pacer sees
-// every ordinary tick (so it is ready when a modern mode is chosen in the middle of a game).
-inline std::int64_t tickCost(bool modern, SmoothPacer& pacer, std::int64_t tick, std::int64_t extra, std::int64_t standStill, unsigned reloadNow, unsigned reloadCalm) noexcept {
-    if (extra == 0) pacer.observe(tick, reloadNow, reloadCalm);
-    if (modern && extra == 0) return pacer.duration(reloadNow, reloadCalm) + standStill;
+// `standStill` = the sum of soundStandStill() of its sounds. Native: the original's cost. The modern modes: the pace of the step in progress (SmoothPacer).
+inline std::int64_t tickCost(bool modern, const SmoothPacer& pacer, std::int64_t tick, std::int64_t extra, std::int64_t standStill) noexcept {
+    if (modern && extra == 0) return pacer.duration() + standStill;
     return tick + extra + standStill;
 }
 

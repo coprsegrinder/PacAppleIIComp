@@ -1,0 +1,31 @@
+NOTICES
+=======
+
+This is an unofficial, non-commercial fan project. It is not affiliated with or endorsed by Atari,
+Namco, Apple, or RetroAchievements. All trademarks belong to their owners.
+
+The game
+--------
+Pac-Man for the Apple II (Atari, 1983) is the work of its authors and owners. Its disk image, program
+code and original graphics and sounds are NOT part of this download: the program builds its game data
+from a disk image that the player already owns, and refuses any other.
+
+Apple II ROM files (folder "Apple II roms")
+-------------------------------------------
+Two ROM dumps of the Apple II Plus are included because the program needs them to run:
+  Apple II plus ROM Pages F8-FF - 341-0020 - Autostart Monitor.bin
+  Apple II Character ROM - 341-0036.bin
+The contents are copyright Apple Computer, Inc. They are included for private use only, to run this
+program, and remain the property of their owner. This download is not meant to be redistributed.
+
+Achievements
+------------
+The 22 achievements are from the RetroAchievements set for "Pac-Man" (Apple II), game 13932
+(https://retroachievements.org/game/13932). Set by Kisumebuckets; logic by xnaivx. The titles and
+descriptions are used with small spelling corrections and "goblins" written as "ghosts". The
+achievements are checked by this program itself; nothing is sent to RetroAchievements.
+
+This program
+------------
+The source code of the port is in the private repository it was released from. It was written from
+the behaviour of the original game, checked against a reference model of the original program.

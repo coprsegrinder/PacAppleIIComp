@@ -36,6 +36,8 @@
 #include "precisesleep.h"
 #include "settings.h"
 #include "../core/attractflow.h"
+#include "../core/achievementfacts.h"
+#include "../core/achievements.h"
 #include "../core/cartoon.h"
 #include "../core/textscreen.h"
 #include "../core/sound.h"
@@ -46,6 +48,8 @@
 #include "../verify/verify.h"
 #include "../video/monochrome.h"
 #include "../video/screens.h"
+#include <commdlg.h>
+#include "achievementbook.h"
 #include "gamewindow.h"
 
 namespace {
@@ -65,6 +69,109 @@ bool loadPackFile(const std::wstring& packPath, datapack::LoadResult& loaded) {
         return false;
     }
     return true;
+}
+
+
+// ---- the game data without a command line (the release: the program and the player's own disk image are all there is) ----
+// The program needs the game's data (the "data pack": every byte of the original that is not code, built from the disk image). It is built ONCE from the player's own disk image, which has to be the
+// exact original one (the program refuses any other), and kept in %LOCALAPPDATA%\PacmanAppleIIPort\game.pmpk (the environment variable PACMAN_DATA names another file); the disk image is not needed
+// again. Looked for, in this order: the kept data pack, `game.pmpk` next to the program, a `.dsk` next to the program (or in the folder above it, or in the working folder), then the player is asked.
+std::wstring keptPackPath() {
+    wchar_t env[MAX_PATH * 2] = {};
+    if (GetEnvironmentVariableW(L"PACMAN_DATA", env, MAX_PATH * 2) > 0) return env;
+    wchar_t base[MAX_PATH * 2] = {};
+    if (GetEnvironmentVariableW(L"LOCALAPPDATA", base, MAX_PATH * 2) == 0) return L"";
+    return std::wstring(base) + L"\\PacmanAppleIIPort\\game.pmpk";
+}
+
+void makeParentFolders(const std::wstring& file) {
+    for (std::size_t i = 0; i < file.size(); ++i)
+        if (file[i] == L'\\' || file[i] == L'/') CreateDirectoryW(file.substr(0, i).c_str(), nullptr);
+}
+
+// Builds the data pack from a disk image file and keeps it. Returns false (with the reason) when the file is not the expected disk image.
+bool buildPackFromDisk(const std::filesystem::path& disk, datapack::LoadResult& loaded, std::string& reason) {
+    std::ifstream f(disk, std::ios::binary);
+    if (!f) {
+        reason = "the file cannot be read";
+        return false;
+    }
+    const std::vector<std::uint8_t> image((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    const auto built = datapack::buildPack(image, verify::referenceExpected(), datapack::dataManifest());
+    if (!built.ok) {
+        reason = built.reason;
+        return false;
+    }
+    loaded = datapack::loadPack(built.bytes, verify::referenceExpected());
+    if (!loaded.ok) {
+        reason = loaded.reason;
+        return false;
+    }
+    const std::wstring kept = keptPackPath();
+    if (!kept.empty()) {   // (kept for next time; when it cannot be written the program still runs, and asks again next time)
+        makeParentFolders(kept);
+        const std::wstring tmp = kept + L".tmp";
+        {
+            std::ofstream out(std::filesystem::path(tmp), std::ios::binary | std::ios::trunc);
+            out.write(reinterpret_cast<const char*>(built.bytes.data()), static_cast<std::streamsize>(built.bytes.size()));
+        }
+        if (!MoveFileExW(tmp.c_str(), kept.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) DeleteFileW(tmp.c_str());
+    }
+    return true;
+}
+
+bool silentLoadPack(const std::filesystem::path& file, datapack::LoadResult& loaded) {
+    std::error_code ec;
+    if (!std::filesystem::exists(file, ec)) return false;
+    std::ifstream f(file, std::ios::binary);
+    if (!f) return false;
+    const std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    loaded = datapack::loadPack(bytes, verify::referenceExpected());
+    return loaded.ok;
+}
+
+std::wstring chooseDiskFile() {
+    wchar_t file[MAX_PATH * 2] = {};
+    OPENFILENAMEW ofn{};
+    ofn.lStructSize = sizeof(ofn);
+    ofn.lpstrFilter = L"Disk images (*.dsk;*.do)\0*.dsk;*.do\0All files\0*.*\0";
+    ofn.lpstrFile = file;
+    ofn.nMaxFile = MAX_PATH * 2;
+    ofn.lpstrTitle = L"Pac-Man (Apple II port): choose your disk image of the game";
+    ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY;
+    return GetOpenFileNameW(&ofn) ? std::wstring(file) : std::wstring();
+}
+
+// `interactive`: ask the player (message boxes, a file dialog) when nothing is found; false: just fail (the tests).
+bool resolveGameData(bool interactive, datapack::LoadResult& loaded) {
+    namespace fs = std::filesystem;
+    if (silentLoadPack(keptPackPath(), loaded)) return true;
+    wchar_t buf[MAX_PATH] = {};
+    GetModuleFileNameW(nullptr, buf, MAX_PATH);
+    const fs::path exeDir = fs::path(buf).parent_path();
+    if (silentLoadPack(exeDir / L"game.pmpk", loaded)) return true;
+    std::vector<fs::path> folders{exeDir, exeDir.parent_path(), fs::current_path()};
+    for (const fs::path& dir : folders) {
+        std::error_code ec;
+        if (!fs::is_directory(dir, ec)) continue;
+        for (const auto& entry : fs::directory_iterator(dir, ec)) {
+            const std::wstring ext = entry.path().extension().wstring();
+            if (_wcsicmp(ext.c_str(), L".dsk") != 0 && _wcsicmp(ext.c_str(), L".do") != 0) continue;
+            std::string reason;
+            if (buildPackFromDisk(entry.path(), loaded, reason)) return true;   // a disk image that is not the game's is skipped
+        }
+    }
+    if (!interactive) return false;
+    std::wstring message = L"To play, this program needs your own copy of the game's disk image (the 1983 Atari release of Pac-Man for the Apple II, a .dsk file). It is not part of this program.\n\n"
+                           L"Put the file next to this program, or choose it now. The program reads it once and keeps what it needs; the disk image is not needed again.";
+    for (;;) {
+        if (MessageBoxW(nullptr, message.c_str(), L"Pac-Man (Apple II port)", MB_OKCANCEL | MB_ICONINFORMATION) != IDOK) return false;
+        const std::wstring chosen = chooseDiskFile();
+        if (chosen.empty()) continue;
+        std::string reason;
+        if (buildPackFromDisk(chosen, loaded, reason)) return true;
+        message = L"This file is not the disk image the program expects, so it cannot be used.\n\n(" + std::wstring(reason.begin(), reason.end()) + L")\n\nThe image has to be the exact original disk of the game. Choose another file?";
+    }
 }
 
 // The ROM dumps of the Apple II Plus that the program runs (the Autostart Monitor) and shows text with (the character generator). They are files next to the program (the release has a folder
@@ -182,7 +289,46 @@ struct SoundPlayer {
 };
 
 // One game, from the intro jingle to the end of the GAME OVER wait. Returns true when the game is over (the program goes back to the attract loop), false when the window closed.
-bool runGame(core::GameDriver& drv, const datapack::Pack& pack, app::GameWindow& window, std::atomic<bool>& quit, int seconds, std::int64_t begin) {
+// The letter on the boot menu's controller line: the controller's confirm button (X on a PlayStation pad, A on an Xbox pad); 0 = no controller found.
+char padLetter(const app::GamepadHub* pad) {
+    if (!pad) return 0;
+    switch (pad->connected()) {
+    case app::PadKind::XInput: return 'A';
+    case app::PadKind::DualShock4:
+    case app::PadKind::DualSense: return 'X';
+    case app::PadKind::None: break;
+    }
+    return 0;
+}
+
+// What a controller does in the screens before the game (the program's own keys: the original has no controller there): its confirm button is the key that goes on at that screen.
+void padToFlow(core::AttractFlow& flow, app::GameWindow& window) {
+    using Mode = core::AttractFlow::Mode;
+    using Press = app::GameWindow::PadPress;
+    while (const auto p = window.popPadPress()) {
+        const Mode mode = flow.mode();
+        if (mode == Mode::Players) {   // the number of players: left / right (or up / down) change it, the confirm button takes it
+            if (*p == Press::Left || *p == Press::Up) flow.padPlayersStep(-1);
+            else if (*p == Press::Right || *p == Press::Down) flow.padPlayersStep(1);
+            else if (*p == Press::Confirm) flow.keyDown(static_cast<std::uint8_t>(0xB0 | flow.padPlayers()));
+            continue;
+        }
+        if (mode == Mode::PressReturn && *p == Press::Back) {   // "<SPACE> OR (the back button): BACK TO DEMO"
+            flow.keyDown(core::kKeySpace);
+            continue;
+        }
+        if (*p != Press::Confirm) continue;
+        switch (mode) {
+        case Mode::BootMode: if (padLetter(window.gamepad()) != 0) flow.keyDown(0xB2); break;   // "2": the controller (the joystick mode of the original: its direction comes from the controller)
+        case Mode::BootKeyboard: flow.keyDown(0xCE); break;                                      // N: the normal keys
+        case Mode::Attract: flow.keyDown(core::kKeySpace); break;                                // Space: leave the demo for the players prompt
+        case Mode::PressReturn: flow.keyDown(core::kKeyReturn); break;
+        default: break;
+        }
+    }
+}
+
+bool runGame(core::GameDriver& drv, const datapack::Pack& pack, app::GameWindow& window, std::atomic<bool>& quit, int seconds, std::int64_t begin, core::AchievementTracker* ach = nullptr, app::AchievementBook* book = nullptr) {
     struct MenuAllowed {   // Esc opens the pause menu from the start of a game until it is over (and back in the attract loop it does nothing again)
         app::GameWindow& w;
         explicit MenuAllowed(app::GameWindow& win) : w(win) { w.setMenuAllowed(true); }
@@ -245,13 +391,13 @@ bool runGame(core::GameDriver& drv, const datapack::Pack& pack, app::GameWindow&
         }
     } tickLog{window};
     app::SmoothPacer pacer;
-    unsigned ticksSinceAct = 0;
     std::int64_t tickClockNs = core::nowNanoseconds();   // when the game made its last tick, on its own clock (for the smooth motion)
     core::StepTables stepTables;   // Pac-Man's step countdown tables: the modern pacing keeps his real-time step the same whatever the ghosts do
     core::loadStepTables(pack, stepTables);
     SoundPlayer sounds;
     sounds.init(pack);
     core::CartoonPlayer cartoon;
+    int achCartoon = 0;   // the intermission that plays (for the achievements: watching it to its end)
     hires::Page cartoonPage;
     core::CycleClock clock;
     clock.start(core::nowNanoseconds());
@@ -320,6 +466,10 @@ bool runGame(core::GameDriver& drv, const datapack::Pack& pack, app::GameWindow&
                 cartoon.render(pack, cartoonPage);
                 window.setPage(cartoonPage);
             } else {
+                if (ach && book) {
+                    ach->setUnlocked(book->mask());
+                    for (const int i : ach->onCartoonDone(achCartoon)) book->unlock(i);
+                }
                 drv.nextLevel();
                 window.setPage(drv.page());
             }
@@ -327,9 +477,20 @@ bool runGame(core::GameDriver& drv, const datapack::Pack& pack, app::GameWindow&
             continue;
         }
         while (const auto key = window.popKey()) drv.core().input().pushKey(*key);
+        if (const app::GamepadHub* pad = window.gamepad()) {   // a controller gives its direction to the original's own input poll: as the joystick when the first menu chose it, else as the four switches of the game port
+            const auto dir = app::padDirection(pad->state());
+            core::PortInput& port = drv.core().port();
+            port.joystickDirection = dir;
+            static constexpr std::uint8_t mask[4] = {1, 2, 4, 8};   // by direction code 0 down, 1 up, 2 right, 3 left: the switches of the table at $700E
+            port.switches = dir ? mask[*dir] : 0;
+        }
         bool changed = false;
         while (budget >= core::kTypicalTickCycles) {
+            const int ghostEffect = static_cast<int>(core::StepTimer::reloadValue(drv.core().state(), stepTables)) - static_cast<int>(core::StepTimer::calmReloadValue(drv.core().state(), stepTables));   // (what the ghosts add to his countdown, as the reload in this tick sees it)
+            const int achLevel = static_cast<int>(drv.core().state().level()), achPlayer = drv.core().player();   // (what the tick is played in: a level change or a change of player happens inside it)
+            const std::uint32_t achScoreBefore = drv.core().state().score();
             const core::TickEvents ev = liveTick(drv, &cartoon, &pack);
+            if (ev.levelComplete && cartoon.active()) achCartoon = core::cartoonAfterLevel(static_cast<unsigned>(achLevel));
             if (++tickLog.ticks == 1) tickLog.firstNs = core::nowNanoseconds();
             std::int64_t soundFreeze = 0;
             const bool audible = drv.core().input().soundOn() && !window.muted();
@@ -361,13 +522,13 @@ bool runGame(core::GameDriver& drv, const datapack::Pack& pack, app::GameWindow&
                 window.setPage(drv.page());
                 break;
             }
-            const unsigned reloadNow = core::StepTimer::reloadValue(drv.core().state(), stepTables), reloadCalm = core::StepTimer::calmReloadValue(drv.core().state(), stepTables);
-            ++ticksSinceAct;
-            if (ev.acted) {   // (Pac-Man's step countdown ran out: the pacer learns what his eating adds to his steps)
-                pacer.act(ticksSinceAct, reloadNow);
-                ticksSinceAct = 0;
+            if (ev.acted) pacer.startStep(drv.core().state().pacStepCounter(), ghostEffect);   // (Pac-Man's countdown was loaded in this tick: his step is paced from it)
+            const std::int64_t cost = app::tickCost(modern, pacer, drv.tickCycles(), drv.extraCycles(), soundFreeze);
+            if (ach && book && drv.core().state().demo == 0) {   // the achievements: facts about this tick (the game's state is only read)
+                const core::TickFacts f = core::tickFacts(drv, ev, achLevel, achPlayer, achScoreBefore, cost);
+                ach->setUnlocked(book->mask());   // (the menu may have reset the progress)
+                for (const int i : ach->onTick(f)) book->unlock(i);
             }
-            const std::int64_t cost = app::tickCost(modern, pacer, drv.tickCycles(), drv.extraCycles(), soundFreeze, reloadNow, reloadCalm);
             {
                 tickLog.costSum += cost;
                 tickLog.costMin = (std::min)(tickLog.costMin, cost);
@@ -419,7 +580,7 @@ bool runGame(core::GameDriver& drv, const datapack::Pack& pack, app::GameWindow&
                 std::array<app::GameWindow::FrameMove, 5> mv{};
                 std::size_t n = 0;
                 for (const auto& m : drv.lastMoves())
-                    if (n < mv.size()) mv[n++] = app::GameWindow::FrameMove{m.actor, m.x, m.y};
+                    if (n < mv.size()) mv[n++] = app::GameWindow::FrameMove{m.actor, m.x, m.y, m.image, m.solo, true};
                 window.setFrame(drv.page(), drv.backgroundPage(), std::span<const app::GameWindow::FrameMove>(mv.data(), n), drv.interpolatable(), tickClockNs);
                 tickClockNs += cost * 1'000'000'000LL / core::kAppleCyclesPerSecond;   // (the game's own clock: smooth, and never far from the real one)
                 const std::int64_t realNow = core::nowNanoseconds();
@@ -457,6 +618,8 @@ bool runMenus(core::AttractFlow& flow, const core::CharacterRom& rom, const data
             app::preciseSleepMs(5);
             continue;
         }
+        flow.setBootMenu(true, padLetter(window.gamepad()));   // the first menu's words follow the controller that is plugged in
+        padToFlow(flow, window);
         if (const auto key = window.popKey()) flow.keyDown(*key);
         flow.advance(clock.cyclesDue(now));
         if (flow.mode() == core::AttractFlow::Mode::Game) return true;
@@ -519,7 +682,9 @@ void programThread(core::GameDriver& drv, const datapack::Pack& pack, app::GameW
         window.close();
         return;
     }
+    core::AchievementTracker tracker;   // lives as long as the program: the ghosts of a session are counted across games
     core::AttractFlow flow;
+    flow.setBootMenu(true, padLetter(window.gamepad()));   // (before the first screen is made)
     const bool started = opt.skipBoot || opt.directGame ? flow.start(pack, monitorRom) : flow.startBoot(pack, monitorRom);
     if (!started) {
         std::puts("cannot read the Apple II monitor ROM");
@@ -538,12 +703,13 @@ void programThread(core::GameDriver& drv, const datapack::Pack& pack, app::GameW
         drv.core().keys() = core::KeyConfig{flow.keyUp(), flow.keyRight(), flow.keyLeft(), flow.keyDown_()};
         drv.core().port().joystickMode = flow.inputDevice() != 0;
         drv.core().input().setSoundOn(flow.soundOn());
+        tracker.newGame(flow.players(), level > 0 ? level : 1);
         if (first && opt.directGame && opt.startItems >= 1 && opt.startItems <= 248) {
             drv.core().state().zp(0x56) = static_cast<std::uint8_t>(opt.startItems);   // test aid: only a few items left to eat
             drv.rebuildScreen();
         }
         first = false;
-        if (!runGame(drv, pack, window, quit, seconds, begin)) return;
+        if (!runGame(drv, pack, window, quit, seconds, begin, &tracker, window.achievements())) return;
         flow.setSoundOn(drv.core().input().soundOn());
         flow.returnFromGame(drv.attractMemory(flow.memory()));
     }
@@ -556,6 +722,7 @@ int wmain(int argc, wchar_t** argv) {
     int scale = 3, seconds = 0, startLevel = 0, startItems = 0;
     bool mute = false;
     bool soundTest = false, skipBoot = false;
+    int toastAid = -1;
     std::wstring romsArg, settingsPath = app::SettingsStore::defaultPath(), displayArg;
     bool scaleGiven = false;
     std::wstring logArg;
@@ -579,13 +746,18 @@ int wmain(int argc, wchar_t** argv) {
         else if (a == L"--display" && i + 1 < argc) displayArg = argv[++i];     // fullscreen | borderless | windowed (written to the settings like a change in the menu)
         else if (a == L"--skip-boot") skipBoot = true;
         else if (a == L"--aid-energizer") gAidEnergizer = true;
+        else if (a == L"--aid-toast" && i + 1 < argc) toastAid = _wtoi(argv[++i]);   // test aid: an achievement is unlocked at the start (to look at its pop-up; use PACMAN_ACHIEVEMENTS to keep your own progress out of it)
         else if (a == L"--aid-wander") gAidWander = true;
         else if (a == L"--aid-endless") { gAidEndless = true; gAidWander = true; }
         else if (a == L"--mute") mute = true;   // no sound (the same as F9 at the start); for running the real program in tests
         else return 64;
     }
     datapack::LoadResult loaded;
-    if (pack.empty() || !loadPackFile(pack, loaded)) return 3;
+    if (pack.empty()) {
+        if (!resolveGameData(ticks < 0 && !soundTest, loaded)) return 5;   // no game data and no disk image (the player was asked, or this is a test run)
+    } else if (!loadPackFile(pack, loaded)) {
+        return 3;
+    }
     if (soundTest) return playSoundTest(loaded.pack);
     core::GameDriver drv;
     if (!drv.init(loaded.pack) || !drv.newGame()) {
@@ -606,7 +778,8 @@ int wmain(int argc, wchar_t** argv) {
     }
     std::string monitorRom, charRom;
     if (!findRoms(romsArg, monitorRom, charRom)) {
-        std::puts("cannot find the Apple II ROM files (the Autostart Monitor 341-0020 and the character ROM 341-0036): put them in a folder `roms` next to the program or name the folder with --roms");
+        std::puts("cannot find the Apple II ROM files (the Autostart Monitor 341-0020 and the character ROM 341-0036): put them in a folder `Apple II roms` next to the program or name the folder with --roms");
+        if (ticks < 0) MessageBoxW(nullptr, L"The two Apple II ROM files the program shows its text with are missing.\n\nThey belong in the folder \"Apple II roms\" next to this program (the release contains them).", L"Pac-Man (Apple II port)", MB_OK | MB_ICONERROR);
         return 6;
     }
     ProgramOptions opt;
@@ -623,8 +796,15 @@ int wmain(int argc, wchar_t** argv) {
     if (scaleGiven) settings.hasWindowRect = false;   // an explicit --scale wins over the window size kept in the settings
     if (displayArg == L"fullscreen" || displayArg == L"borderless") settings.displayMode = app::DisplayMode::Borderless;
     else if (displayArg == L"windowed") settings.displayMode = app::DisplayMode::Windowed;
+    app::GamepadHub pad;   // (outlives the window)
+    app::AchievementBook achievementBook(app::AchievementBook::defaultPath());
+    achievementBook.load();
     app::GameWindow window(options);
     if (!window.ok()) return 4;
+    pad.start();
+    window.setGamepad(&pad);
+    window.setAchievements(&achievementBook);
+    if (toastAid >= 0) achievementBook.unlock(toastAid);
     if (!logArg.empty()) window.setLogFile(logArg);
     window.attachSettings(&settingsStore, settings);
     core::CharacterRom menuFont;   // the pause menu is drawn with the Apple II character ROM

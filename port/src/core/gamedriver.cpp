@@ -12,6 +12,10 @@ bool GameDriver::init(const datapack::Pack& pack) {
 
 bool GameDriver::newGame(int players, int rank) {
     if (!core_.newGame(players, rank)) return false;
+    newGamePending_ = false;   // (a finished game left this set: its first tick would have started another new game, and played its old GAME OVER sequence again)
+    sequence_.clear();
+    extraCycles_ = 0;
+    tickCycles_ = kTypicalTickCycles;
     const auto high = display_.high;   // the high score survives into the next game
     display_ = DisplayState{};
     display_.high = high;
@@ -158,6 +162,9 @@ TickEvents GameDriver::tick() { return tickImpl(nullptr); }
 TickEvents GameDriver::tickImpl(FrightenAware* fed) {
     if (newGamePending_) {   // the pause after GAME OVER is over
         newGamePending_ = false;
+        sequence_.clear();
+        moves_.clear();
+        interpOk_ = false;
         newGame();
         extraCycles_ = 0;
         tickCycles_ = kTypicalTickCycles;
@@ -233,11 +240,21 @@ TickEvents GameDriver::tickImpl(FrightenAware* fed) {
     const auto calls = tickCalls(before, after, *pack_, acting && ev.acted, display_, prev_, now);
     lastCalls_ = calls;
     tickCycles_ = tickCostCycles(calls, *pack_, before.demo != 0, ev.ate, ev.energizer);
+    std::vector<DrawCall> actorCalls;
     for (const auto& c : calls) {
         executeCall(page_, c, *pack_);
         const bool actorImage = c.type == 1 && c.actor >= 0;
         if (!actorImage) executeCall(bgPage_, c, *pack_);   // the background gets everything but the images of the actors (the erases of their old places too)
-        else moves_.push_back(ActorMove{c.actor, c.p[1], c.p[2]});
+        else {
+            ActorMove m{c.actor, c.p[1], c.p[2], hires::Page(), hires::Page()};
+            executeCall(m.image, c, *pack_);
+            moves_.push_back(std::move(m));
+            actorCalls.push_back(c);
+        }
+    }
+    for (std::size_t i = 0; i < moves_.size(); ++i) {   // (after the loop: the background is final, with every erase of the tick)
+        moves_[i].solo = bgPage_;
+        executeCall(moves_[i].solo, actorCalls[i], *pack_);
     }
     interpOk_ = true;
     prev_ = now;
