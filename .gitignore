@@ -5,7 +5,9 @@
 *.nib
 *.woz
 *.bin
-!Apple II roms/*.bin
+# the only two Apple II ROM files the program uses (the release contains them); the other ROM dumps stay on this machine only
+!Apple II roms/Apple II plus ROM Pages F8-FF - 341-0020 - Autostart Monitor.bin
+!Apple II roms/Apple II Character ROM - 341-0036.bin
 build/
 out/
 scratch/

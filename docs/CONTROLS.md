@@ -48,3 +48,5 @@ Port hotkeys (not game keys): F11 or Alt+Enter = full screen; F8 = title bar and
 
 **Display mode (TASK-034-4):** pause menu (Esc) > Graphics Settings > Display Mode (Enter or Right = next, Left = previous): Fullscreen, Borderless Fullscreen (default), Windowed. F11 / Alt+Enter switch between the window and the full screen mode last used. The choice, the window size and place and the window frame setting are remembered in %LOCALAPPDATA%\PacmanAppleIIPort\settings.ini.
 **Display mode (corrected):** only two modes exist: Borderless Fullscreen (default) and Windowed (pause menu > Graphics Settings > Display Mode, or F11 / Alt+Enter). The exclusive "Fullscreen" mode was removed.
+
+**Controllers (Controls section, 2026-11-05):** see docs/MODERNIZATION.md. Keyboard: A / Z / arrow keys move, Space starts, Esc opens the pause menu (Controls page lists everything per device). XInput: D-pad or left stick, A = confirm / start, B = back, Start = menu. DualShock 4 and DualSense: D-pad or left stick, cross = confirm / start, circle = back, Options = menu.

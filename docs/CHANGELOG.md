@@ -106,3 +106,5 @@
 - TASK-030e9 / M5 done: ghost logic inside GameCore; 54,428 ticks free-running equal the oracle; pacman_play.exe has moving ghosts. dist/ rebuilt.
 
 - TASK-033-S: the sound goes through a speaker model (low thump of the short dot/energizer bursts, ring-out mixed over the next sound); audio output is a WASAPI stream with a small mixer; the click lists are untouched.
+
+- 2026-11-05: Original Colour fills the dots between same-colour dots; FPS options removed; controllers (XInput, DualShock 4, DualSense) with their words on the first menus and a Controls page; 22 achievements; first run from the disk image alone; release zip (`port\release.bat`); README, notices and docs index rewritten.

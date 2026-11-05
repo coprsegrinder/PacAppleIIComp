@@ -45,3 +45,6 @@ Both routes now also build `pacman_view.exe` (GDI window; `--pack <pack> [--page
 
 ## Make a ready-to-run folder (dist/)
 `dist\` (git-ignored) holds pacman_play.exe, pacman_pack.exe, pacman_verify.exe (copied from `outat\` after `portuild.bat`) and `Play-PacMan.bat` (source: `tools\Play-PacMan.bat`): double-click it; the first time it builds `game.pmpk` from `Pacman (1983)(Atari).dsk` (next to it or one folder up), then starts the game. The data file and the disk image are never to be committed or shared.
+
+## The release zip
+`port\release.bat` builds the program with the C++ runtime linked in (`/MT`, so it runs without Visual Studio's runtime), stages `PacMan.exe`, the two ROM files in `Apple II roms`, the player's readme and the notices from `port/release`, and packs them into `out\release\PacMan-AppleII.zip`. The disk image of the game is not part of it. To try it as a new user would: unpack into an empty folder, copy your disk image next to `PacMan.exe`, and start it with an empty `%LOCALAPPDATA%` (set the environment variable `LOCALAPPDATA` to an empty folder for the test); `PACMAN_DATA`, `PACMAN_SETTINGS` and `PACMAN_ACHIEVEMENTS` name other files.
