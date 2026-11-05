@@ -67,6 +67,41 @@ TEST(video_neighbours_make_white_across_bytes_and_palettes) {
     CHECK(video::classify(w, 40, 9) == PixelClass::White && video::classify(w, 41, 9) == PixelClass::White && video::classify(w, 42, 9) == PixelClass::White);
 }
 
+TEST(video_render_fills_the_pixel_between_two_lit_pixels_of_the_same_colour_only) {
+    const auto at = [](const Page& p, int x, int y) {
+        std::array<std::uint32_t, 280 * 192> img{};
+        video::renderArgb(p, img);
+        return img[static_cast<std::size_t>(y) * 280 + static_cast<std::size_t>(x)];
+    };
+    // the wall pattern (every second pixel): the gap between two blue pixels is blue, a run of them is one solid line; classify() still says the gap is black (the lit bits are unchanged)
+    Page w = blank();
+    for (int x = 40; x <= 46; x += 2) light(w, x, 9, true);
+    CHECK(at(w, 41, 9) == video::kColour[3] && at(w, 43, 9) == video::kColour[3] && at(w, 45, 9) == video::kColour[3]);
+    CHECK(video::classify(w, 41, 9) == PixelClass::Black);
+    CHECK(at(w, 39, 9) == video::kColour[0] && at(w, 47, 9) == video::kColour[0]);   // the ends do not grow
+    CHECK(at(w, 41, 8) == video::kColour[0] && at(w, 41, 10) == video::kColour[0]);   // only along the row
+    // the same with the other palette and parity: orange; violet; green
+    Page o = blank();
+    light(o, 21, 5, true);
+    light(o, 23, 5, true);
+    CHECK(at(o, 22, 5) == video::kColour[4]);
+    Page v = blank();
+    light(v, 10, 5, false);
+    light(v, 12, 5, false);
+    CHECK(at(v, 11, 5) == video::kColour[1]);
+    // two different colours (the neighbour byte has the other palette bit) leave the gap black
+    Page d = blank();
+    light(d, 12, 7, false);   // the last pixel pair of the byte before... x 12 is in byte 1 (palette 0), x 14 is byte 2 (palette 1)
+    light(d, 14, 7, true);
+    CHECK(video::classify(d, 12, 7) != video::classify(d, 14, 7) && at(d, 13, 7) == video::kColour[0]);
+    // a white neighbour (two adjacent lit pixels) leaves it black: x 20, 21 lit (white) and 23 lit: the gap 22 stays black
+    Page n = blank();
+    light(n, 20, 3, true);
+    light(n, 21, 3, true);
+    light(n, 23, 3, true);
+    CHECK(at(n, 22, 3) == video::kColour[0]);
+}
+
 TEST(video_black_page_and_edges) {
     Page p;  // cleared to $80: the palette bit alone lights nothing
     std::vector<std::uint32_t> img(280 * 192, 1);

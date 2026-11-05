@@ -23,7 +23,8 @@ PixelClass classify(const hires::Page& page, int x, int y) noexcept;  // x 0..27
 inline constexpr std::uint32_t kColour[6] = {0xFF000000u, 0xFFFF44FDu, 0xFF14F53Cu, 0xFF14CFFDu, 0xFFFF6A3Cu, 0xFFFFFFFFu};
 inline constexpr std::uint32_t colourOf(PixelClass c) noexcept { return kColour[static_cast<std::size_t>(c)]; }
 
-// The whole page as 280 x 192 pixels, row-major from the top (out must have 280 * 192 entries; otherwise nothing is written).
+// The whole page as 280 x 192 pixels (the lit pixels as classify() says, plus the fill of a pattern of every second pixel: an unlit pixel between two lit pixels of the same colour takes
+// that colour, so the game's walls and ghost bodies are solid colour as on a colour display), row-major from the top (out must have 280 * 192 entries; otherwise nothing is written).
 void renderArgb(const hires::Page& page, std::span<std::uint32_t> out) noexcept;
 
 }  // namespace pacman::video

@@ -48,7 +48,14 @@ void renderArgb(const hires::Page& page, std::span<std::uint32_t> out) noexcept 
     for (int y = 0; y < hires::kHeight; ++y) {
         const Row r = readRow(page, y);
         for (int x = 0; x < hires::kWidth; ++x) {
-            out[static_cast<std::size_t>(y * hires::kWidth + x)] = colourOf(classifyAt(r, x));
+            PixelClass c = classifyAt(r, x);
+            // The solid colour of a pattern of every second pixel (the game draws its horizontal walls and the bodies of the ghosts like that): an unlit pixel between two lit ones of the
+            // same colour takes that colour, as on a colour display (a TV or an emulator shows such a pattern as one colour). Two lit neighbours of different colours, or a white one, leave it black.
+            if (c == PixelClass::Black && x > 0 && x + 1 < hires::kWidth && r.lit[static_cast<std::size_t>(x) - 1] && r.lit[static_cast<std::size_t>(x) + 1]) {
+                const PixelClass l = classifyAt(r, x - 1), rr = classifyAt(r, x + 1);
+                if (l == rr && l != PixelClass::White) c = l;
+            }
+            out[static_cast<std::size_t>(y * hires::kWidth + x)] = colourOf(c);
         }
     }
 }
