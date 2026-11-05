@@ -62,8 +62,8 @@ std::vector<DrawCall> spriteCalls(const GameState& before, const GameState& afte
     if (pacFrames.empty()) return out;
     // Pac-Man is drawn when his step timer ran out (he moved, or was blocked and is redrawn where he stands); a changed position without an acting tick is a poke
     if (pacmanActed) {
-        out.push_back(DrawCall{3, {kMaskTable, before.pacX() - 4, before.pacY() - 4, 0, 0}});
-        out.push_back(DrawCall{1, {word(pacFrames, static_cast<std::size_t>(pacmanFrame(after))), after.pacX(), after.pacY(), 1, 0x80}});
+        out.push_back(DrawCall{3, {kMaskTable, before.pacX() - 4, before.pacY() - 4, 0, 0}, 0});
+        out.push_back(DrawCall{1, {word(pacFrames, static_cast<std::size_t>(pacmanFrame(after))), after.pacX(), after.pacY(), 1, 0x80}, 0});
     }
     for (int g = 3; g >= 0; --g) {
         const GhostRecord& a = before.ghosts[static_cast<std::size_t>(g)];
@@ -77,8 +77,8 @@ std::vector<DrawCall> spriteCalls(const GameState& before, const GameState& afte
         for (int h = 0; h < g; ++h)
             if (ghostStepped(before.ghosts[static_cast<std::size_t>(h)], after.ghosts[static_cast<std::size_t>(h)])) ++drawTimer;
         const std::uint16_t base = ghostImageBase(drawnState(before, after, static_cast<std::size_t>(g)), static_cast<std::size_t>(g), drawTimer, pack, flag);
-        out.push_back(DrawCall{3, {kMaskTable, a.x() - 4, a.y() - 4, 0, 0}});
-        out.push_back(DrawCall{1, {base, b.x(), b.y(), 1, flag}});
+        out.push_back(DrawCall{3, {kMaskTable, a.x() - 4, a.y() - 4, 0, 0}, 1 + g});
+        out.push_back(DrawCall{1, {base, b.x(), b.y(), 1, flag}, 1 + g});
     }
     return out;
 }

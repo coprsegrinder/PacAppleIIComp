@@ -30,6 +30,10 @@ public:
     bool tick(GameState& state, const StepTables& tables);
     // The eating code $7AAC-$7ABB: call once for every dot or energizer eaten (Pac-Man acts, so it follows a tick() that returned true).
     void itemEaten(GameState& state, const StepTables& tables);
+    // The reload value of the countdown now (the base of the level plus one for each frightened ghost 2 and 4, minus one for each eyes ghost 1 and 3), and the base alone: the pacing of the
+    // modern FPS modes keeps Pac-Man's real-time step the same whatever the ghosts are doing (src/app/pacing.h).
+    static unsigned reloadValue(const GameState& state, const StepTables& tables) noexcept;
+    static unsigned calmReloadValue(const GameState& state, const StepTables& tables) noexcept;
     std::uint8_t f3() const noexcept { return f3_; }
     void setF3(std::uint8_t v) noexcept { f3_ = v; }   // the attract game starts with what the last game left in $F3 (TASK-033-6c)
 

@@ -4362,7 +4362,7 @@ TEST(fps_setting_is_changed_from_the_pause_menu_kept_in_the_settings_and_restore
 
 #include "../src/app/pacing.h"
 
-TEST(modern_pacing_keeps_the_originals_average_pace_in_every_situation_without_its_hitches_and_native_is_unchanged) {
+TEST(modern_pacing_locks_pac_mans_step_in_real_time_keeps_the_originals_average_pace_without_its_hitches_and_native_is_unchanged) {
     // Native: exactly the old timing for every sound and a range of ticks
     app::SmoothPacer pacer;
     for (int i = 0; i < static_cast<int>(core::SoundId::Count); ++i) {
@@ -4372,7 +4372,7 @@ TEST(modern_pacing_keeps_the_originals_average_pace_in_every_situation_without_i
     }
     for (std::int64_t tick : {2987, 4870, 9000, 24463})
         for (std::int64_t extra : {0, 4330065, 6043263})
-            for (std::int64_t stand : {0, 8990, 179070}) CHECK(app::tickCost(false, pacer, tick, extra, stand) == tick + extra + stand);
+            for (std::int64_t stand : {0, 8990, 179070}) CHECK(app::tickCost(false, pacer, tick, extra, stand, 11, 9) == tick + extra + stand);
     // modern: the ghost-eaten stand-still stays (the points stay on the screen for the sound), the short ones of the energizer, fruit and bonus life go
     CHECK(app::soundStandStill(true, core::SoundId::GhostEaten) == core::soundFreezeCycles(core::SoundId::GhostEaten) && core::soundFreezeCycles(core::SoundId::GhostEaten) > 100000);
     CHECK(app::soundStandStill(true, core::SoundId::Energizer) == 0 && app::soundStandStill(true, core::SoundId::Fruit) == 0 && app::soundStandStill(true, core::SoundId::BonusLife) == 0);
@@ -4382,7 +4382,7 @@ TEST(modern_pacing_keeps_the_originals_average_pace_in_every_situation_without_i
     for (int i = 0; i < 4000; ++i) {
         const std::int64_t c = (i % 12 == 0) ? 16200 : (i % 3 == 0 ? 7000 : 2987);
         original.push_back(c);
-        modern.push_back(app::tickCost(true, p, c, 0, 0));
+        modern.push_back(app::tickCost(true, p, c, 0, 0, 9, 9));
     }
     double so = 0, sm = 0;
     std::int64_t mn = 1LL << 60, mx = 0;
@@ -4396,24 +4396,27 @@ TEST(modern_pacing_keeps_the_originals_average_pace_in_every_situation_without_i
     std::printf("    original mean %.0f cycles a tick, modern mean %.0f; modern tick times %lld .. %lld (original 2,987 .. 16,200)\n", so / n, sm / n, static_cast<long long>(mn), static_cast<long long>(mx));
     CHECK(std::abs(so / n - sm / n) < 0.01 * so / n);   // the same pace over a stretch (within 1 %)
     CHECK(mx - mn < 0.05 * so / n);                      // and no hitches: the tick time moves by less than 5 % of itself
-    // the situation changes (the ghosts turn blue: the original's ticks become 17 % shorter, 4,900 -> 4,100): the pace follows within a fraction of a second, so Pac-Man's step countdown
-    // (which grows by 2 ticks in that phase) is still balanced by the shorter ticks, as in the original
+    // THE LOCK: the ghosts turn blue (the countdown goes from 9 to 11 ticks, the original's own ticks get 17 % shorter): Pac-Man's step takes the same real time at once and stays so,
+    // whatever the cost of the ticks does; a fixed tick time would make it 22 % longer
     app::SmoothPacer q;
-    for (int i = 0; i < 1000; ++i) app::tickCost(true, q, 4900, 0, 0);
-    CHECK(std::abs(q.duration() - 4900) <= 2);
-    int ticksToFollow = 0;
-    while (std::abs(q.duration() - 4100) > 4100 / 10 / 2 && ticksToFollow < 2000) {   // within 5 % of the new level
-        app::tickCost(true, q, 4100, 0, 0);
-        ++ticksToFollow;
+    for (int i = 0; i < 1000; ++i) app::tickCost(true, q, 4900, 0, 0, 9, 9);
+    const double calmStep = 9.0 * static_cast<double>(q.duration(9, 9));
+    for (unsigned reload : {9u, 10u, 11u, 8u, 7u}) {
+        for (int i = 0; i < 300; ++i) app::tickCost(true, q, reload == 9 ? 4900 : 4100, 0, 0, reload, 9);   // (the original's ticks of that phase are cheaper: the pacer must not follow them)
+        const double step = static_cast<double>(reload) * static_cast<double>(q.duration(reload, 9));
+        CHECK(std::abs(step / calmStep - 1.0) < 0.01);   // Pac-Man's step takes the same time (within 1 %) with 0, 1, 2 frightened ghosts or with eyes
+        std::printf("    countdown %u: tick %lld cycles, Pac-Man's step %.0f cycles (calm %.0f)\n", reload, static_cast<long long>(q.duration(reload, 9)), step, calmStep);
     }
-    std::printf("    after the situation changes (4,900 -> 4,100 cycles a tick) the pace is within 5 %% after %d ticks (%.2f s)\n", ticksToFollow, ticksToFollow * 4100.0 / 1022727.0);
-    CHECK(ticksToFollow < 300);
+    CHECK(11.0 * 4870 / (9.0 * 4870) - 1.0 > 0.2);   // (a fixed tick time: +22 % at a power pill)
+    // Pac-Man's eating adds ticks to his steps (the delay of the item, one more tick on the reloads after it): the pacer learns them from his steps and keeps the whole step the same
+    app::SmoothPacer e;
+    for (int i = 0; i < 1000; ++i) app::tickCost(true, e, 4900, 0, 0, 9, 9);
+    for (int i = 0; i < 40; ++i) e.act(12, 9);   // every step took 12 ticks, 3 more than the countdown of 9
+    CHECK(std::abs(e.eatingTicks() - 3.0) < 0.05);
+    CHECK(std::abs(11.0 * 0 + (11.0 + 3.0) * static_cast<double>(e.duration(11, 9)) / ((9.0 + 3.0) * static_cast<double>(e.duration(9, 9))) - 1.0) < 0.01);   // the whole step, delay included
     // the long sequences (death, level end) are not smoothed and do not disturb the pace
-    const std::int64_t before = q.duration();
-    CHECK(app::tickCost(true, q, 8917, 6043263, 0) == 8917 + 6043263 && q.duration() == before);
-    // a fixed tick time would break the balance: with the countdown 11 instead of 9 ticks, Pac-Man's step takes 11 x tick: original 11 x 4,100 = 45.1k against 9 x 4,900 = 44.1k (+2 %)
-    // but at a fixed 4,870 it would be 53.6k (+21 %): "drastically slower" after a power pill
-    CHECK(std::abs(11.0 * 4100 / (9.0 * 4900) - 1.0) < 0.03 && 11.0 * 4870 / (9.0 * 4870) - 1.0 > 0.2);
+    const std::int64_t before = q.duration(9, 9);
+    CHECK(app::tickCost(true, q, 8917, 6043263, 0, 9, 9) == 8917 + 6043263 && q.duration(9, 9) == before);
 }
 
 TEST(the_fps_setting_chooses_the_timing_native_is_the_originals_and_the_modern_modes_the_smoothed_pace) {
@@ -4430,4 +4433,202 @@ TEST(the_fps_setting_chooses_the_timing_native_is_the_originals_and_the_modern_m
     Settings s = SettingsStore::parse("gameplay_speed=steady_fast\nfps=60\n");
     CHECK(s.fps == app::FpsMode::Fps60);
     CHECK(SettingsStore::format(s).find("gameplay_speed") == std::string::npos);
+}
+
+// ---------------------------------------------------------------- Smooth motion (motion.h, the sprites of the renderer, the window's history)
+
+#include "../src/app/motion.h"
+
+TEST(actor_track_glides_between_steps_stands_still_and_does_not_glide_across_jumps) {
+    using app::ActorTrack;
+    constexpr std::int64_t ms = 1'000'000;
+    ActorTrack t;
+    CHECK(!t.at(0).valid && t.delayNs() == app::kDefaultDelayNs);
+    t.add(0, 10, 20, 1);
+    t.add(60 * ms, 12, 20, 2);
+    t.add(120 * ms, 14, 20, 3);
+    t.add(120 * ms, 14, 20, 4);   // the same place again: no new step
+    CHECK(t.size() == 3);
+    auto at = [&](std::int64_t s) { return t.at(s * ms); };
+    CHECK(at(-5).x == 10 && at(-5).seq == 1);                                  // before the first step
+    CHECK(at(0).x == 10 && std::fabs(at(30).x - 11.0f) < 1e-4f && at(30).seq == 1);   // half way to the next step at half the time
+    CHECK(std::fabs(at(45).x - 11.5f) < 1e-4f && at(60).x == 12 && at(60).seq == 2);   // at the step: there, and the sprite of that step
+    CHECK(std::fabs(at(90).x - 13.0f) < 1e-4f && at(120).x == 14 && at(500).x == 14 && at(500).seq == 3);   // after the last: stands there
+    // an actor that stood still for a second does not crawl for a second: the glide takes at most kMaxGlideNs before the step
+    ActorTrack s;
+    s.add(0, 0, 0, 1);
+    s.add(1000 * ms, 2, 0, 2);
+    CHECK(s.at(500 * ms).x == 0 && s.at(860 * ms).x == 0 && std::fabs(s.at(930 * ms).x - 1.0f) < 1e-3f && s.at(1000 * ms).x == 2);
+    // a jump (the tunnel, a new life) is not glided across
+    ActorTrack j;
+    j.add(0, 2, 90, 1);
+    j.add(60 * ms, 270, 90, 2);
+    CHECK(j.at(30 * ms).x == 2 && j.at(60 * ms).x == 270);
+    // the delay: the longest of the last three intervals and a little more, clamped
+    ActorTrack d;
+    d.add(0, 0, 0, 1);
+    d.add(50 * ms, 2, 0, 2);
+    d.add(110 * ms, 4, 0, 3);
+    d.add(160 * ms, 6, 0, 4);
+    CHECK(d.delayNs() > 60 * ms && d.delayNs() < 80 * ms);
+    ActorTrack slow;
+    slow.add(0, 0, 0, 1);
+    slow.add(1000 * ms, 2, 0, 2);
+    CHECK(slow.delayNs() == app::kMaxDelayNs);
+    d.trim(100 * ms);
+    CHECK(d.size() >= 2 && d.size() <= 3);
+}
+
+namespace {
+
+// a picture made by the renderer of a colour background (a pattern) with sprites over it; the expected picture made by hand
+struct SpriteCase {
+    int scale;
+    bool mono;
+};
+
+}  // namespace
+
+TEST(renderer_puts_sprites_over_the_background_at_exact_and_in_between_places_at_the_size_of_the_window) {
+    for (const SpriteCase c : {SpriteCase{4, false}, SpriteCase{3, false}, SpriteCase{4, true}}) {
+        CrtRig rig(c.scale);
+        CHECK(rig.hwnd != nullptr);
+        if (!rig.hwnd) return;
+        const int tw = c.mono ? 560 : 280, per = c.mono ? 2 : 1;
+        std::vector<std::uint32_t> bg(static_cast<std::size_t>(tw) * 192);
+        for (std::size_t i = 0; i < bg.size(); ++i) bg[i] = 0xFF000000u | static_cast<std::uint32_t>((i * 2654435761u) >> 8 & 0x3F3F3F);   // a busy dark pattern
+        // a sprite of 6 x 5 positions: opaque white with a see-through corner
+        std::vector<std::uint32_t> spr(static_cast<std::size_t>(6 * per) * 5, 0xFFFFFFFFu);
+        spr[0] = 0;
+        app::D3dRenderer::SpriteDraw d;
+        d.argb = spr.data();
+        d.w = 6 * per;
+        d.h = 5;
+        d.texelsPerPixel = per;
+        const int k = c.mono ? (std::max)(2, c.scale) : c.scale;
+        for (float fx : {10.0f, 10.4f, 10.25f, 10.7f, 11.0f}) {   // (no place whose edge falls exactly on a pixel centre: that tie is the rasteriser's to break)
+            d.x = fx;
+            d.y = 20.0f;
+            std::vector<app::D3dRenderer::SpriteDraw> list{d};
+            std::vector<std::uint32_t> got;
+            app::Viewport vp;
+            vp.w = rig.w;
+            vp.h = rig.h;
+            vp.scale = rig.scale;
+            int cw = 0, ch = 0;
+            std::vector<std::uint32_t> pad(280 * 192, 0xFF000000u);
+            CHECK(rig.r.draw(c.mono ? pad.data() : bg.data(), vp, app::D3dRenderer::BackgroundFrame{}, c.mono ? bg.data() : nullptr, nullptr, &list) && rig.r.readBack(got, cw, ch));
+            // expected: the background scaled up to the picture size (nearest), the sprite's pixels at the rounded start of its quad
+            int bad = 0, spritePixels = 0;
+            const int left = static_cast<int>(std::ceil(fx * static_cast<float>(k) - 0.5f)), top = 20 * k;   // (a pixel is in the quad when its centre is at or after the quad's left edge)
+            const int swpx = 6 * k, shpx = 5 * k;
+            for (int y = 0; y < rig.h; ++y)
+                for (int x = 0; x < rig.w; ++x) {
+                    std::uint32_t expect = bg[static_cast<std::size_t>(y * 192 / rig.h) * static_cast<std::size_t>(tw) + static_cast<std::size_t>(x * tw / rig.w)];
+                    if (k == rig.scale && x >= left && x < left + swpx && y >= top && y < top + shpx) {
+                        const int sx = (x - left) * d.w / swpx, sy = (y - top) * d.h / shpx;
+                        const std::uint32_t sp = spr[static_cast<std::size_t>(sy) * static_cast<std::size_t>(d.w) + static_cast<std::size_t>(sx)];
+                        if (sp != 0) {
+                            expect = sp;
+                            ++spritePixels;
+                        }
+                    }
+                    bad += (got[static_cast<std::size_t>(y) * static_cast<std::size_t>(rig.w) + static_cast<std::size_t>(x)] & 0xFFFFFF) != (expect & 0xFFFFFF);
+                }
+            std::printf("    scale %d %s, sprite at x = %.2f: %d wrong pixels of %d (sprite pixels %d)\n", c.scale, c.mono ? "monochrome" : "colour", static_cast<double>(fx), bad, rig.w * rig.h, spritePixels);
+            CHECK(bad == 0 && spritePixels > 0);
+        }
+    }
+}
+
+namespace {
+
+// a page with a 5 x 5 block of lit dots at (x, y), all in one byte column pair: the "sprite" of the window tests
+void blob(hires::Page& page, int x, int y) {
+    for (int dy = 0; dy < 5; ++dy)
+        for (int dx = 0; dx < 5; ++dx) hires::plotPixel(page, x + dx, y + dy);
+}
+
+int leftmostLit(const std::vector<std::uint32_t>& frame, int cw, const app::Viewport& vp, int gameY) {   // the leftmost lit screen pixel of the row of the picture at game row gameY
+    for (int x = 0; x < vp.w; ++x) {
+        const std::uint32_t p = frame[static_cast<std::size_t>(vp.y + gameY * vp.scale + vp.scale / 2) * static_cast<std::size_t>(cw) + static_cast<std::size_t>(vp.x + x)] & 0xFFFFFF;
+        if (((p >> 8) & 0xFF) > 0x80) return x;   // (lit: white, or the green of the phosphor)
+    }
+    return -1;
+}
+
+}  // namespace
+
+TEST(window_shows_a_gliding_actor_in_the_modern_fps_modes_and_steps_in_native) {
+    for (const ColourMode mode : {ColourMode::Original, ColourMode::NativeMono}) {
+        GameWindow w(GameWindowOptions{4, true});
+        CHECK(w.ok());
+        if (!w.ok() || !w.usesDirect3d()) return;
+        setClient(w.hwnd(), 280 * 4, 192 * 4);
+        pump(30);
+        w.setColourMode(mode);
+        constexpr std::int64_t ms = 1'000'000;
+        const std::int64_t t0 = 5'000'000'000LL;   // (a time of our own: the pictures are made for the times we ask)
+        hires::Page bg;
+        for (int y = 0; y < 192; y += 8) hires::plotPixel(bg, 3, y);   // something in the background
+        // Pac-Man's "sprite": a block that moves 2 pixels every 60 ms, 14 steps
+        for (int k = 0; k < 14; ++k) {
+            hires::Page comp = bg;
+            blob(comp, 40 + 2 * k, 80);
+            const app::GameWindow::FrameMove mv{0, 40 + 2 * k, 80};
+            w.setFrame(comp, bg, std::span<const app::GameWindow::FrameMove>(&mv, 1), true, t0 + k * 60 * ms);
+        }
+        std::vector<std::uint32_t> got;
+        int cw = 0, ch = 0;
+        const app::Viewport vp = w.renderInfo().viewport;
+        // modern mode: asking for times one step apart, in eight equal parts: the block moves in eighths of a step, i.e. a screen pixel at a time, monotonically
+        w.setFps(app::FpsMode::Fps144);
+        std::vector<int> xs;
+        for (int i = 0; i <= 64; ++i) {
+            w.setInterpolationClockForTests(t0 + 300 * ms + 72 * ms + i * 60 * ms / 8);   // (72 ms behind: the delay of a 60 ms step)
+            CHECK(w.captureFrame(got, cw, ch));
+            xs.push_back(leftmostLit(got, cw, vp, 82));
+        }
+        int distinct = 1, backwards = 0;
+        for (std::size_t i = 1; i < xs.size(); ++i) {
+            distinct += xs[i] != xs[i - 1];
+            backwards += xs[i] < xs[i - 1];
+        }
+        std::printf("    %s, modern: %zu pictures over 8 steps of 2 pixels: %d different places of the block (%d screen pixels covered), %d backwards\n", mode == ColourMode::NativeMono ? "monochrome" : "colour", xs.size(), distinct, xs.back() - xs.front(), backwards);
+        std::printf("    sprites drawn: %zu\n", w.smoothSpriteCount());
+        CHECK(w.smoothMotion() && backwards == 0 && distinct >= 55);   // 64 pictures, a new place almost every time (a place a step: 8 pictures per step)
+        // Native: the same pictures, the original's: the block only jumps, one place a step
+        w.setFps(app::FpsMode::Native);
+        std::vector<int> nx;
+        for (int i = 0; i <= 64; ++i) {
+            w.setInterpolationClockForTests(t0 + 300 * ms + i * 60 * ms / 8);
+            CHECK(w.captureFrame(got, cw, ch));
+            nx.push_back(leftmostLit(got, cw, vp, 82));
+        }
+        int nd = 1;
+        for (std::size_t i = 1; i < nx.size(); ++i) nd += nx[i] != nx[i - 1];
+        CHECK(!w.smoothMotion());
+        std::printf("    %s, Native: %d different places over the same time (it shows the newest picture only: nothing moves while the clock runs, as the pictures are the same)\n", mode == ColourMode::NativeMono ? "monochrome" : "colour", nd);
+        // at the time of a step the picture is exactly the original's: the block at its place, the same pixels
+        w.setFps(app::FpsMode::Fps60);
+        w.setInterpolationClockForTests(t0 + 6 * 60 * ms + 72 * ms);   // (the step 6, 72 ms later: the glide to step 7 starts)
+        CHECK(w.captureFrame(got, cw, ch));
+        std::vector<std::uint32_t> plain;
+        hires::Page comp6 = bg;
+        blob(comp6, 40 + 2 * 6, 80);
+        GameWindow w2(GameWindowOptions{4, true});
+        CHECK(w2.ok());
+        if (!w2.ok()) return;
+        setClient(w2.hwnd(), 280 * 4, 192 * 4);
+        pump(30);
+        w2.setColourMode(mode);
+        w2.setPage(comp6);
+        int cw2 = 0, ch2 = 0;
+        CHECK(w2.captureFrame(plain, cw2, ch2));
+        int differs = 0;
+        for (int y = 0; y < ch; ++y)
+            for (int x = 0; x < cw; ++x) differs += (got[static_cast<std::size_t>(y) * static_cast<std::size_t>(cw) + static_cast<std::size_t>(x)] & 0xFFFFFF) != (plain[static_cast<std::size_t>(y) * static_cast<std::size_t>(cw2) + static_cast<std::size_t>(x)] & 0xFFFFFF);
+        std::printf("    at the time of a step the smooth picture differs from the original's page in %d pixels\n", differs);
+        CHECK(differs == 0);
+    }
 }

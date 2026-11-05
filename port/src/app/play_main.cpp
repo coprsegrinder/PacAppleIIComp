@@ -25,6 +25,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <span>
 #include <string>
 #include <thread>
 #include <vector>
@@ -195,7 +196,7 @@ bool runGame(core::GameDriver& drv, const datapack::Pack& pack, app::GameWindow&
         long playCalls = 0;
         double playTotalMs = 0, playMaxMs = 0;   // time the game thread spent inside the sound calls (they must be quick: the game waits for them)
         std::int64_t secStartNs = 0;   // a line a second in the log: ticks, mean cost, picture changes, the frightened timer
-        long secTicks = 0, secChanges = 0, energizers = 0, secPac = 0, secGhost = 0, secAte = 0;
+        long secTicks = 0, secChanges = 0, energizers = 0, secPac = 0, secGhost = 0, secAte = 0, secActed = 0;
         std::array<int, 10> lastPos{};   // Pac-Man and the four ghosts' places at the last tick
         std::int64_t secCost = 0;
         std::array<long, 8> hist{};   // ticks by cost: <3.5k, <4k, <5k, <6k, <8k, <12k, <20k, more (cycles)
@@ -236,14 +237,18 @@ bool runGame(core::GameDriver& drv, const datapack::Pack& pack, app::GameWindow&
             if (secStartNs == 0) secStartNs = now;
             if (now - secStartNs < 1'000'000'000) return;
             char buf[200];
-            std::snprintf(buf, sizeof(buf), "second: ticks=%ld mean_cost=%.0f picture_changes=%ld pacman_steps=%ld ghost_moves=%ld dots_eaten=%ld frightened=%d energizers_so_far=%ld", secTicks, secTicks ? static_cast<double>(secCost) / static_cast<double>(secTicks) : 0.0, secChanges, secPac, secGhost, secAte, frightened ? 1 : 0, energizers);
+            std::snprintf(buf, sizeof(buf), "second: ticks=%ld mean_cost=%.0f picture_changes=%ld pacman_steps=%ld ghost_moves=%ld dots_eaten=%ld acted=%ld frightened=%d energizers_so_far=%ld", secTicks, secTicks ? static_cast<double>(secCost) / static_cast<double>(secTicks) : 0.0, secChanges, secPac, secGhost, secAte, secActed, frightened ? 1 : 0, energizers);
             w.logLine(buf);
             secStartNs = now;
-            secTicks = secChanges = secPac = secGhost = secAte = 0;
+            secTicks = secChanges = secPac = secGhost = secAte = secActed = 0;
             secCost = 0;
         }
     } tickLog{window};
     app::SmoothPacer pacer;
+    unsigned ticksSinceAct = 0;
+    std::int64_t tickClockNs = core::nowNanoseconds();   // when the game made its last tick, on its own clock (for the smooth motion)
+    core::StepTables stepTables;   // Pac-Man's step countdown tables: the modern pacing keeps his real-time step the same whatever the ghosts do
+    core::loadStepTables(pack, stepTables);
     SoundPlayer sounds;
     sounds.init(pack);
     core::CartoonPlayer cartoon;
@@ -356,7 +361,13 @@ bool runGame(core::GameDriver& drv, const datapack::Pack& pack, app::GameWindow&
                 window.setPage(drv.page());
                 break;
             }
-            const std::int64_t cost = app::tickCost(modern, pacer, drv.tickCycles(), drv.extraCycles(), soundFreeze);
+            const unsigned reloadNow = core::StepTimer::reloadValue(drv.core().state(), stepTables), reloadCalm = core::StepTimer::calmReloadValue(drv.core().state(), stepTables);
+            ++ticksSinceAct;
+            if (ev.acted) {   // (Pac-Man's step countdown ran out: the pacer learns what his eating adds to his steps)
+                pacer.act(ticksSinceAct, reloadNow);
+                ticksSinceAct = 0;
+            }
+            const std::int64_t cost = app::tickCost(modern, pacer, drv.tickCycles(), drv.extraCycles(), soundFreeze, reloadNow, reloadCalm);
             {
                 tickLog.costSum += cost;
                 tickLog.costMin = (std::min)(tickLog.costMin, cost);
@@ -387,6 +398,7 @@ bool runGame(core::GameDriver& drv, const datapack::Pack& pack, app::GameWindow&
             tickLog.secCost += cost;
             tickLog.energizers += ev.energizer;
             tickLog.secAte += ev.ate;
+            tickLog.secActed += ev.acted;
             {
                 const core::GameState& st = drv.core().state();
                 std::array<int, 10> pos{st.pacX(), st.pacY(), st.ghosts[0].x(), st.ghosts[0].y(), st.ghosts[1].x(), st.ghosts[1].y(), st.ghosts[2].x(), st.ghosts[2].y(), st.ghosts[3].x(), st.ghosts[3].y()};
@@ -403,10 +415,19 @@ bool runGame(core::GameDriver& drv, const datapack::Pack& pack, app::GameWindow&
                 st.zp(0x56) = 200;
             }
             if (gAidEnergizer && ev.energizer) for (auto& c : drv.core().state().map) if (c == 2) c = 1;
-            window.setPage(drv.page());   // every tick is a picture the window may show (the window takes the newest one at its next frame)
+            {   // every tick is a picture the window may show (the window takes the newest one at its next frame); the smooth motion of the modern FPS modes also gets where the actors moved to
+                std::array<app::GameWindow::FrameMove, 5> mv{};
+                std::size_t n = 0;
+                for (const auto& m : drv.lastMoves())
+                    if (n < mv.size()) mv[n++] = app::GameWindow::FrameMove{m.actor, m.x, m.y};
+                window.setFrame(drv.page(), drv.backgroundPage(), std::span<const app::GameWindow::FrameMove>(mv.data(), n), drv.interpolatable(), tickClockNs);
+                tickClockNs += cost * 1'000'000'000LL / core::kAppleCyclesPerSecond;   // (the game's own clock: smooth, and never far from the real one)
+                const std::int64_t realNow = core::nowNanoseconds();
+                if (tickClockNs > realNow + 40'000'000 || tickClockNs < realNow - 40'000'000) tickClockNs = realNow;
+            }
             if (budget < -core::kDeathSequenceCycles * 2) budget = 0;
         }
-        if (changed) window.setPage(drv.page());
+        (void)changed;   // (every tick has already been published, with where its actors moved: window.setFrame)
         app::preciseSleepMs(2);
     }
     return false;

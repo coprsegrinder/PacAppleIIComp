@@ -52,7 +52,8 @@ float crtAfterglowDecay(int level) noexcept;                    // factor per 1/
 // Returns true while any trail is still visible (so the window keeps repainting until it has faded).
 bool applyAfterglow(std::vector<std::uint32_t>& prev, std::uint32_t* cur, std::size_t count, float factor);
 
-// The CPU model of the picture shader: `src` is texW x 192 ARGB (280, or 560 for the monochrome picture), the result vw x vh ARGB for a viewport at whole-number `scale`.
-void renderCrt(const CrtFilter& f, const std::uint32_t* src, int texW, int vw, int vh, int scale, std::vector<std::uint32_t>& out);
+// The CPU model of the picture shader: `src` is texW x texH ARGB (280 x 192, 560 x 192 for the monochrome picture, or the window-sized picture of the smooth motion), the result vw x vh ARGB
+// for a viewport at whole-number `scale`.
+void renderCrt(const CrtFilter& f, const std::uint32_t* src, int texW, int vw, int vh, int scale, std::vector<std::uint32_t>& out, int texH = 192);
 
 }  // namespace pacman::app

@@ -6,6 +6,7 @@
 #include <windows.h>
 
 #include <cstdint>
+#include <array>
 #include <atomic>
 #include <deque>
 #include <memory>
@@ -25,6 +26,7 @@
 #include "crtfilter.h"
 #include "fpsmode.h"
 #include "framed_layout.h"
+#include "motion.h"
 #include "glow.h"
 #include "pausemenu.h"
 #include "resolutions.h"
@@ -53,6 +55,12 @@ public:
     void setPage(const hires::Page& page);            // copies the 8 KB page under a lock; the window repaints at the next refresh tick
     void setImage(std::span<const std::uint32_t> argb);   // (a picture without dot data: in Native Black & White a dot with any light is lit)
     void setImage(std::span<const std::uint32_t> argb, std::span<const std::uint8_t> dots560x192);   // with the dot positions of the screen (src/video/monochrome.h) for Native Black & White   // 280 x 192 ARGB pixels (the lo-res page, the text page): shown instead of the hi-res page until the next setPage
+    // The game's tick as a picture for the smooth motion (motion.h): the page, the page without the images of the actors, where the actors moved to in this tick, whether the page can be
+    // taken apart like that (false: it was rebuilt or drawn by a sequence), and when the game made the tick (its own clock, nanoseconds on the performance counter). Shown like setPage().
+    struct FrameMove {
+        int actor, x, y;
+    };
+    void setFrame(const hires::Page& page, const hires::Page& background, std::span<const FrameMove> moves, bool interpolatable, std::int64_t tNs);
     std::optional<std::uint8_t> popKey();             // next Apple II key code (7-bit ASCII with bit 7 set) or nothing
 
     // --- window thread ---
@@ -120,6 +128,10 @@ public:
     FrameStats frameStats() const;
     void resetFrameStats();
     unsigned long long framesShown() const noexcept { return frames_.load(); }
+    unsigned long long distinctFrames() const noexcept { return distinct_.load(); }   // pictures shown that differed from the one before (what the eye sees change)
+    std::size_t smoothSpriteCount() const noexcept { return spriteDraws_.size(); }
+    bool smoothMotion() const noexcept { return smoothActive_; }                      // the last picture was drawn with the actors at in-between places
+    void setInterpolationClockForTests(std::int64_t ns) noexcept { testClockNs_ = ns; }   // tests: the time the pictures are made for (0 = the real time)
     void setBackground(Background b);                  // what is drawn around the picture (window thread); written to the settings
     void cycleBackground(int dir);
     Background background() const noexcept { return background_; }
@@ -149,6 +161,28 @@ private:
     void menuChanged();                                // repaint, and tell the other threads
     bool menuKey(unsigned vk);                         // true if the menu used the key
     bool pictureCoords(LPARAM lp, int& px, int& py) const;   // client position -> picture pixel; false outside the picture
+    struct Snap {
+        std::uint64_t seq = 0;
+        std::int64_t tNs = 0;
+        hires::Page page, bg;
+        std::vector<FrameMove> moves;
+        bool interp = false;
+    };
+    struct SpriteImg {
+        std::uint64_t seq = 0;
+        bool valid = false;
+        int w = 0, h = 0;
+        float relX = 0, relY = 0;   // where its top left is, from the place of the step (game pixels)
+        std::vector<std::uint32_t> argb;
+    };
+    struct Conv {   // a published picture and its background as colour (or monochrome) pictures
+        std::uint64_t seq = 0;
+        bool mono = false, valid = false;
+        std::vector<std::uint32_t> comp, bg;
+    };
+    bool buildSmooth(std::int64_t nowNs);              // the background and the sprites of the smooth motion for this time; false: draw the picture as it is
+    const Conv& converted(const Snap& s, bool mono);
+    void extractSprite(int actor, const Snap& s, int x, int y, bool mono);
     bool renderFrame();                                // Direct3D: draws the newest picture and presents it
     void pacedFrame(bool everySlot);                   // one step of the paced loop
     void currentPixels(std::uint32_t* out, double glowDtSeconds);   // the 280 x 192 picture to show (page or image), marks it as painted
@@ -173,6 +207,25 @@ private:
     bool inModalLoop_ = false;                // the user is dragging or sizing the window (Windows runs its own loop then)
     std::atomic<unsigned long long> frames_{0};
     std::int64_t lastFrameNs_ = 0;
+    std::deque<std::shared_ptr<const Snap>> shared_;      // guarded by mutex_: the pictures the game published (newest last)
+    std::uint64_t nextSeq_ = 1;
+    std::deque<std::shared_ptr<const Snap>> local_;       // window thread: the same, kept for as long as the smooth motion needs them
+    std::uint64_t seenSeq_ = 0, trackedSeq_ = 0;
+    std::array<ActorTrack, kActorCount> tracks_;
+    std::array<SpriteImg, kActorCount> sprites_;
+    std::array<Conv, 3> convs_;
+    int convNext_ = 0;
+    std::vector<std::uint32_t> smoothBg_;                 // the background picture of the smooth motion (colour 280 x 192, or monochrome 560 x 192)
+    std::vector<D3dRenderer::SpriteDraw> spriteDraws_;
+    std::uint64_t smoothBgSeq_ = 0;
+    bool smoothBgMono_ = false;
+    bool smoothActive_ = false;
+    std::int64_t testClockNs_ = 0;
+    std::atomic<unsigned long long> distinct_{0};
+    std::uint64_t lastSignature_ = 0;
+    unsigned long lastVersionCounted_ = 0;
+    std::uint64_t lastPixelsHash_ = 0;
+    unsigned long long smoothFrames_ = 0;
     double sumMs_ = 0, sumSqMs_ = 0, maxMs_ = 0;
     unsigned long long intervals_ = 0;
     double drawSumMs_ = 0, presentSumMs_ = 0;

@@ -120,21 +120,22 @@ struct Vec3 {
     float r = 0, g = 0, b = 0;
 };
 
-Vec3 texel(const std::uint32_t* src, int texW, float x, int row) {   // x in game pixels (0..280)
+Vec3 texel(const std::uint32_t* src, int texW, int texH, float x, float y) {   // x, y in game pixels (0..280, 0..192)
     const int ix = std::clamp(static_cast<int>(std::floor(x * static_cast<float>(texW) / 280.0f + 0.002f)), 0, texW - 1);
-    const std::uint32_t p = src[static_cast<std::size_t>(row) * static_cast<std::size_t>(texW) + static_cast<std::size_t>(ix)];
+    const int iy = std::clamp(static_cast<int>(std::floor(y * static_cast<float>(texH) / 192.0f)), 0, texH - 1);
+    const std::uint32_t p = src[static_cast<std::size_t>(iy) * static_cast<std::size_t>(texW) + static_cast<std::size_t>(ix)];
     return Vec3{static_cast<float>((p >> 16) & 0xFF) / 255.0f, static_cast<float>((p >> 8) & 0xFF) / 255.0f, static_cast<float>(p & 0xFF) / 255.0f};
 }
 
-Vec3 bilinear(const std::uint32_t* src, int texW, float gx, float gy) {   // like the hardware's linear filter with clamped edges; gx, gy in game pixels
-    const float tx = gx * static_cast<float>(texW) / 280.0f - 0.5f, ty = gy - 0.5f;
+Vec3 bilinear(const std::uint32_t* src, int texW, int texH, float gx, float gy) {   // like the hardware's linear filter with clamped edges; gx, gy in game pixels
+    const float tx = gx * static_cast<float>(texW) / 280.0f - 0.5f, ty = gy * static_cast<float>(texH) / 192.0f - 0.5f;
     const float fx0 = std::floor(tx), fy0 = std::floor(ty);
     const float ax = tx - fx0, ay = ty - fy0;
     const int x0 = static_cast<int>(fx0), y0 = static_cast<int>(fy0);
     Vec3 out;
     for (int j = 0; j < 2; ++j)
         for (int i = 0; i < 2; ++i) {
-            const int x = std::clamp(x0 + i, 0, texW - 1), y = std::clamp(y0 + j, 0, 191);
+            const int x = std::clamp(x0 + i, 0, texW - 1), y = std::clamp(y0 + j, 0, texH - 1);
             const std::uint32_t p = src[static_cast<std::size_t>(y) * static_cast<std::size_t>(texW) + static_cast<std::size_t>(x)];
             const float w = (i ? ax : 1.0f - ax) * (j ? ay : 1.0f - ay);
             out.r += w * static_cast<float>((p >> 16) & 0xFF) / 255.0f;
@@ -148,7 +149,7 @@ float luma(const Vec3& v) { return 0.299f * v.r + 0.587f * v.g + 0.114f * v.b; }
 
 }  // namespace
 
-void renderCrt(const CrtFilter& f, const std::uint32_t* src, int texW, int vw, int vh, int scale, std::vector<std::uint32_t>& out) {
+void renderCrt(const CrtFilter& f, const std::uint32_t* src, int texW, int vw, int vh, int scale, std::vector<std::uint32_t>& out, int texH) {
     const CrtParams q = crtParams(f);
     out.assign(static_cast<std::size_t>(vw) * static_cast<std::size_t>(vh), 0xFF000000u);
     const float W = static_cast<float>(vw), H = static_cast<float>(vh);
@@ -163,7 +164,6 @@ void renderCrt(const CrtFilter& f, const std::uint32_t* src, int texW, int vw, i
             const float m = std::clamp((1.0f - std::fabs(ccx)) * W * 0.5f + 0.5f, 0.0f, 1.0f) * std::clamp((1.0f - std::fabs(ccy)) * H * 0.5f + 0.5f, 0.0f, 1.0f);
             if (m <= 0.0f) continue;
             const float gx = (ccx * 0.5f + 0.5f) * 280.0f, gy = (ccy * 0.5f + 0.5f) * 192.0f;
-            const int row = std::clamp(static_cast<int>(std::floor(gy)), 0, 191);
             const float fr = gy - std::floor(gy);
             float scan = 1.0f;
             if (scale >= 3) scan = (1.0f - q.scan) + q.scan * (0.5f - 0.5f * std::cos(6.2831853f * fr));
@@ -175,7 +175,7 @@ void renderCrt(const CrtFilter& f, const std::uint32_t* src, int texW, int vw, i
                 float wt = q.sigma > 0.0f ? std::exp(-d * d / (2.0f * q.sigma * q.sigma)) : (t == 0 ? 1.0f : 0.0f);
                 if (q.tau > 0.0f && t < 0) wt += 0.25f * std::exp(d / q.tau);
                 if (wt > 0.0f) {
-                    const Vec3 c = texel(src, texW, gx + d, row);
+                    const Vec3 c = texel(src, texW, texH, gx + d, gy);
                     acc.r += wt * c.r * c.r;
                     acc.g += wt * c.g * c.g;
                     acc.b += wt * c.b * c.b;
@@ -186,7 +186,7 @@ void renderCrt(const CrtFilter& f, const std::uint32_t* src, int texW, int vw, i
             if (q.blend > 0.0f) {
                 Vec3 cb;
                 for (int e = -2; e <= 2; ++e) {
-                    const Vec3 c = texel(src, texW, gx + static_cast<float>(e) * 0.5f, row);
+                    const Vec3 c = texel(src, texW, texH, gx + static_cast<float>(e) * 0.5f, gy);
                     const Vec3 l{c.r * c.r, c.g * c.g, c.b * c.b};
                     const float y = luma(l), w = static_cast<float>(3 - std::abs(e));
                     cb.r += w * (l.r - y);
@@ -207,7 +207,7 @@ void renderCrt(const CrtFilter& f, const std::uint32_t* src, int texW, int vw, i
                 for (int j = -2; j <= 2; ++j)
                     for (int i = -2; i <= 2; ++i) {
                         const float wt = std::exp(-static_cast<float>(i * i + j * j) / (2.0f * 1.44f));
-                        const Vec3 c = bilinear(src, texW, gx + static_cast<float>(i), gy + static_cast<float>(j));
+                        const Vec3 c = bilinear(src, texW, texH, gx + static_cast<float>(i), gy + static_cast<float>(j));
                         g.r += wt * c.r * c.r;
                         g.g += wt * c.g * c.g;
                         g.b += wt * c.b * c.b;

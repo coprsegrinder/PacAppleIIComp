@@ -76,12 +76,40 @@ GameWindow::~GameWindow() {
     if (hwnd_) DestroyWindow(hwnd_);
 }
 
+namespace {
+std::int64_t nowNsQpc();
+}
+
 void GameWindow::setPage(const hires::Page& page) {
+    auto snap = std::make_shared<Snap>();   // (a picture that is not taken apart: the smooth motion shows it as it is)
+    snap->tNs = nowNsQpc();
+    snap->page = page;
+    snap->bg = page;
     std::lock_guard<std::mutex> lock(mutex_);
+    snap->seq = nextSeq_++;
+    shared_.push_back(std::move(snap));
+    while (shared_.size() > 160) shared_.pop_front();
     page_ = page;
     useImage_ = false;
     monoDotsValid_ = false;
     ++pageVersion_;
+}
+
+void GameWindow::setFrame(const hires::Page& page, const hires::Page& background, std::span<const FrameMove> moves, bool interpolatable, std::int64_t tNs) {
+    auto snap = std::make_shared<Snap>();
+    snap->tNs = tNs;
+    snap->page = page;
+    snap->bg = background;
+    snap->moves.assign(moves.begin(), moves.end());
+    snap->interp = interpolatable;
+    std::lock_guard<std::mutex> lock(mutex_);
+    snap->seq = nextSeq_++;
+    page_ = page;
+    useImage_ = false;
+    monoDotsValid_ = false;
+    ++pageVersion_;
+    shared_.push_back(std::move(snap));
+    while (shared_.size() > 160) shared_.pop_front();
 }
 
 void GameWindow::setImage(std::span<const std::uint32_t> argb) {
@@ -760,7 +788,13 @@ bool GameWindow::captureFrame(std::vector<std::uint32_t>& argb, int& w, int& h) 
     std::array<std::uint32_t, kW * kH> pixels{};
     currentPixels(pixels.data(), 1e9);   // a test frame: the glow takes the picture as it is, no smoothing in time
     const Viewport vp = viewportFor(d3d_->width(), d3d_->height());
-    if (!d3d_->draw(pixels.data(), vp, backgroundFrame(d3d_->width(), d3d_->height(), vp), colour_ == ColourMode::NativeMono ? mono560_.data() : nullptr, &crtDraw_)) return false;
+    smoothActive_ = fps_ != FpsMode::Native && !menu_.open() && crt_.afterglow == 0 && buildSmooth(testClockNs_ != 0 ? testClockNs_ : nowNsQpc());
+    if (smoothActive_) {
+        const bool mono = colour_ == ColourMode::NativeMono;
+        if (!d3d_->draw(mono ? pixels.data() : smoothBg_.data(), vp, backgroundFrame(d3d_->width(), d3d_->height(), vp), mono ? smoothBg_.data() : nullptr, &crtDraw_, &spriteDraws_)) return false;
+    } else if (!d3d_->draw(pixels.data(), vp, backgroundFrame(d3d_->width(), d3d_->height(), vp), colour_ == ColourMode::NativeMono ? mono560_.data() : nullptr, &crtDraw_)) {
+        return false;
+    }
     return d3d_->readBack(argb, w, h);
 }
 
@@ -777,6 +811,149 @@ std::int64_t nowNsQpc() {
 }
 }  // namespace
 
+namespace {
+
+void monoPicture(const hires::Page& page, std::vector<std::uint32_t>& out560) {   // the monochrome picture of a page: the dots, the phosphor (as currentPixels makes it)
+    std::vector<std::uint8_t> dots(static_cast<std::size_t>(video::kDotsW) * video::kDotsH, 0), level(dots.size());
+    video::hiresDots(page, dots);
+    video::levelsFromDots(dots, level);
+    out560.resize(level.size());
+    video::phosphorImage(level, out560);
+}
+
+}  // namespace
+
+const GameWindow::Conv& GameWindow::converted(const Snap& s, bool mono) {
+    for (const Conv& c : convs_)
+        if (c.valid && c.seq == s.seq && c.mono == mono) return c;
+    Conv& c = convs_[static_cast<std::size_t>(convNext_)];
+    convNext_ = (convNext_ + 1) % static_cast<int>(convs_.size());
+    c.seq = s.seq;
+    c.mono = mono;
+    c.valid = true;
+    if (mono) {
+        monoPicture(s.page, c.comp);
+        monoPicture(s.bg, c.bg);
+    } else {
+        c.comp.assign(static_cast<std::size_t>(kW) * kH, 0);
+        c.bg.assign(static_cast<std::size_t>(kW) * kH, 0);
+        video::renderArgb(s.page, c.comp);
+        video::renderArgb(s.bg, c.bg);
+    }
+    return c;
+}
+
+// The sprite of an actor: the pixels of the picture that differ from the background in the rectangle around the place of its step (see-through elsewhere). At the place of the step it
+// reproduces the original's picture exactly (the background plus these pixels is the picture).
+void GameWindow::extractSprite(int actor, const Snap& s, int x, int y, bool mono) {
+    SpriteImg& out = sprites_[static_cast<std::size_t>(actor)];
+    out.valid = false;
+    const Conv& cv = converted(s, mono);
+    const int per = mono ? 2 : 1, tw = kW * per;
+    const int x0 = (std::max)(0, x - 14), y0 = (std::max)(0, y - 8), x1 = (std::min)(kW, x + 24), y1 = (std::min)(kH, y + 14);
+    int minx = 1 << 30, miny = 1 << 30, maxx = -1, maxy = -1;
+    for (int yy = y0; yy < y1; ++yy)
+        for (int tx = x0 * per; tx < x1 * per; ++tx) {
+            const std::size_t i = static_cast<std::size_t>(yy) * static_cast<std::size_t>(tw) + static_cast<std::size_t>(tx);
+            if (cv.comp[i] == cv.bg[i]) continue;
+            minx = (std::min)(minx, tx);
+            maxx = (std::max)(maxx, tx);
+            miny = (std::min)(miny, yy);
+            maxy = (std::max)(maxy, yy);
+        }
+    if (maxx < 0) return;
+    out.w = maxx - minx + 1;
+    out.h = maxy - miny + 1;
+    if (out.w > 96 || out.h > 32) return;
+    out.argb.assign(static_cast<std::size_t>(out.w) * static_cast<std::size_t>(out.h), 0);
+    for (int yy = miny; yy <= maxy; ++yy)
+        for (int tx = minx; tx <= maxx; ++tx) {
+            const std::size_t i = static_cast<std::size_t>(yy) * static_cast<std::size_t>(tw) + static_cast<std::size_t>(tx);
+            if (cv.comp[i] != cv.bg[i]) out.argb[static_cast<std::size_t>(yy - miny) * static_cast<std::size_t>(out.w) + static_cast<std::size_t>(tx - minx)] = cv.comp[i];
+        }
+    out.relX = static_cast<float>(minx) / static_cast<float>(per) - static_cast<float>(x);
+    out.relY = static_cast<float>(miny) - static_cast<float>(y);
+    out.seq = s.seq;
+    out.valid = true;
+}
+
+bool GameWindow::buildSmooth(std::int64_t nowNs) {
+    const bool mono = colour_ == ColourMode::NativeMono;
+    {   // the pictures the game has published since the last time
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (useImage_) return false;
+        for (const auto& s : shared_)
+            if (s->seq > seenSeq_) local_.push_back(s);
+        if (!shared_.empty()) seenSeq_ = shared_.back()->seq;
+    }
+    // the steps of the actors from the new pictures
+    for (const auto& s : local_) {
+        if (s->seq <= trackedSeq_) continue;
+        trackedSeq_ = s->seq;
+        if (!s->interp) {   // a rebuilt or sequence picture: nothing glides across it
+            for (auto& t : tracks_) t.clear();
+            for (auto& sp : sprites_) sp.valid = false;
+            continue;
+        }
+        for (const FrameMove& m : s->moves)
+            if (m.actor >= 0 && m.actor < kActorCount) tracks_[static_cast<std::size_t>(m.actor)].add(s->tNs, static_cast<float>(m.x), static_cast<float>(m.y), s->seq);
+    }
+    while (local_.size() > 4 && local_[1]->tNs < nowNs - 1'500'000'000) local_.pop_front();
+    for (auto& t : tracks_) t.trim(nowNs - 1'500'000'000);
+    if (local_.empty() || !local_.back()->interp) return false;   // (the newest picture was rebuilt or drawn by a sequence: show it as it is, at once)
+    const std::int64_t delay0 = tracks_[0].delayNs();
+    const std::int64_t sigma0 = nowNs - delay0;
+    std::shared_ptr<const Snap> bgSnap = local_.front();
+    for (const auto& s : local_)
+        if (s->tNs <= sigma0) bgSnap = s;
+    if (!bgSnap->interp) return false;
+    // the background picture
+    if (smoothBgSeq_ != bgSnap->seq || smoothBgMono_ != mono || smoothBg_.empty()) {
+        if (mono) {
+            monoPicture(bgSnap->bg, smoothBg_);
+        } else {
+            smoothBg_.assign(static_cast<std::size_t>(kW) * kH, 0);
+            video::renderArgb(bgSnap->bg, smoothBg_);
+        }
+        smoothBgSeq_ = bgSnap->seq;
+        smoothBgMono_ = mono;
+    }
+    // the sprites
+    spriteDraws_.clear();
+    std::uint64_t signature = bgSnap->seq * 1315423911ull;
+    for (int a = 0; a < kActorCount; ++a) {
+        const ActorTrack& tr = tracks_[static_cast<std::size_t>(a)];
+        if (tr.empty()) continue;
+        const ActorPlace pl = tr.at(nowNs - tr.delayNs());
+        if (!pl.valid) continue;
+        SpriteImg& sp = sprites_[static_cast<std::size_t>(a)];
+        if (!sp.valid || sp.seq != pl.seq) {   // the step's picture is still in the history (it is at most a few steps old); else the sprite stays as it was
+            for (const auto& s : local_)
+                if (s->seq == pl.seq) {
+                    // the place of the step: the last one of the actor in that picture
+                    for (const FrameMove& m : s->moves)
+                        if (m.actor == a) extractSprite(a, *s, m.x, m.y, mono);
+                    break;
+                }
+            if (!sp.valid) continue;
+        }
+        D3dRenderer::SpriteDraw d;
+        d.argb = sp.argb.data();
+        d.w = sp.w;
+        d.h = sp.h;
+        d.x = pl.x + sp.relX;
+        d.y = pl.y + sp.relY;
+        d.texelsPerPixel = mono ? 2 : 1;
+        spriteDraws_.push_back(d);
+        signature = signature * 1099511628211ull + static_cast<std::uint64_t>(std::lround(pl.x * 16.0f)) * 131 + static_cast<std::uint64_t>(std::lround(pl.y * 16.0f)) + static_cast<std::uint64_t>(a) * 7919ull;
+    }
+    if (signature != lastSignature_) {
+        lastSignature_ = signature;
+        ++distinct_;
+    }
+    return true;
+}
+
 bool GameWindow::renderFrame() {
     if (!d3d_ || !hwnd_) return false;
     std::array<std::uint32_t, kW * kH> pixels{};
@@ -788,9 +965,28 @@ bool GameWindow::renderFrame() {
     GetClientRect(hwnd_, &rc);
     d3d_->resize(static_cast<int>(rc.right), static_cast<int>(rc.bottom));
     const Viewport vp = viewportFor(d3d_->width(), d3d_->height());
-    if (!d3d_->draw(pixels.data(), vp, backgroundFrame(d3d_->width(), d3d_->height(), vp), colour_ == ColourMode::NativeMono ? mono560_.data() : nullptr, &crtDraw_)) return false;
+    // the modern FPS modes show the actors gliding between their steps (motion.h); Native shows the original's picture as it is. The afterglow (it works on whole pictures) and the pause menu
+    // use the picture as it is.
+    smoothActive_ = fps_ != FpsMode::Native && !menu_.open() && crt_.afterglow == 0 && buildSmooth(testClockNs_ != 0 ? testClockNs_ : now);
+    if (smoothActive_) {
+        const bool mono = colour_ == ColourMode::NativeMono;
+        if (!d3d_->draw(mono ? pixels.data() : smoothBg_.data(), vp, backgroundFrame(d3d_->width(), d3d_->height(), vp), mono ? smoothBg_.data() : nullptr, &crtDraw_, &spriteDraws_)) return false;
+    } else if (!d3d_->draw(pixels.data(), vp, backgroundFrame(d3d_->width(), d3d_->height(), vp), colour_ == ColourMode::NativeMono ? mono560_.data() : nullptr, &crtDraw_)) {
+        return false;
+    }
+    if (smoothActive_) {
+        ++smoothFrames_;
+    } else if (paintedVersion_ != lastVersionCounted_) {   // the picture as it is: counted when its content differs from the one before (a tick that changes nothing is not a new picture)
+        lastVersionCounted_ = paintedVersion_;
+        std::uint64_t h = 1469598103934665603ull;
+        for (std::uint32_t p : pixels) h = (h ^ p) * 1099511628211ull;
+        if (h != lastPixelsHash_) {
+            lastPixelsHash_ = h;
+            ++distinct_;
+        }
+    }
     const std::int64_t drawn = nowNsQpc();
-    if (!d3d_->present()) return false;
+    if (!d3d_->present(fps_ == FpsMode::Unlocked)) return false;   // (Unlocked: not even the compositor's pace)
     const std::int64_t presented = nowNsQpc();
     drawSumMs_ += static_cast<double>(drawn - now) / 1e6;
     presentSumMs_ += static_cast<double>(presented - drawn) / 1e6;
@@ -812,7 +1008,7 @@ void GameWindow::pacedFrame(bool everySlot) {   // a fixed rate shows a picture 
         std::lock_guard<std::mutex> lock(mutex_);
         changed = pageVersion_ != paintedVersion_ || afterglowBusy_;
     }
-    if (!changed && !everySlot) return;
+    if (!changed && !everySlot && !smoothActive_) return;
     if (d3d_) {
         renderFrame();
         ValidateRect(hwnd_, nullptr);
@@ -987,7 +1183,7 @@ LRESULT GameWindow::handle(UINT msg, WPARAM wp, LPARAM lp) {
         if (!logPath_.empty() && frames_.load() > 0) {   // what the paced loop did (for the real-program checks and reports)
             const FrameStats fs = frameStats();
             std::ofstream f{std::filesystem::path(logPath_), std::ios::app};
-            f << "frames: fps=" << fpsModeKey(fps_) << " shown=" << fs.frames << " mean_ms=" << fs.meanMs << " max_ms=" << fs.maxMs << " deviation_ms=" << fs.deviationMs << "\n";
+            f << "frames: fps=" << fpsModeKey(fps_) << " shown=" << fs.frames << " distinct=" << distinct_.load() << " smooth_frames=" << smoothFrames_ << " mean_ms=" << fs.meanMs << " max_ms=" << fs.maxMs << " deviation_ms=" << fs.deviationMs << " draw_ms=" << fs.drawMs << " present_ms=" << fs.presentMs << "\n";
         }
         KillTimer(hwnd_, kRefreshTimer);
         saveSettings();   // the window's last place and size, the modes: written once more on the way out
@@ -1041,6 +1237,10 @@ int GameWindow::run() {
                 next += period;
                 if (now - next > 2 * period) next = now + period;   // far behind (the process was stopped): start the grid again
             }
+        }
+        if (period == 0 && smoothActive_) {   // Unlocked with the smooth motion: a picture as fast as the machine can make one (no waiting at all; the other threads get their turn)
+            SwitchToThread();
+            continue;
         }
         const std::int64_t wait = period == 0 ? 500'000 : std::max<std::int64_t>(0, next - nowNsQpc());
         if (timer.handle()) {

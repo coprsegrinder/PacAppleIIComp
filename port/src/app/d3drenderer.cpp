@@ -3,9 +3,11 @@
 #include <d3d11.h>
 #include <d3dcompiler.h>
 #include <dxgi1_2.h>
+#include <dxgi1_5.h>
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <array>
 #include <cstdio>
 #include <cstring>
 
@@ -60,10 +62,11 @@ float4 psbg(VSOut i) : SV_Target {
     return float4(saturate(lerp(g, e, w) + n / 255.0), 1.0);
 }
 // The CRT filter (crtfilter.h is the CPU model of exactly this): one pass over the picture's viewport.
-cbuffer Crt : register(b1) { float4 ca; float4 cb; float4 cc; };   // ca = viewport width, height, whole-number scale, texture width; cb = scan, sigma, tau, glow; cc = blend, curvature, gain, offset
-float3 srcLoad(float x, int row) {
+cbuffer Crt : register(b1) { float4 ca; float4 cb; float4 cc; float4 cd; };   // ca = viewport width, height, whole-number scale, texture width; cb = scan, sigma, tau, glow; cc = blend, curvature, gain, offset; cd = texture height
+float3 srcLoad(float x, float y) {
     int ix = clamp((int)floor(x * ca.w / 280.0 + 0.002), 0, (int)ca.w - 1);
-    return tex.Load(int3(ix, row, 0)).rgb;
+    int iy = clamp((int)floor(y * cd.x / 192.0), 0, (int)cd.x - 1);
+    return tex.Load(int3(ix, iy, 0)).rgb;
 }
 float4 pscrt(VSOut i) : SV_Target {
     float W = ca.x, H = ca.y;
@@ -76,7 +79,6 @@ float4 pscrt(VSOut i) : SV_Target {
     float m = saturate((1.0 - abs(ccx)) * W * 0.5 + 0.5) * saturate((1.0 - abs(ccy)) * H * 0.5 + 0.5);
     if (m <= 0.0) return float4(0.0, 0.0, 0.0, 1.0);
     float gx = (ccx * 0.5 + 0.5) * 280.0, gy = (ccy * 0.5 + 0.5) * 192.0;
-    int row = clamp((int)floor(gy), 0, 191);
     float fr = gy - floor(gy);
     float scan = 1.0;
     if (ca.z >= 3.0) scan = (1.0 - cb.x) + cb.x * (0.5 - 0.5 * cos(6.2831853 * fr));
@@ -88,7 +90,7 @@ float4 pscrt(VSOut i) : SV_Target {
         float wt = cb.y > 0.0 ? exp(-d * d / (2.0 * cb.y * cb.y)) : (t == 0 ? 1.0 : 0.0);
         if (cb.z > 0.0 && t < 0) wt += 0.25 * exp(d / cb.z);
         if (wt > 0.0) {
-            float3 c = srcLoad(gx + d, row);
+            float3 c = srcLoad(gx + d, gy);
             acc += wt * c * c;
             sw += wt;
         }
@@ -97,7 +99,7 @@ float4 pscrt(VSOut i) : SV_Target {
     if (cc.x > 0.0) {
         float3 bl = float3(0.0, 0.0, 0.0);
         for (int e = -2; e <= 2; e++) {
-            float3 c = srcLoad(gx + (float)e * 0.5, row);
+            float3 c = srcLoad(gx + (float)e * 0.5, gy);
             float3 l = c * c;
             float y = dot(l, float3(0.299, 0.587, 0.114));
             bl += (float)(3 - abs(e)) * (l - y);
@@ -121,6 +123,23 @@ float4 pscrt(VSOut i) : SV_Target {
     float3 o = saturate(sqrt(max(col, 0.0)) * cc.z + cc.w);
     return float4(o * m, 1.0);
 }
+
+// The sprites of the smooth motion: a quad of the given pixels of the window-sized picture, the sprite's own image over it (alpha 0 = see-through).
+cbuffer Spr : register(b2) { float4 sr; float4 su; };   // sr = left, top, right, bottom in pixels of the picture; su = the image's share of its texture (u, v), the picture's size
+Texture2D sprTex : register(t4);
+VSOut vsq(uint id : SV_VertexID) {
+    float2 c = float2((float)(id & 1), (float)((id >> 1) & 1));
+    float2 px = lerp(sr.xy, sr.zw, c);
+    VSOut o;
+    o.pos = float4(px.x / su.z * 2.0 - 1.0, 1.0 - px.y / su.w * 2.0, 0.0, 1.0);
+    o.uv = c * su.xy;
+    return o;
+}
+float4 pssprite(VSOut i) : SV_Target {
+    float4 c = sprTex.Sample(smp, i.uv);
+    if (c.a < 0.5) discard;
+    return float4(c.rgb, 1.0);
+}
 )";
 
 }  // namespace
@@ -134,7 +153,15 @@ struct D3dRenderer::Impl {
     ComPtr<ID3D11Texture2D> picture, mono;
     ComPtr<ID3D11ShaderResourceView> pictureView, monoView;
     ComPtr<ID3D11VertexShader> vs;
-    ComPtr<ID3D11PixelShader> ps, psBackground, psArt, psCrt;
+    ComPtr<ID3D11PixelShader> ps, psBackground, psArt, psCrt, psSprite;
+    ComPtr<ID3D11VertexShader> vsQuad;
+    ComPtr<ID3D11Buffer> spriteConstants;
+    std::array<ComPtr<ID3D11Texture2D>, 5> spriteTex;
+    std::array<ComPtr<ID3D11ShaderResourceView>, 5> spriteView;
+    ComPtr<ID3D11Texture2D> rt;   // the picture at the size of the window (the smooth motion): the background and the sprites, before the filter
+    ComPtr<ID3D11RenderTargetView> rtRtv;
+    ComPtr<ID3D11ShaderResourceView> rtSrv;
+    int rtW = 0, rtH = 0;
     ComPtr<ID3D11Buffer> crtConstants;
     bool forceCrt = false;
     ComPtr<ID3D11Texture2D> art;
@@ -149,6 +176,7 @@ struct D3dRenderer::Impl {
     ComPtr<ID3D11RasterizerState> raster;
     ComPtr<ID3D11Texture2D> staging;
     bool warp = false;
+    bool tearing = false;   // the swap chain was made with DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING
     int w = 0, h = 0;
 
     bool makeTarget() {
@@ -202,6 +230,12 @@ bool D3dRenderer::init(HWND hwnd) {
     sd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
     sd.Scaling = DXGI_SCALING_NONE;
     sd.AlphaMode = DXGI_ALPHA_MODE_IGNORE;
+    {   // tearing (the present without waiting for the display, for the Unlocked FPS setting): Windows 10 and a driver that supports it
+        ComPtr<IDXGIFactory5> f5;
+        BOOL allow = FALSE;
+        if (SUCCEEDED(factory.As(&f5)) && SUCCEEDED(f5->CheckFeatureSupport(DXGI_FEATURE_PRESENT_ALLOW_TEARING, &allow, sizeof(allow))) && allow) d.tearing = true;
+    }
+    sd.Flags = d.tearing ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING : 0;
     if (FAILED(factory->CreateSwapChainForHwnd(d.device.Get(), hwnd, &sd, nullptr, nullptr, &d.swap))) return false;
     factory->MakeWindowAssociation(hwnd, DXGI_MWA_NO_ALT_ENTER | DXGI_MWA_NO_WINDOW_CHANGES);   // Alt+Enter is the window's own hotkey
     if (!d.makeTarget()) return false;
@@ -221,9 +255,36 @@ bool D3dRenderer::init(HWND hwnd) {
     ComPtr<ID3DBlob> crtBlob;
     if (FAILED(D3DCompile(kShader, std::strlen(kShader), nullptr, nullptr, nullptr, "pscrt", "ps_4_0", 0, 0, &crtBlob, &err))) return false;
     if (FAILED(d.device->CreatePixelShader(crtBlob->GetBufferPointer(), crtBlob->GetBufferSize(), nullptr, &d.psCrt))) return false;
+    {   // the sprites of the smooth motion
+        ComPtr<ID3DBlob> vq, pq;
+        if (FAILED(D3DCompile(kShader, std::strlen(kShader), nullptr, nullptr, nullptr, "vsq", "vs_4_0", 0, 0, &vq, &err))) return false;
+        if (FAILED(D3DCompile(kShader, std::strlen(kShader), nullptr, nullptr, nullptr, "pssprite", "ps_4_0", 0, 0, &pq, &err))) return false;
+        if (FAILED(d.device->CreateVertexShader(vq->GetBufferPointer(), vq->GetBufferSize(), nullptr, &d.vsQuad))) return false;
+        if (FAILED(d.device->CreatePixelShader(pq->GetBufferPointer(), pq->GetBufferSize(), nullptr, &d.psSprite))) return false;
+        D3D11_BUFFER_DESC sb{};
+        sb.ByteWidth = 32;
+        sb.Usage = D3D11_USAGE_DYNAMIC;
+        sb.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+        sb.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+        if (FAILED(d.device->CreateBuffer(&sb, nullptr, &d.spriteConstants))) return false;
+        D3D11_TEXTURE2D_DESC st{};
+        st.Width = 96;
+        st.Height = 32;
+        st.MipLevels = 1;
+        st.ArraySize = 1;
+        st.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+        st.SampleDesc.Count = 1;
+        st.Usage = D3D11_USAGE_DYNAMIC;
+        st.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+        st.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+        for (std::size_t i = 0; i < d.spriteTex.size(); ++i) {
+            if (FAILED(d.device->CreateTexture2D(&st, nullptr, &d.spriteTex[i]))) return false;
+            if (FAILED(d.device->CreateShaderResourceView(d.spriteTex[i].Get(), nullptr, &d.spriteView[i]))) return false;
+        }
+    }
     {
         D3D11_BUFFER_DESC kb{};
-        kb.ByteWidth = 48;
+        kb.ByteWidth = 64;
         kb.Usage = D3D11_USAGE_DYNAMIC;
         kb.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
         kb.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
@@ -285,12 +346,12 @@ void D3dRenderer::resize(int clientW, int clientH) {
     d.context->OMSetRenderTargets(0, nullptr, nullptr);
     d.rtv.Reset();
     d.staging.Reset();
-    if (SUCCEEDED(d.swap->ResizeBuffers(0, static_cast<UINT>(clientW), static_cast<UINT>(clientH), DXGI_FORMAT_UNKNOWN, 0))) d.makeTarget();
+    if (SUCCEEDED(d.swap->ResizeBuffers(0, static_cast<UINT>(clientW), static_cast<UINT>(clientH), DXGI_FORMAT_UNKNOWN, d.tearing ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING : 0))) d.makeTarget();
 }
 
 void D3dRenderer::forceCrtShader(bool on) { d_->forceCrt = on; }
 
-bool D3dRenderer::draw(const std::uint32_t* argb, const Viewport& vp, const BackgroundFrame& bg, const std::uint32_t* mono560, const CrtFilter* crt) {
+bool D3dRenderer::draw(const std::uint32_t* argb, const Viewport& vp, const BackgroundFrame& bg, const std::uint32_t* mono560, const CrtFilter* crt, const std::vector<SpriteDraw>* sprites) {
     Impl& d = *d_;
     if (!d.swap || !d.rtv) return false;
     D3D11_MAPPED_SUBRESOURCE m{};
@@ -387,6 +448,78 @@ bool D3dRenderer::draw(const std::uint32_t* argb, const Viewport& vp, const Back
             d.context->Draw(3, 0);
         }
     }
+    ID3D11ShaderResourceView* mainSrv = mono560 ? d.monoView.Get() : d.pictureView.Get();
+    float texWf = mono560 ? 560.0f : 280.0f, texHf = 192.0f;
+    if (sprites != nullptr && !vp.empty()) {   // the smooth motion: the background and the sprites at their in-between places, at the size of the window, then the filter reads that
+        const int k = mono560 ? (std::max)(2, (std::min)(8, vp.scale)) : (std::max)(1, (std::min)(8, vp.scale));
+        const int rw = 280 * k, rh = 192 * k;
+        if (!d.rt || d.rtW != rw || d.rtH != rh) {
+            d.rt.Reset();
+            d.rtRtv.Reset();
+            d.rtSrv.Reset();
+            D3D11_TEXTURE2D_DESC rd{};
+            rd.Width = static_cast<UINT>(rw);
+            rd.Height = static_cast<UINT>(rh);
+            rd.MipLevels = 1;
+            rd.ArraySize = 1;
+            rd.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+            rd.SampleDesc.Count = 1;
+            rd.Usage = D3D11_USAGE_DEFAULT;
+            rd.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+            if (FAILED(d.device->CreateTexture2D(&rd, nullptr, &d.rt)) || FAILED(d.device->CreateRenderTargetView(d.rt.Get(), nullptr, &d.rtRtv)) || FAILED(d.device->CreateShaderResourceView(d.rt.Get(), nullptr, &d.rtSrv))) {
+                d.rt.Reset();
+                return false;
+            }
+            d.rtW = rw;
+            d.rtH = rh;
+        }
+        ID3D11ShaderResourceView* none[1] = {nullptr};
+        d.context->PSSetShaderResources(0, 1, none);
+        ID3D11RenderTargetView* rtv2 = d.rtRtv.Get();
+        d.context->OMSetRenderTargets(1, &rtv2, nullptr);
+        D3D11_VIEWPORT rv{0.0f, 0.0f, static_cast<float>(rw), static_cast<float>(rh), 0.0f, 1.0f};
+        d.context->RSSetViewports(1, &rv);
+        d.context->RSSetState(d.raster.Get());
+        d.context->IASetInputLayout(nullptr);
+        d.context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        d.context->VSSetShader(d.vs.Get(), nullptr, 0);
+        d.context->PSSetShader(d.ps.Get(), nullptr, 0);
+        ID3D11ShaderResourceView* bgSrv = mainSrv;
+        d.context->PSSetShaderResources(0, 1, &bgSrv);
+        ID3D11SamplerState* smp0 = d.sampler.Get();
+        d.context->PSSetSamplers(0, 1, &smp0);
+        d.context->Draw(3, 0);   // the background, nearest neighbour at the size of the picture
+        d.context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
+        d.context->VSSetShader(d.vsQuad.Get(), nullptr, 0);
+        d.context->PSSetShader(d.psSprite.Get(), nullptr, 0);
+        ID3D11Buffer* sbuf = d.spriteConstants.Get();
+        d.context->VSSetConstantBuffers(2, 1, &sbuf);
+        for (std::size_t i = 0; i < sprites->size() && i < d.spriteTex.size(); ++i) {
+            const SpriteDraw& s = (*sprites)[i];
+            if (!s.argb || s.w <= 0 || s.h <= 0 || s.w > 96 || s.h > 32) continue;
+            D3D11_MAPPED_SUBRESOURCE sm{};
+            if (FAILED(d.context->Map(d.spriteTex[i].Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &sm))) continue;
+            for (int y = 0; y < s.h; ++y) std::memcpy(static_cast<char*>(sm.pData) + static_cast<std::size_t>(y) * sm.RowPitch, s.argb + static_cast<std::size_t>(y) * static_cast<std::size_t>(s.w), static_cast<std::size_t>(s.w) * 4);
+            d.context->Unmap(d.spriteTex[i].Get(), 0);
+            D3D11_MAPPED_SUBRESOURCE cm{};
+            if (FAILED(d.context->Map(d.spriteConstants.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &cm))) continue;
+            const float kf = static_cast<float>(k);
+            const float left = s.x * kf, top = s.y * kf;
+            const float right = left + static_cast<float>(s.w) / static_cast<float>(s.texelsPerPixel) * kf, bottom = top + static_cast<float>(s.h) * kf;
+            const float c[8] = {left, top, right, bottom, static_cast<float>(s.w) / 96.0f, static_cast<float>(s.h) / 32.0f, static_cast<float>(rw), static_cast<float>(rh)};
+            std::memcpy(cm.pData, c, sizeof(c));
+            d.context->Unmap(d.spriteConstants.Get(), 0);
+            ID3D11ShaderResourceView* sv = d.spriteView[i].Get();
+            d.context->PSSetShaderResources(4, 1, &sv);
+            d.context->Draw(4, 0);
+        }
+        ID3D11RenderTargetView* back = d.rtv.Get();
+        d.context->OMSetRenderTargets(1, &back, nullptr);
+        d.context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        mainSrv = d.rtSrv.Get();
+        texWf = static_cast<float>(rw);
+        texHf = static_cast<float>(rh);
+    }
     if (!vp.empty()) {
         D3D11_VIEWPORT v{static_cast<float>(vp.x), static_cast<float>(vp.y), static_cast<float>(vp.w), static_cast<float>(vp.h), 0.0f, 1.0f};
         d.context->RSSetViewports(1, &v);
@@ -400,7 +533,7 @@ bool D3dRenderer::draw(const std::uint32_t* argb, const Viewport& vp, const Back
             const CrtParams q = crtParams(*crt);
             D3D11_MAPPED_SUBRESOURCE km{};
             if (SUCCEEDED(d.context->Map(d.crtConstants.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &km))) {
-                const float c[12] = {static_cast<float>(vp.w), static_cast<float>(vp.h), static_cast<float>(vp.scale), mono560 ? 560.0f : 280.0f, q.scan, q.sigma, q.tau, q.glow, q.blend, q.curv, q.gain, q.offset};
+                const float c[16] = {static_cast<float>(vp.w), static_cast<float>(vp.h), static_cast<float>(vp.scale), texWf, q.scan, q.sigma, q.tau, q.glow, q.blend, q.curv, q.gain, q.offset, texHf, 0.0f, 0.0f, 0.0f};
                 std::memcpy(km.pData, c, sizeof(c));
                 d.context->Unmap(d.crtConstants.Get(), 0);
             }
@@ -409,8 +542,7 @@ bool D3dRenderer::draw(const std::uint32_t* argb, const Viewport& vp, const Back
             ID3D11SamplerState* lsmp = d.linear.Get();
             d.context->PSSetSamplers(1, 1, &lsmp);
         }
-        ID3D11ShaderResourceView* srv = mono560 ? d.monoView.Get() : d.pictureView.Get();
-        d.context->PSSetShaderResources(0, 1, &srv);
+        d.context->PSSetShaderResources(0, 1, &mainSrv);
         ID3D11SamplerState* smp = d.sampler.Get();
         d.context->PSSetSamplers(0, 1, &smp);
         d.context->Draw(3, 0);
@@ -418,10 +550,10 @@ bool D3dRenderer::draw(const std::uint32_t* argb, const Viewport& vp, const Back
     return true;
 }
 
-bool D3dRenderer::present() {
+bool D3dRenderer::present(bool allowTearing) {
     Impl& d = *d_;
     if (!d.swap) return false;
-    const HRESULT hr = d.swap->Present(0, 0);
+    const HRESULT hr = d.swap->Present(0, allowTearing && d.tearing ? DXGI_PRESENT_ALLOW_TEARING : 0);
     return SUCCEEDED(hr);
 }
 

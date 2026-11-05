@@ -75,6 +75,12 @@ public:
     // The memory the attract game starts from after this game, with the high score of the game's display (TASK-033-6c)
     AttractMemory attractMemory(const AttractMemory& before) const { AttractMemory m = core_.attractMemory(before); m.high = display_.high; return m; }
     const hires::Page& page() const noexcept { return page_; }
+    // For the smooth motion of the window (src/app/motion.h): the page without the images of Pac-Man and the ghosts (the same page, minus what the sprite draws of the ordinary ticks put
+    // on it), where the actors moved to in the last tick, and whether the last tick was an ordinary one (false: the page was rebuilt or drawn by a sequence; the window shows it as it is).
+    struct ActorMove { int actor, x, y; };
+    const hires::Page& backgroundPage() const noexcept { return bgPage_; }
+    const std::vector<ActorMove>& lastMoves() const noexcept { return moves_; }
+    bool interpolatable() const noexcept { return interpOk_; }
     DisplayState& display() noexcept { return display_; }
     void setStaticGhosts(bool on) noexcept { staticGhosts_ = on; }    // live program without ghost logic: draw the four ghosts once at their start places
     void setPreviousFrighten(std::uint8_t e1, std::uint8_t e2, std::uint8_t e4) noexcept { prev_.e1 = e1; prev_.e2 = e2; prev_.e4 = e4; }
@@ -94,6 +100,10 @@ private:
     const datapack::Pack* pack_ = nullptr;
     GameCore core_;
     hires::Page page_;
+    hires::Page bgPage_;                // page_ without the actors' images (see backgroundPage())
+    std::vector<ActorMove> moves_;
+    bool interpOk_ = false;
+    void resyncBackground() { bgPage_ = page_; interpOk_ = false; moves_.clear(); }
     DisplayState display_;
     TickExtras prev_;
     bool staticGhosts_ = false;

@@ -28,6 +28,7 @@ bool GameDriver::newDemo(const hires::Page& screen, const AttractMemory* memory)
     prev_ = TickExtras{};
     syncExtras();
     page_ = screen;
+    resyncBackground();
     return true;
 }
 
@@ -50,15 +51,18 @@ void GameDriver::rebuildScreen() {
     drawPacman(page_, s, *pack_, false);
     display_.lastFlag1E = 0;
     if (staticGhosts_) drawStaticGhosts();
+    resyncBackground();
 }
 
 void GameDriver::showReady() {
     executeCall(page_, DrawCall{2, {0x5890, 17, 104, 5, 7}}, *pack_);
     drawPacman(page_, core_.state(), *pack_, false);
+    resyncBackground();
 }
 
 void GameDriver::applySequenceStep(const SequenceStep& step) {
     for (const auto& c : step.calls) executeCall(page_, c, *pack_);
+    resyncBackground();
     if (step.rebuild) rebuildScreen();
     if (step.ready) showReady();
 }
@@ -166,6 +170,8 @@ TickEvents GameDriver::tickImpl(FrightenAware* fed) {
     tickCycles_ = kTypicalTickCycles;
     lastCalls_.clear();
     sequence_.clear();
+    moves_.clear();
+    interpOk_ = false;
     if (ev.paused) return ev;
     const GameState& after = core_.state();
     TickExtras now;
@@ -191,6 +197,7 @@ TickEvents GameDriver::tickImpl(FrightenAware* fed) {
     if (ev.gameOver) {   // the last life: the words GAME OVER ($811D, $8139) on the playfield, then a new game after a pause (no death animation yet)
         executeCall(page_, DrawCall{2, {0x811D, 15, 105, 4, 7}}, *pack_);
         executeCall(page_, DrawCall{2, {0x8139, 21, 105, 4, 7}}, *pack_);
+        resyncBackground();
         extraCycles_ = kDeathSequenceCycles;
         newGamePending_ = true;
         return ev;
@@ -200,6 +207,7 @@ TickEvents GameDriver::tickImpl(FrightenAware* fed) {
         lastCalls_ = calls;
         tickCycles_ = tickCostCycles(calls, *pack_, before.demo != 0, ev.ate, ev.energizer);
         for (const auto& c : calls) executeCall(page_, c, *pack_);
+        resyncBackground();
         prev_ = now;
         return ev;
     }
@@ -225,7 +233,13 @@ TickEvents GameDriver::tickImpl(FrightenAware* fed) {
     const auto calls = tickCalls(before, after, *pack_, acting && ev.acted, display_, prev_, now);
     lastCalls_ = calls;
     tickCycles_ = tickCostCycles(calls, *pack_, before.demo != 0, ev.ate, ev.energizer);
-    for (const auto& c : calls) executeCall(page_, c, *pack_);
+    for (const auto& c : calls) {
+        executeCall(page_, c, *pack_);
+        const bool actorImage = c.type == 1 && c.actor >= 0;
+        if (!actorImage) executeCall(bgPage_, c, *pack_);   // the background gets everything but the images of the actors (the erases of their old places too)
+        else moves_.push_back(ActorMove{c.actor, c.p[1], c.p[2]});
+    }
+    interpOk_ = true;
     prev_ = now;
     return ev;
 }

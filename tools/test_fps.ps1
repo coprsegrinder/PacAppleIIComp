@@ -18,15 +18,16 @@ foreach ($mode in @("native", "30", "60", "120", "144", "unlocked")) {
     [void]$p.WaitForExit(($seconds + 15) * 1000)
     if (-not $p.HasExited) { Stop-Process -Id $p.Id -Force }
     $text = if (Test-Path $log) { Get-Content $log -Raw } else { "" }
-    $f = [regex]::Match($text, "frames: fps=(\S+) shown=(\d+) mean_ms=([\d.]+) max_ms=([\d.]+) deviation_ms=([\d.]+)")
+    $f = [regex]::Match($text, "frames: fps=(\S+) shown=(\d+) distinct=(\d+) smooth_frames=(\d+) mean_ms=([\d.]+) max_ms=([\d.]+) deviation_ms=([\d.]+)")
     $g = [regex]::Match($text, "game: ticks=(\d+) seconds=([\d.]+)")
     if (-not $f.Success -or -not $g.Success) { "$mode : no frame / game line in the log: False"; continue }
-    $shown = [double]$f.Groups[2].Value; $mean = [double]$f.Groups[3].Value; $dev = [double]$f.Groups[5].Value
+    $shown = [double]$f.Groups[2].Value; $mean = [double]$f.Groups[5].Value; $dev = [double]$f.Groups[7].Value; $distinct = [double]$f.Groups[3].Value; $smooth = [double]$f.Groups[4].Value
     $ticks = [double]$g.Groups[1].Value; $secs = [double]$g.Groups[2].Value
     $rate = 1000.0 / $mean
     $tps = if ($secs -gt 0) { $ticks / $secs } else { 0 }
-    $results[$mode] = @{ rate = $rate; tps = $tps }
-    "{0,-9} pictures: {1} shown, mean interval {2:N2} ms = {3:N1} a second, deviation {4:N2} ms; game: {5} ticks in {6:N2} s = {7:N1} ticks a second" -f $mode, $shown, $mean, $rate, $dev, $ticks, $secs, $tps
+    $dps = if ($secs -gt 0) { $distinct / $secs } else { 0 }   # (per second of play: the intro and READY, where nothing moves, are before the first tick)
+    $results[$mode] = @{ rate = $rate; tps = $tps; dps = $dps; smooth = $smooth; shown = $shown }
+    "{0,-9} pictures: {1} shown, mean interval {2:N2} ms = {3:N1} a second, deviation {4:N2} ms; game: {5} ticks in {6:N2} s = {7:N1} ticks a second; DIFFERENT pictures a second: {8:N1}; frames with the actors gliding: {9:N0} of {1}" -f $mode, $shown, $mean, $rate, $dev, $ticks, $secs, $tps, $dps, $smooth
 }
 foreach ($mode in $expected.Keys) {
     if ($results.ContainsKey($mode)) {
@@ -41,3 +42,11 @@ if ($tpsAll.Count -gt 1) {
     $min = ($tpsAll | Measure-Object -Minimum).Minimum; $max = ($tpsAll | Measure-Object -Maximum).Maximum
     "game speed the same in every setting (ticks a second {0:N1} .. {1:N1}, within 5 %): {2}" -f $min, $max, (($max - $min) / $max -lt 0.05)
 }
+
+# the smoothness: the pictures a second that DIFFER from the one before (what the eye can see change). Native shows the original's pictures (about 50-90 different ones a second whatever is asked);
+# the modern modes glide the actors between the game's steps, so the number follows the setting.
+foreach ($pair in @(@("30", 24, 31), @("60", 48, 61), @("120", 96, 121), @("144", 115, 145))) {
+    if ($results.ContainsKey($pair[0])) { "$($pair[0]) FPS shows {0:N0} different pictures a second (between {1} and {2}): {3}" -f $results[$pair[0]].dps, $pair[1], $pair[2], (($results[$pair[0]].dps -ge $pair[1]) -and ($results[$pair[0]].dps -le $pair[2])) }
+}
+if ($results.ContainsKey("native") -and $results.ContainsKey("144")) { "144 FPS shows more than 1.8 times the different pictures of Native ({0:N0} against {1:N0}): {2}" -f $results["144"].dps, $results["native"].dps, ($results["144"].dps -gt 1.8 * $results["native"].dps) }
+if ($results.ContainsKey("30") -and $results.ContainsKey("144")) { "and 144 FPS far more than 30 FPS ({0:N0} against {1:N0}): {2}" -f $results["144"].dps, $results["30"].dps, ($results["144"].dps -gt 3.5 * $results["30"].dps) }

@@ -471,3 +471,181 @@ TEST(gamedriver_death_and_game_over_sequences_have_the_oracles_shape) {
         }
     }
 }
+
+// The modern pacing (src/app/pacing.h) locks Pac-Man's step in real time: the same pellets a second and steps a second before and after the ghosts turn blue. Native (the original's timing) is
+// measured next to it for the record: the original's ticks get shorter when the ghosts are blue, which nearly (not exactly) offsets the longer step countdown.
+#include "../src/app/pacing.h"
+
+TEST(pac_mans_pellets_and_steps_a_second_are_the_same_before_and_after_the_ghosts_turn_blue_in_the_modern_pacing) {
+    if (testfw::config().image.empty()) {
+        std::printf("    SKIPPED (needs --image)\n");
+        return;
+    }
+    const auto built = datapack::buildPack(readAll(testfw::config().image), verify::referenceExpected(), datapack::dataManifest());
+    CHECK_MSG(built.ok, built.reason);
+    if (!built.ok) return;
+    const auto loaded = datapack::loadPack(built.bytes, verify::referenceExpected());
+    CHECK_MSG(loaded.ok, loaded.reason);
+    if (!loaded.ok) return;
+    StepTables steps;
+    CHECK(loadStepTables(loaded.pack, steps));
+    struct Rates { double pellets = 0, acted = 0; };
+    for (int run = 0; run < 4; ++run) {   // 0, 1 = the original's timing, 2, 3 = the modern pacing; the even ones with no dots in the maze (no eating), the odd ones with dots everywhere
+        const int mode = run / 2;
+        const bool dots = run % 2 == 1;
+        GameDriver drv;
+        CHECK(drv.init(loaded.pack));
+        CHECK(drv.newGame());
+        for (int i = 0; i < 40; ++i) drv.tick();
+        app::SmoothPacer pacer;
+        Rates phase[2];
+        for (int blue = 0; blue < 2; ++blue) {
+            GameState& s = drv.core().state();
+            if (blue) {   // the ghosts turn blue for the rest of the test (what an energizer does to the flags and the timer)
+                for (auto& g : s.ghosts) g.b[8] = 1;
+                drv.core().ghostShared().e4 = 1;
+                drv.core().ghostShared().e1 = 0xFF;
+                drv.core().ghostShared().e2 = 0x7F;
+            }
+            double cycles = 0;
+            long pellets = 0, acted = 0;
+            int stuck = 0;
+            unsigned ticksSinceAct = 0;
+            std::uint8_t lx = s.pacX(), ly = s.pacY();
+            for (int t = 0; t < 3000; ++t) {
+                GameState& st = drv.core().state();
+                for (auto& c : st.map) c = dots ? (c == 0 ? 1 : c) : 0;   // dots everywhere Pac-Man goes, or none at all
+                st.zp(0x56) = 200;
+                if (blue) for (auto& g : st.ghosts) if (g.b[9] == 0) g.b[8] = 1;
+                const TickEvents ev = drv.tick();
+                if (ev.caught || ev.levelComplete || ev.ghostEaten[0] || ev.ghostEaten[1] || ev.ghostEaten[2] || ev.ghostEaten[3]) { drv.newGame(); break; }
+                const std::int64_t cost = app::tickCost(mode == 1, pacer, drv.tickCycles(), drv.extraCycles(), 0, StepTimer::reloadValue(drv.core().state(), steps), StepTimer::calmReloadValue(drv.core().state(), steps));
+                cycles += static_cast<double>(cost);
+                pellets += ev.ate && !ev.energizer;
+                ++ticksSinceAct;
+                if (ev.acted) {
+                    pacer.act(ticksSinceAct, StepTimer::reloadValue(drv.core().state(), steps));
+                    ticksSinceAct = 0;
+                }
+                acted += ev.acted;
+                if (ev.acted) {   // keep him walking: a new direction when he stands still
+                    GameState& after = drv.core().state();
+                    stuck = (after.pacX() == lx && after.pacY() == ly) ? stuck + 1 : 0;
+                    lx = after.pacX();
+                    ly = after.pacY();
+                    if (stuck >= 2) {
+                        after.requestedDirection() = static_cast<std::uint8_t>((after.requestedDirection() + 1) % 4);
+                        stuck = 0;
+                    }
+                }
+            }
+            const double seconds = cycles / 1022727.0;
+            phase[blue] = Rates{static_cast<double>(pellets) / seconds, static_cast<double>(acted) / seconds};
+        }
+        std::printf("    %-22s %-12s calm: %.1f pellets and %.1f steps a second; ghosts blue: %.1f pellets and %.1f steps a second (%.0f %% / %.0f %%)\n", mode == 0 ? "the original's timing" : "the modern pacing", dots ? "eating:" : "not eating:", phase[0].pellets, phase[0].acted, phase[1].pellets, phase[1].acted,
+                    phase[0].pellets > 0 ? 100.0 * phase[1].pellets / phase[0].pellets : 0.0, 100.0 * phase[1].acted / phase[0].acted);
+        if (mode == 1 && !dots) CHECK(std::abs(phase[1].acted / phase[0].acted - 1.0) < 0.02);   // no eating: Pac-Man's step takes the same real time (within 2 %)
+        if (mode == 1 && dots) {   // eating (the share of steps that eat is not quite the same in the two phases: the scenario is a random walk): within 7 %
+            CHECK(std::abs(phase[1].acted / phase[0].acted - 1.0) < 0.07);
+            CHECK(std::abs(phase[1].pellets / phase[0].pellets - 1.0) < 0.10);
+        }
+    }
+}
+
+// The smooth motion takes the picture apart: page = background + the images of the actors. Over thousands of real ticks every pixel in which the page and the background differ is
+// within the rectangle around where an actor stands (so the window can lift the actors off and put them back at in-between places).
+#include "../src/video/colour.h"
+
+TEST(the_background_page_differs_from_the_page_only_where_the_actors_are_over_thousands_of_ticks) {
+    if (testfw::config().image.empty()) {
+        std::printf("    SKIPPED (needs --image)\n");
+        return;
+    }
+    const auto built = datapack::buildPack(readAll(testfw::config().image), verify::referenceExpected(), datapack::dataManifest());
+    CHECK_MSG(built.ok, built.reason);
+    if (!built.ok) return;
+    const auto loaded = datapack::loadPack(built.bytes, verify::referenceExpected());
+    CHECK_MSG(loaded.ok, loaded.reason);
+    if (!loaded.ok) return;
+    GameDriver drv;
+    CHECK(drv.init(loaded.pack));
+    CHECK(drv.newGame());
+    long ticks = 0, withMoves = 0, rebuilt = 0, outside = 0, checked = 0;
+    std::vector<std::uint32_t> a(280 * 192), b(280 * 192);
+    for (int t = 0; t < 4000; ++t) {
+        GameState& s = drv.core().state();
+        if (t % 40 == 0) s.requestedDirection() = static_cast<std::uint8_t>((t / 40) % 4);
+        const TickEvents ev = drv.tick();
+        if (ev.caught || ev.levelComplete) {
+            drv.newGame();
+            continue;
+        }
+        ++ticks;
+        if (!drv.interpolatable()) {
+            ++rebuilt;
+            continue;
+        }
+        withMoves += !drv.lastMoves().empty();
+        if (t % 7 != 0) continue;   // (a check every seventh tick: two conversions of a page are not cheap)
+        video::renderArgb(drv.page(), a);
+        video::renderArgb(drv.backgroundPage(), b);
+        const GameState& st = drv.core().state();
+        struct R { int x, y; };
+        std::vector<R> actors{{st.pacX(), st.pacY()}};
+        for (const auto& g : st.ghosts) actors.push_back({g.x(), g.y()});
+        for (int y = 0; y < 192; ++y)
+            for (int x = 0; x < 280; ++x) {
+                if (a[static_cast<std::size_t>(y) * 280 + static_cast<std::size_t>(x)] == b[static_cast<std::size_t>(y) * 280 + static_cast<std::size_t>(x)]) continue;
+                bool near = false;
+                for (const R& r : actors) near = near || (x >= r.x - 14 && x < r.x + 24 && y >= r.y - 8 && y < r.y + 14);
+                if (!near) {
+                    if (outside < 6) std::printf("      offender at (%d, %d) in tick %d: page %08X background %08X; actors: pac (%d,%d) ghosts (%d,%d) (%d,%d) (%d,%d) (%d,%d)\n", x, y, t, a[static_cast<std::size_t>(y) * 280 + static_cast<std::size_t>(x)], b[static_cast<std::size_t>(y) * 280 + static_cast<std::size_t>(x)], actors[0].x, actors[0].y, actors[1].x, actors[1].y, actors[2].x, actors[2].y, actors[3].x, actors[3].y, actors[4].x, actors[4].y);
+                    ++outside;
+                }
+            }
+        ++checked;
+    }
+    std::printf("    %ld ticks (%ld moved an actor, %ld rebuilt the page), %ld pages checked: %ld pixels of the page differ from the background away from the actors\n", ticks, withMoves, rebuilt, checked, outside);
+    CHECK(withMoves > 300 && checked > 200 && outside == 0);
+}
+
+// The four energizers are part of the background (they blink with the page's own calls): in the page and in the background page alike, as the live program starts a game
+// (newGame, the READY screen, the rebuilt screen, then the ticks).
+TEST(the_energizers_are_on_the_background_page_as_on_the_page_when_a_game_starts_like_the_live_program) {
+    if (testfw::config().image.empty()) {
+        std::printf("    SKIPPED (needs --image)\n");
+        return;
+    }
+    const auto built = datapack::buildPack(readAll(testfw::config().image), verify::referenceExpected(), datapack::dataManifest());
+    CHECK_MSG(built.ok, built.reason);
+    if (!built.ok) return;
+    const auto loaded = datapack::loadPack(built.bytes, verify::referenceExpected());
+    CHECK_MSG(loaded.ok, loaded.reason);
+    if (!loaded.ok) return;
+    GameDriver drv;
+    CHECK(drv.init(loaded.pack));
+    CHECK(drv.newGame());
+    drv.setPlayDeath(true);
+    drv.showReady();
+    drv.rebuildScreen();
+    std::vector<std::uint32_t> a(280 * 192), b(280 * 192);
+    int pageLit = 0, bgLit = 0, samples = 0;
+    for (int t = 0; t < 600; ++t) {
+        drv.tick();
+        if (t % 5 != 0) continue;
+        video::renderArgb(drv.page(), a);
+        video::renderArgb(drv.backgroundPage(), b);
+        // the energizer at the top left: the pixels around (65, 23)
+        bool pl = false, bl = false;
+        for (int y = 20; y < 28; ++y)
+            for (int x = 62; x < 72; ++x) {
+                pl = pl || (a[static_cast<std::size_t>(y) * 280 + static_cast<std::size_t>(x)] & 0xFFFFFF) != 0;
+                bl = bl || (b[static_cast<std::size_t>(y) * 280 + static_cast<std::size_t>(x)] & 0xFFFFFF) != 0;
+            }
+        pageLit += pl;
+        bgLit += bl;
+        ++samples;
+    }
+    std::printf("    the top left energizer is lit in %d of %d pictures of the page and in %d of the background page\n", pageLit, samples, bgLit);
+    CHECK(pageLit > 0 && pageLit == bgLit);
+}

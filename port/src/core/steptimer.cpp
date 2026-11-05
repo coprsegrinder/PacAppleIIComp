@@ -19,16 +19,23 @@ namespace {
 std::size_t levelClass(const GameState& s) { return std::min<std::size_t>(s.level(), 15); }  // $6D1E
 }
 
-bool StepTimer::tick(GameState& s, const StepTables& t) {
-    std::uint8_t& counter = s.pacStepCounter();
-    counter = static_cast<std::uint8_t>(counter - 1);  // DEC $59
-    if (counter != 0) return false;
-    // reload ($7874-$789B): the mode tick ($808C) and the cost of ghost states
+unsigned StepTimer::calmReloadValue(const GameState& s, const StepTables& t) noexcept { return t.base[levelClass(s)]; }
+
+unsigned StepTimer::reloadValue(const GameState& s, const StepTables& t) noexcept {
     unsigned value = t.base[levelClass(s)];
     if (s.ghosts[1].b[8] != 0) ++value;   // $A0: ghost 2 frightened
     if (s.ghosts[3].b[8] != 0) ++value;   // $C8: ghost 4 frightened
     if (s.ghosts[0].b[9] != 0) --value;   // $8D: ghost 1 eyes
     if (s.ghosts[2].b[9] != 0) --value;   // $B5: ghost 3 eyes
+    return value;
+}
+
+bool StepTimer::tick(GameState& s, const StepTables& t) {
+    std::uint8_t& counter = s.pacStepCounter();
+    counter = static_cast<std::uint8_t>(counter - 1);  // DEC $59
+    if (counter != 0) return false;
+    // reload ($7874-$789B): the mode tick ($808C) and the cost of ghost states
+    const unsigned value = reloadValue(s, t);
     counter = static_cast<std::uint8_t>(value);
     if (f3_ != 0) {                       // $789D-$78A3
         --f3_;

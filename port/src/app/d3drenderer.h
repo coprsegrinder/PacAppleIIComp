@@ -38,9 +38,18 @@ public:
         const std::uint8_t* edgeBgra = nullptr;   // kEdgeW x 4 x 4 bytes: the picture's own edge colours (glow.h), so that the picture's border dissolves into the bars
     };
     // `mono560x192` (optional): the picture as a monochrome monitor shows it, 560 dot positions per line (src/video/monochrome.h); drawn instead of the 280 x 192 picture, nearest neighbour.
-    bool draw(const std::uint32_t* argb280x192, const Viewport& vp, const BackgroundFrame& bg = BackgroundFrame{}, const std::uint32_t* mono560x192 = nullptr, const CrtFilter* crt = nullptr);   // draws the background, then the picture into vp; nothing is shown until present()
+    // The smooth motion (motion.h): the picture drawn is the BACKGROUND (without the actors) and these sprites are put over it at their in-between places, at the resolution of the window
+    // (the places are fractions of a game pixel), before the CRT filter. `argb` is w x h pixels of the sprite (alpha 0 = see-through); `x`, `y` = its top left in game pixels (fractions
+    // allowed); `texelsPerPixel` = 1 for the colour picture, 2 for the monochrome one (its dot positions are half pixels).
+    struct SpriteDraw {
+        const std::uint32_t* argb = nullptr;
+        int w = 0, h = 0;
+        float x = 0, y = 0;
+        int texelsPerPixel = 1;
+    };
+    bool draw(const std::uint32_t* argb280x192, const Viewport& vp, const BackgroundFrame& bg = BackgroundFrame{}, const std::uint32_t* mono560x192 = nullptr, const CrtFilter* crt = nullptr, const std::vector<SpriteDraw>* sprites = nullptr);   // draws the background, then the picture into vp; nothing is shown until present()
     void forceCrtShader(bool on);   // tests: run the CRT shader even when every option is neutral (it must then give the same picture)
-    bool present();                                                  // sync interval 0 for now (VSync is its own section)
+    bool present(bool allowTearing = false);                         // sync interval 0 for now (VSync is its own section); allowTearing: do not wait for the display at all (Unlocked), where the system allows
     bool readBack(std::vector<std::uint32_t>& argb, int& w, int& h); // the back buffer after draw() (tests)
     bool software() const noexcept;                                  // true when the WARP software device is in use
     int width() const noexcept;

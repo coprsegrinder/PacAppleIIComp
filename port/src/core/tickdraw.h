@@ -25,6 +25,7 @@ struct DrawCall {
                                           // 10 = the 1UP box clear; 7 = 12 x 3 fruit image (p0 = image address, p1 = column, p2 = row); 12 = box clear (p0 = column, p1 = row);
                                           // 8 = horizontal line (p0 = x0, p1 = x1, p2 = y, p3 = step, p4 = the value of $1E at that moment, i.e. the ghost's flag: $5CF0 ORs it into the touched bytes, so the palette bit is set only if bit 7 of it is): the ghost-house door
     std::array<int, 5> p{};
+    int actor = -1;                       // the sprite calls of a tick (the erase and the image of Pac-Man = 0, the ghosts 1..4) say whose they are; the smooth motion of the window needs it (not part of ==)
     bool operator==(const DrawCall& o) const { return type == o.type && p == o.p; }
 };
 
