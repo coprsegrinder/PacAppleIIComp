@@ -299,3 +299,37 @@ TEST(the_players_and_press_return_prompts_use_the_words_and_buttons_of_the_plugg
         CHECK(screenHas(flow, "PRESS <RETURN> TO PLAY") && !screenHas(flow, "CIRCLE") && flow.mode() == core::AttractFlow::Mode::PressReturn);
     }
 }
+
+
+TEST(vibration_crc32_and_the_output_reports_of_the_sony_pads) {
+    const std::uint8_t digits[9] = {'1', '2', '3', '4', '5', '6', '7', '8', '9'};
+    CHECK(app::crc32(digits, 9) == 0xCBF43926u);   // the standard check value of CRC-32
+    // DualShock 4, USB: report 5, motors flag, right (light) at 4, left (heavy) at 5
+    auto r = app::buildDualShock4Rumble(32, false, 200, 100);
+    CHECK(r.size() == 32 && r[0] == 0x05 && r[1] == 0x01 && r[4] == 100 && r[5] == 200);
+    // DualShock 4, Bluetooth: report 0x11, 78 bytes, motors at 6 / 7, CRC-32 of 0xA2 + the first 74 bytes at the end
+    r = app::buildDualShock4Rumble(78, true, 200, 100);
+    CHECK(r.size() == 78 && r[0] == 0x11 && r[1] == 0xC4 && r[3] == 0x01 && r[6] == 100 && r[7] == 200);
+    {
+        std::vector<std::uint8_t> seeded{0xA2};
+        seeded.insert(seeded.end(), r.begin(), r.begin() + 74);
+        const std::uint32_t c = app::crc32(seeded.data(), seeded.size());
+        CHECK(r[74] == (c & 0xFF) && r[75] == ((c >> 8) & 0xFF) && r[76] == ((c >> 16) & 0xFF) && r[77] == ((c >> 24) & 0xFF));
+    }
+    // DualSense, USB: report 2, flags 3, motors at 3 (right) / 4 (left), flag2 at 39
+    r = app::buildDualSenseRumble(64, false, 250, 50, 0);
+    CHECK(r.size() == 64 && r[0] == 0x02 && r[1] == 0x03 && r[3] == 50 && r[4] == 250 && r[39] == 0x04);
+    // DualSense, Bluetooth: report 0x31, sequence in the high nibble of byte 1, tag 0x10, motors at 5 / 6, flag2 at 41, CRC at the end
+    r = app::buildDualSenseRumble(78, true, 250, 50, 5);
+    CHECK(r.size() == 78 && r[0] == 0x31 && r[1] == 0x50 && r[2] == 0x10 && r[3] == 0x03 && r[5] == 50 && r[6] == 250 && r[41] == 0x04);
+    {
+        std::vector<std::uint8_t> seeded{0xA2};
+        seeded.insert(seeded.end(), r.begin(), r.begin() + 74);
+        const std::uint32_t c = app::crc32(seeded.data(), seeded.size());
+        CHECK(r[74] == (c & 0xFF) && r[77] == ((c >> 24) & 0xFF));
+    }
+    // the length Windows tells is kept (zero-filled); zero motors give zero bytes
+    CHECK(app::buildDualSenseRumble(64, false, 0, 0, 0).size() == 64 && app::buildDualShock4Rumble(32, false, 0, 0).size() == 32);
+    r = app::buildDualShock4Rumble(32, false, 0, 0);
+    CHECK(r[4] == 0 && r[5] == 0);
+}

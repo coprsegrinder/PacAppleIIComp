@@ -3,7 +3,7 @@
 Last updated 2026-11-05. The game is complete and playable; this note lists what is open, unverified or limited.
 
 ## What was not (or could not be) verified
-* **Controllers were not tried on hardware.** The Xbox (XInput), DualShock 4 and DualSense paths are tested with made-up reports built from the devices' documented layouts (`port/tests/test_gamepad.cpp`) and the menus with injected states; no controller was plugged in while they were written. A DualSense over Bluetooth and a DualShock 4 of the second revision are the least certain.
+* **Controllers (and their vibration) were not tried on hardware.** The Xbox (XInput), DualShock 4 and DualSense paths are tested with made-up reports built from the devices' documented layouts (`port/tests/test_gamepad.cpp`) and the menus with injected states; no controller was plugged in while they were written. A DualSense over Bluetooth and a DualShock 4 of the second revision are the least certain.
 * **Achievements:** the rules are tested with made-up facts and the real driver's fruit and pellet events. Not exercised end to end: an intermission watched to its end, 3 minutes without eating, and a whole game. The set's wording is read by the port (the readings are listed in `docs/MODERNIZATION.md`); the set's own logic was not available, so an edge case may differ from the original set.
 * **Level 23's fruit:** the original's fruit table has an image of its own for level 23 (a quirk of the data); the achievement for the key counts level 13 and up.
 * **The near-ghost delay** (the original's extra tick for Pac-Man when a ghost is close, from level 5 on) is rebuilt from the code but was never seen firing in the oracle's recordings (`TASK-029d1b`).

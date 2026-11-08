@@ -139,6 +139,23 @@ void GameWindow::setColourMode(ColourMode m) {
     saveSettings();
 }
 
+void GameWindow::setVibration(VibrationLevel l) {
+    vibrationAtomic_ = l;
+    settings_.vibration = l;
+    saveSettings();
+    vibrate(RumbleEvent::Test);   // the player feels the new level at once
+}
+
+void GameWindow::vibrate(RumbleEvent e) {
+    if (!pad_) return;
+    const VibrationLevel l = vibrationAtomic_.load();
+    if (l == VibrationLevel::Off) {
+        pad_->stopRumble();
+        return;
+    }
+    pad_->rumble(rumbleFor(e, l));
+}
+
 void GameWindow::setFps(FpsMode m) {
     fps_ = m;
     fpsAtomic_ = m;
@@ -456,6 +473,7 @@ const Settings& GameWindow::settings() {
     settings_.windowBorders = borders_;
     settings_.background = background_;
     settings_.colourMode = colour_;
+    settings_.vibration = vibrationAtomic_.load();
     settings_.crt = crt_;
     settings_.fps = fps_;
     settings_.desktopScale = desk_.scale;
@@ -557,6 +575,7 @@ void GameWindow::attachSettings(SettingsStore* store, const Settings& initial) {
     wantedMode_ = initial.displayMode;
     background_ = initial.background;
     colour_ = initial.colourMode;
+    vibrationAtomic_ = initial.vibration;
     crt_ = initial.crt;
     fps_ = FpsMode::Native;   // the only picture rate: the original's (the other FPS settings were removed; an old settings file's fps key is ignored)
     fpsAtomic_ = FpsMode::Native;
@@ -713,6 +732,7 @@ void GameWindow::currentPixels(std::uint32_t* out, double glowDtSeconds) {
         view.borders = borders_;
         view.background = background_;
         view.colourMode = colour_;
+        view.vibration = vibrationAtomic_.load();
         view.crt = crt_;
         view.fps = fps_;
         view.achievements = book_ ? book_->mask() : 0;
@@ -757,6 +777,7 @@ void GameWindow::currentPixels(std::uint32_t* out, double glowDtSeconds) {
 
 void GameWindow::menuChanged() {
     menuOpen_ = menu_.open();
+    if (menuOpen_ && menu_.page() == PauseMenu::Page::Main && pad_) pad_->stopRumble();   // (the game stands still behind the menu: its pattern ends)
     {
         std::lock_guard<std::mutex> lock(mutex_);
         ++pageVersion_;   // the refresh timer repaints
@@ -772,6 +793,8 @@ void GameWindow::menuAction(PauseMenu::Action a) {
     case PauseMenu::Action::PreviousDisplayMode:   // two modes: next and previous are the same
         setDisplayMode(mode_ == DisplayMode::Windowed ? DisplayMode::Borderless : DisplayMode::Windowed);
         break;
+    case PauseMenu::Action::NextVibration: cycleVibration(1); break;
+    case PauseMenu::Action::PreviousVibration: cycleVibration(-1); break;
     case PauseMenu::Action::NextColourMode: cycleColourMode(1); break;
     case PauseMenu::Action::PreviousColourMode: cycleColourMode(-1); break;
     case PauseMenu::Action::NextCrtPreset: stepCrtPreset(1); break;

@@ -133,6 +133,11 @@ public:
     void stepCrtPreset(int dir) { setCrt(crtPresetFilter(crtNextPreset(crtPresetOf(crt_), dir))); }
     // FPS (TASK-034-11): how often the window shows the game's pictures: Native (the Apple II's 60.05 pictures a second), 30, 60, 120, 144, or Unlocked (a picture whenever the game has a new
     // one). The game, its clock and the sound run on their own thread and never depend on it. Only effective while run() is the message loop.
+    // Vibration (vibration.h): the level is kept in the settings; vibrate() starts the pattern of a game event on the controller in use (any thread; nothing when Off or no controller).
+    VibrationLevel vibration() const noexcept { return vibrationAtomic_.load(); }
+    void setVibration(VibrationLevel l);   // (also gives a short test pulse)
+    void cycleVibration(int dir) { setVibration(nextVibration(vibrationAtomic_.load(), dir)); }
+    void vibrate(RumbleEvent e);
     FpsMode fps() const noexcept { return fps_; }
     FpsMode fpsForGameThread() const noexcept { return fpsAtomic_.load(); }   // any thread
     void setFps(FpsMode m);
@@ -222,6 +227,7 @@ private:
     ColourMode colour_ = ColourMode::Original;
     CrtFilter crt_, crtDraw_;
     FpsMode fps_ = FpsMode::Native;
+    std::atomic<VibrationLevel> vibrationAtomic_{VibrationLevel::Medium};
     std::atomic<FpsMode> fpsAtomic_{FpsMode::Native};   // the same as fps_, for the game's thread (it chooses the timing of the ticks by it, pacing.h)
     bool paced_ = false;                      // run() is the message loop: pictures are paced by fps_ instead of the window timer
     bool inModalLoop_ = false;                // the user is dragging or sizing the window (Windows runs its own loop then)

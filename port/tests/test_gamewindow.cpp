@@ -911,7 +911,7 @@ TEST(pause_menu_keyboard_navigation_pages_and_actions) {
     m.key(PauseMenu::Key::Down);
     CHECK(m.selected() == 2);
     m.setInUseDevice(2);
-    CHECK(m.key(PauseMenu::Key::Select) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Controls && m.itemCount() == 2 && m.controlsDevice() == 2);
+    CHECK(m.key(PauseMenu::Key::Select) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Controls && m.itemCount() == 3 && m.controlsDevice() == 2);
     m.key(PauseMenu::Key::Right);
     CHECK(m.controlsDevice() == 0);
     m.key(PauseMenu::Key::Left);
@@ -920,10 +920,15 @@ TEST(pause_menu_keyboard_navigation_pages_and_actions) {
     CHECK(m.controlsDevice() == 1);
     m.key(PauseMenu::Key::Select);   // Enter on the device entry also goes on to the next one
     CHECK(m.controlsDevice() == 2);
+    // the Vibration entry: Left / Right / Enter change it
+    m.key(PauseMenu::Key::Down);
+    CHECK(m.selected() == 1 && m.key(PauseMenu::Key::Right) == PauseMenu::Action::NextVibration && m.key(PauseMenu::Key::Left) == PauseMenu::Action::PreviousVibration && m.key(PauseMenu::Key::Select) == PauseMenu::Action::NextVibration);
+    CHECK(m.controlsDevice() == 2);   // (the device is not touched)
     CHECK(m.key(PauseMenu::Key::Back) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Main && m.selected() == 2);
     m.key(PauseMenu::Key::Select);
     m.key(PauseMenu::Key::Down);
-    CHECK(m.selected() == 1 && m.key(PauseMenu::Key::Select) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Main && m.selected() == 2);   // Back entry
+    m.key(PauseMenu::Key::Down);
+    CHECK(m.selected() == 2 && m.key(PauseMenu::Key::Select) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Main && m.selected() == 2);   // Back entry
     // Achievements: a list of 22 followed by Credits, Reset Progress and Back; it scrolls with the selection
     m.key(PauseMenu::Key::Down);
     CHECK(m.selected() == 3);
@@ -997,7 +1002,8 @@ TEST(pause_menu_mouse_selects_on_hover_activates_on_click_and_ignores_the_rest) 
     CHECK(m.pointerClick(confirmItem(1).x, confirmItem(1).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Main);
     CHECK(m.pointerClick(mainItem(2).x, mainItem(2).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Controls);   // Controls by mouse, and its two entries
     CHECK(m.pointerClick(m.itemCenter(0).x, m.itemCenter(0).y) == PauseMenu::Action::None && m.controlsDevice() == 1);
-    CHECK(m.pointerClick(m.itemCenter(1).x, m.itemCenter(1).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Main);
+    CHECK(m.pointerClick(m.itemCenter(1).x, m.itemCenter(1).y) == PauseMenu::Action::NextVibration && m.page() == PauseMenu::Page::Controls);   // the Vibration entry by mouse
+    CHECK(m.pointerClick(m.itemCenter(2).x, m.itemCenter(2).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Main);
     // the Achievements page by mouse: the first rows are on the screen, the rows scrolled out are not there to click
     CHECK(m.pointerClick(mainItem(3).x, mainItem(3).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Achievements);
     CHECK(m.pointerClick(m.itemCenter(2).x, m.itemCenter(2).y) == PauseMenu::Action::None && m.selected() == 2);
@@ -4939,4 +4945,62 @@ TEST(an_unlocked_achievement_shows_a_pop_up_over_the_picture_and_the_page_shows_
     m.render(rom, v, b);
     CHECK(a != b);   // a check mark instead of a lock, and the totals in the title
     std::filesystem::remove_all(dir);
+}
+
+
+// ---- TASK-034-VIBRATION: the setting, its patterns, the settings file and the menu entry ----
+TEST(vibration_setting_names_cycle_patterns_scale_and_the_settings_file_keeps_the_choice) {
+    using app::RumbleEvent;
+    using app::VibrationLevel;
+    CHECK(app::kVibrationLevelCount == 4);
+    CHECK(std::string(app::vibrationKey(VibrationLevel::Off)) == "off" && std::string(app::vibrationKey(VibrationLevel::High)) == "high");
+    CHECK(std::string(app::vibrationLabel(VibrationLevel::Medium)) == "MEDIUM" && std::string(app::vibrationLabel(VibrationLevel::Off)) == "OFF");
+    CHECK(app::nextVibration(VibrationLevel::Off, 1) == VibrationLevel::Low && app::nextVibration(VibrationLevel::High, 1) == VibrationLevel::Off && app::nextVibration(VibrationLevel::Off, -1) == VibrationLevel::High);
+    VibrationLevel l = VibrationLevel::Off;
+    CHECK(app::parseVibration("low", l) && l == VibrationLevel::Low && !app::parseVibration("max", l) && l == VibrationLevel::Low);
+    // Off plays nothing; every event has a pattern at the other levels, and a higher level never runs a motor less hard
+    for (const RumbleEvent e : {RumbleEvent::PowerPill, RumbleEvent::GhostEaten, RumbleEvent::Caught, RumbleEvent::LevelComplete, RumbleEvent::GameOver, RumbleEvent::Test}) {
+        CHECK(app::rumbleFor(e, VibrationLevel::Off).empty());
+        const auto lo = app::rumbleFor(e, VibrationLevel::Low), me = app::rumbleFor(e, VibrationLevel::Medium), hi = app::rumbleFor(e, VibrationLevel::High);
+        CHECK(!lo.empty() && lo.size() == me.size() && me.size() == hi.size());
+        for (std::size_t i = 0; i < hi.size(); ++i) {
+            CHECK(lo[i].ms == hi[i].ms && me[i].ms == hi[i].ms);   // the timing is the same, only the strength changes
+            CHECK(lo[i].strong <= me[i].strong && me[i].strong <= hi[i].strong && lo[i].weak <= me[i].weak && me[i].weak <= hi[i].weak);
+        }
+    }
+    // High is the full pattern; a tap is short
+    const auto caught = app::rumbleFor(RumbleEvent::Caught, VibrationLevel::High);
+    CHECK(caught.size() == 3 && caught[0].strong == 255);
+    int total = 0;
+    for (const auto& st : app::rumbleFor(RumbleEvent::PowerPill, VibrationLevel::High)) total += st.ms;
+    CHECK(total <= 150);
+    // the settings file: the default is Medium, the choice round-trips, a bad word is ignored
+    Settings d;
+    CHECK(d.vibration == VibrationLevel::Medium);
+    Settings s;
+    s.vibration = VibrationLevel::Off;
+    CHECK(SettingsStore::parse(SettingsStore::format(s)).vibration == VibrationLevel::Off);
+    CHECK(SettingsStore::parse("vibration=HIGH\n").vibration == VibrationLevel::High && SettingsStore::parse("vibration=loud\n").vibration == VibrationLevel::Medium);
+}
+
+TEST(vibration_window_plays_the_events_on_the_controller_in_use_and_the_menu_changes_the_level) {
+    using app::RumbleEvent;
+    using app::VibrationLevel;
+    GameWindow w(GameWindowOptions{3, false});
+    app::GamepadHub hub;
+    app::PadState ps;
+    ps.kind = app::PadKind::XInput;
+    hub.injectForTests(ps, true);
+    w.setGamepad(&hub);
+    w.vibrate(RumbleEvent::GhostEaten);   // Medium by default
+    CHECK(hub.rumbleLogForTests().size() == 1 && hub.rumbleLogForTests()[0] == app::rumbleFor(RumbleEvent::GhostEaten, VibrationLevel::Medium));
+    w.setVibration(VibrationLevel::Off);
+    w.vibrate(RumbleEvent::Caught);
+    CHECK(hub.rumbleLogForTests().size() >= 2 && hub.rumbleLogForTests().back().empty());   // Off: the motors are stopped, nothing plays
+    CHECK(w.vibration() == VibrationLevel::Off);
+    const std::size_t before = hub.rumbleLogForTests().size();
+    w.setVibration(VibrationLevel::High);   // the change is felt at once
+    CHECK(hub.rumbleLogForTests().size() == before + 1 && hub.rumbleLogForTests().back() == app::rumbleFor(RumbleEvent::Test, VibrationLevel::High));
+    w.cycleVibration(1);
+    CHECK(w.vibration() == VibrationLevel::Off);
 }

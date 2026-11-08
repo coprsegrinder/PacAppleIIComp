@@ -9,6 +9,9 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <vector>
+
+#include "vibration.h"
 
 namespace pacman::app {
 
@@ -48,6 +51,12 @@ bool parseDualSense(const std::uint8_t* data, std::size_t size, bool bluetooth, 
 // XInput: the fields of XINPUT_GAMEPAD
 bool parseXInput(std::uint16_t buttons, std::int16_t thumbLX, std::int16_t thumbLY, PadState& out) noexcept;
 
+// Vibration. CRC-32 (the usual one: polynomial 0xEDB88320, as zlib) and the output reports that start the motors of the Sony pads. `length` is the output report length that Windows tells for
+// the device (DualShock 4: 32 on USB, 78 on Bluetooth; DualSense: 64 on USB, 78 on Bluetooth); the reports are zero-filled to it. The Bluetooth reports end with a CRC-32 over 0xA2 and the bytes before it.
+std::uint32_t crc32(const std::uint8_t* data, std::size_t size) noexcept;
+std::vector<std::uint8_t> buildDualShock4Rumble(std::size_t length, bool bluetooth, std::uint8_t strong, std::uint8_t weak);
+std::vector<std::uint8_t> buildDualSenseRumble(std::size_t length, bool bluetooth, std::uint8_t strong, std::uint8_t weak, std::uint8_t sequence);
+
 // The controllers the program knows of and what the newest input came from. Thread-safe: the reading thread writes, any thread reads.
 class GamepadHub {
 public:
@@ -62,7 +71,13 @@ public:
     bool has(PadKind k) const;          // a controller of this kind is plugged in
     std::uint32_t changeCount() const;  // grows when a controller is plugged in or pulled out (the boot menu re-draws its words)
 
+    // Vibration: plays the pattern on the controller in use (the one that gave input last) on the reading thread; a new pattern replaces the one that plays; an empty one stops it. The motors are
+    // also stopped when the pad is pulled out of use, and when the hub stops.
+    void rumble(const std::vector<RumbleStep>& steps);
+    void stopRumble();
+
     // tests and the program's other inputs
+    const std::vector<std::vector<RumbleStep>>& rumbleLogForTests() const;   // with injectForTests: the patterns asked for, in order
     void injectForTests(const PadState& s, bool present);   // replaces the devices by this one state (start() must not have been called)
 
 private:

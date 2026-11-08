@@ -490,6 +490,13 @@ bool runGame(core::GameDriver& drv, const datapack::Pack& pack, app::GameWindow&
             const int achLevel = static_cast<int>(drv.core().state().level()), achPlayer = drv.core().player();   // (what the tick is played in: a level change or a change of player happens inside it)
             const std::uint32_t achScoreBefore = drv.core().state().score();
             const core::TickEvents ev = liveTick(drv, &cartoon, &pack);
+            if (drv.core().state().demo == 0) {   // controller vibration for the game's events (not in the attract game)
+                if (ev.gameOver) window.vibrate(app::RumbleEvent::GameOver);
+                else if (ev.caught) window.vibrate(app::RumbleEvent::Caught);
+                else if (ev.ghostEaten[0] || ev.ghostEaten[1] || ev.ghostEaten[2] || ev.ghostEaten[3]) window.vibrate(app::RumbleEvent::GhostEaten);
+                else if (ev.levelComplete) window.vibrate(app::RumbleEvent::LevelComplete);
+                else if (ev.energizer) window.vibrate(app::RumbleEvent::PowerPill);
+            }
             if (ev.levelComplete && cartoon.active()) achCartoon = core::cartoonAfterLevel(static_cast<unsigned>(achLevel));
             if (++tickLog.ticks == 1) tickLog.firstNs = core::nowNanoseconds();
             std::int64_t soundFreeze = 0;

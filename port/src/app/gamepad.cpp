@@ -111,6 +111,64 @@ bool parseXInput(std::uint16_t buttons, std::int16_t lx, std::int16_t ly, PadSta
     return true;
 }
 
+std::uint32_t crc32(const std::uint8_t* data, std::size_t size) noexcept {
+    std::uint32_t c = 0xFFFFFFFFu;
+    for (std::size_t i = 0; i < size; ++i) {
+        c ^= data[i];
+        for (int k = 0; k < 8; ++k) c = (c >> 1) ^ (0xEDB88320u & (0u - (c & 1u)));
+    }
+    return ~c;
+}
+
+namespace {
+// the Bluetooth reports of the Sony pads end with the CRC-32 of 0xA2 (the transport's header byte of an output report) followed by the report up to the CRC
+void appendBluetoothCrc(std::vector<std::uint8_t>& r) {
+    std::vector<std::uint8_t> seeded;
+    seeded.reserve(r.size());
+    seeded.push_back(0xA2);
+    seeded.insert(seeded.end(), r.begin(), r.end() - 4);
+    const std::uint32_t c = crc32(seeded.data(), seeded.size());
+    for (int i = 0; i < 4; ++i) r[r.size() - 4 + static_cast<std::size_t>(i)] = static_cast<std::uint8_t>(c >> (8 * i));
+}
+}  // namespace
+
+std::vector<std::uint8_t> buildDualShock4Rumble(std::size_t length, bool bluetooth, std::uint8_t strong, std::uint8_t weak) {
+    std::vector<std::uint8_t> r((std::max<std::size_t>)(length, bluetooth ? 78 : 32), 0);
+    if (bluetooth) {
+        r[0] = 0x11;
+        r[1] = 0xC4;   // HID + CRC flags, poll interval 4
+        r[3] = 0x01;   // "motors": the light bar is left as it is
+        r[6] = weak;
+        r[7] = strong;
+        appendBluetoothCrc(r);
+    } else {
+        r[0] = 0x05;
+        r[1] = 0x01;   // "motors"
+        r[4] = weak;
+        r[5] = strong;
+    }
+    return r;
+}
+
+std::vector<std::uint8_t> buildDualSenseRumble(std::size_t length, bool bluetooth, std::uint8_t strong, std::uint8_t weak, std::uint8_t sequence) {
+    std::vector<std::uint8_t> r((std::max<std::size_t>)(length, bluetooth ? 78 : 48), 0);
+    // the common block: flag0 (bit 0 compatible vibration, bit 1 haptics select), flag1, right motor, left motor, ... flag2 (bit 2: compatible vibration 2, newer firmware) at +38
+    const std::size_t c = bluetooth ? 3 : 1;
+    if (bluetooth) {
+        r[0] = 0x31;
+        r[1] = static_cast<std::uint8_t>((sequence & 0x0F) << 4);
+        r[2] = 0x10;
+    } else {
+        r[0] = 0x02;
+    }
+    r[c + 0] = 0x03;
+    r[c + 2] = weak;
+    r[c + 3] = strong;
+    r[c + 38] = 0x04;
+    if (bluetooth) appendBluetoothCrc(r);
+    return r;
+}
+
 // ------------------------------------------------------------------------------------------------ the part that talks to Windows
 
 struct GamepadHub::Impl {
@@ -121,6 +179,10 @@ struct GamepadHub::Impl {
         SHORT lx, ly, rx, ry;
     };
     using XInputGetStateFn = DWORD(WINAPI*)(DWORD, XInputState*);
+    struct XInputVibration {   // XINPUT_VIBRATION
+        WORD left, right;
+    };
+    using XInputSetStateFn = DWORD(WINAPI*)(DWORD, XInputVibration*);
 
     struct Source {
         PadKind kind = PadKind::None;
@@ -133,6 +195,9 @@ struct GamepadHub::Impl {
         HANDLE h = INVALID_HANDLE_VALUE;
         PadKind kind = PadKind::None;
         bool bluetooth = false;
+        bool canWrite = false;
+        std::size_t outLen = 0;
+        std::uint8_t sequence = 0;
         std::vector<std::uint8_t> buf;
         OVERLAPPED ov{};
         bool pending = false;
@@ -148,7 +213,16 @@ struct GamepadHub::Impl {
     bool injected = false;
     Source injectedSource;
     XInputGetStateFn xGet = nullptr;
+    XInputSetStateFn xSet = nullptr;
     HMODULE xlib = nullptr;
+    // vibration: the request (written by any thread under the mutex) and what the reading thread has sent (touched by that thread only)
+    bool rumbleActive = false;
+    std::vector<RumbleStep> rumbleSteps;
+    std::uint64_t rumbleStart = 0;
+    const void* rumbleTarget = nullptr;
+    const void* sentTarget = nullptr;
+    int sentStrong = 0, sentWeak = 0;
+    std::vector<std::vector<RumbleStep>> rumbleLog;   // (injected devices only: what was asked)
 
     static std::uint64_t nowMs() { return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()); }
 
@@ -158,6 +232,7 @@ struct GamepadHub::Impl {
             if (xlib) break;
         }
         if (xlib) xGet = reinterpret_cast<XInputGetStateFn>(GetProcAddress(xlib, "XInputGetState"));
+        if (xlib) xSet = reinterpret_cast<XInputSetStateFn>(GetProcAddress(xlib, "XInputSetState"));
     }
 
     void pollXInput(bool scanEmpty) {
@@ -227,7 +302,12 @@ struct GamepadHub::Impl {
                 for (const HidDevice* d : hid) known = known || d->path == path;
             }
             if (known) continue;
-            HANDLE h = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, nullptr);
+            bool canWrite = true;   // (the motors need write access; a pad that refuses it is still read)
+            HANDLE h = CreateFileW(path.c_str(), GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, nullptr);
+            if (h == INVALID_HANDLE_VALUE) {
+                canWrite = false;
+                h = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, nullptr);
+            }
             if (h == INVALID_HANDLE_VALUE) continue;
             HIDD_ATTRIBUTES attr{};
             attr.Size = sizeof(attr);
@@ -252,6 +332,8 @@ struct GamepadHub::Impl {
             d->h = h;
             d->kind = kind;
             d->bluetooth = kind == PadKind::DualSense && caps.InputReportByteLength != 64;
+            d->canWrite = canWrite && caps.OutputReportByteLength > 0;
+            d->outLen = caps.OutputReportByteLength;
             d->buf.assign(caps.InputReportByteLength, 0);
             d->ov.hEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
             d->src.kind = kind;
@@ -324,6 +406,104 @@ struct GamepadHub::Impl {
         if (st.anyInput) d.src.lastActiveMs = nowMs();
     }
 
+    // ---- vibration (all device writes happen on the reading thread, which also opens and closes the devices)
+    struct SendTarget {
+        bool found = false;
+        int xSlot = -1;
+        HANDLE h = INVALID_HANDLE_VALUE;
+        PadKind kind = PadKind::None;
+        bool bluetooth = false, canWrite = false;
+        std::size_t outLen = 0;
+        std::uint8_t sequence = 0;
+    };
+
+    SendTarget findTarget(const void* id) {
+        SendTarget t;
+        std::lock_guard<std::mutex> lock(m);
+        for (int i = 0; i < 4; ++i)
+            if (id == &xin[i] && xin[i].present) {
+                t.found = true;
+                t.xSlot = i;
+                return t;
+            }
+        for (HidDevice* d : hid)
+            if (id == &d->src) {
+                t.found = true;
+                t.h = d->h;
+                t.kind = d->kind;
+                t.bluetooth = d->kind == PadKind::DualShock4 ? d->outLen >= 78 : d->bluetooth;
+                t.canWrite = d->canWrite;
+                t.outLen = d->outLen;
+                t.sequence = d->sequence++;
+                return t;
+            }
+        return t;
+    }
+
+    void writeMotors(const void* id, int strong, int weak) {
+        const SendTarget t = findTarget(id);
+        if (!t.found) return;
+        if (t.xSlot >= 0) {
+            if (xSet) {
+                XInputVibration v{static_cast<WORD>(strong * 257), static_cast<WORD>(weak * 257)};
+                xSet(static_cast<DWORD>(t.xSlot), &v);
+            }
+            return;
+        }
+        if (!t.canWrite) return;
+        const std::vector<std::uint8_t> r = t.kind == PadKind::DualShock4 ? buildDualShock4Rumble(t.outLen, t.bluetooth, static_cast<std::uint8_t>(strong), static_cast<std::uint8_t>(weak))
+                                                                           : buildDualSenseRumble(t.outLen, t.bluetooth, static_cast<std::uint8_t>(strong), static_cast<std::uint8_t>(weak), t.sequence);
+        OVERLAPPED ov{};
+        ov.hEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+        if (!ov.hEvent) return;
+        DWORD wrote = 0;
+        if (!WriteFile(t.h, r.data(), static_cast<DWORD>(r.size()), &wrote, &ov) && GetLastError() == ERROR_IO_PENDING) {
+            if (WaitForSingleObject(ov.hEvent, 50) != WAIT_OBJECT_0) {   // (a pad that does not answer must not hold the reading of the others)
+                CancelIoEx(t.h, &ov);
+                GetOverlappedResult(t.h, &ov, &wrote, TRUE);
+            }
+        }
+        CloseHandle(ov.hEvent);
+    }
+
+    void updateRumble() {
+        int strong = 0, weak = 0;
+        const void* target = nullptr;
+        {
+            std::lock_guard<std::mutex> lock(m);
+            target = rumbleTarget;
+            if (rumbleActive) {
+                std::uint64_t t = nowMs() - rumbleStart;
+                bool inside = false;
+                for (const RumbleStep& st : rumbleSteps) {
+                    if (t < st.ms) {
+                        strong = st.strong;
+                        weak = st.weak;
+                        inside = true;
+                        break;
+                    }
+                    t -= st.ms;
+                }
+                if (!inside) rumbleActive = false;
+            }
+        }
+        if (!target && !sentTarget) return;
+        if (sentTarget && sentTarget != target && (sentStrong || sentWeak)) {   // the pattern moved to another pad: the old one is quietened
+            writeMotors(sentTarget, 0, 0);
+            sentStrong = sentWeak = 0;
+        }
+        if (!target) {
+            sentTarget = nullptr;
+            return;
+        }
+        if (target != sentTarget || strong != sentStrong || weak != sentWeak) {
+            if (strong || weak || sentStrong || sentWeak) writeMotors(target, strong, weak);
+            sentTarget = target;
+            sentStrong = strong;
+            sentWeak = weak;
+        }
+    }
+
     void loop() {
         loadXInput();
         std::uint64_t lastScan = 0, lastXScan = 0;
@@ -337,8 +517,14 @@ struct GamepadHub::Impl {
             if (scanEmpty) lastXScan = now;
             pollXInput(scanEmpty);
             pollHid();
+            updateRumble();
             std::this_thread::sleep_for(std::chrono::milliseconds(2));
         }
+        {
+            std::lock_guard<std::mutex> lock(m);
+            rumbleActive = false;
+        }
+        if (sentTarget && (sentStrong || sentWeak)) writeMotors(sentTarget, 0, 0);   // (the motors must not be left running)
         std::vector<HidDevice*> all;
         {
             std::lock_guard<std::mutex> lock(m);
@@ -396,6 +582,34 @@ bool GamepadHub::has(PadKind k) const {
         if (d->src.present && d->src.kind == k) return true;
     return false;
 }
+
+void GamepadHub::rumble(const std::vector<RumbleStep>& steps) {
+    std::lock_guard<std::mutex> lock(d_->m);
+    if (d_->injected) {
+        d_->rumbleLog.push_back(steps);
+        return;
+    }
+    const Impl::Source* s = d_->inUse();
+    if (!s || steps.empty()) {
+        d_->rumbleActive = false;
+        return;
+    }
+    d_->rumbleSteps = steps;
+    d_->rumbleStart = Impl::nowMs();
+    d_->rumbleTarget = s;
+    d_->rumbleActive = true;
+}
+
+void GamepadHub::stopRumble() {
+    std::lock_guard<std::mutex> lock(d_->m);
+    if (d_->injected) {
+        d_->rumbleLog.emplace_back();
+        return;
+    }
+    d_->rumbleActive = false;
+}
+
+const std::vector<std::vector<RumbleStep>>& GamepadHub::rumbleLogForTests() const { return d_->rumbleLog; }
 
 std::uint32_t GamepadHub::changeCount() const { return d_->changes.load(); }
 

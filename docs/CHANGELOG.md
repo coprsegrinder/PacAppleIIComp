@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-11-08
+* TASK-034-VIBRATION: vibration (Off / Low / Medium / High) for Xbox, DualShock 4 and DualSense on game events; HDR and VSync scrapped (docs/MODERNIZATION.md).
+
 ## 2026-10-29
 * TASK-029g9: fruit eaten/erased, death and level-end draw sequences derived (equal to the oracle logs), level icon to level 7; scenarios A-D, F, G, H, J exact in calls and pages.
 * TASK-029g8: white flash frame verified, fruit drawn, rebuilt screens after a death and after a level end exact; scenarios A (2,090 ticks), B, C (700), D (1,600), F (700) equal the oracle in calls and pages.

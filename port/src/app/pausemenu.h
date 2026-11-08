@@ -18,7 +18,7 @@ class PauseMenu {
 public:
     enum class Page { Closed, Main, Graphics, Crt, Controls, Achievements, Credits, ResetConfirm, Confirm };
     enum class Key { Up, Down, Left, Right, Select, Back };
-    enum class Action { None, Resume, Quit, ToggleBorders, NextDisplayMode, PreviousDisplayMode, NextResolution, PreviousResolution, NextBackground, PreviousBackground, NextColourMode, PreviousColourMode, NextCrtPreset, PreviousCrtPreset, CrtOptionStep, ResetAchievements };
+    enum class Action { None, Resume, Quit, ToggleBorders, NextDisplayMode, PreviousDisplayMode, NextResolution, PreviousResolution, NextBackground, PreviousBackground, NextColourMode, PreviousColourMode, NextVibration, PreviousVibration, NextCrtPreset, PreviousCrtPreset, CrtOptionStep, ResetAchievements };
     struct Point { int x, y; };
     // What the pages show (the program's present state).
     struct View {
@@ -26,6 +26,7 @@ public:
         bool borders = true;
         Background background = Background::Black;
         ColourMode colourMode = ColourMode::Original;
+        VibrationLevel vibration = VibrationLevel::Medium;
         CrtFilter crt;
         FpsMode fps = FpsMode::Native;
         std::uint32_t achievements = 0;   // the unlocked achievements (bit i = core::kAchievementDefs[i]) for the achievements page
