@@ -103,6 +103,7 @@ TEST(gamecore_against_the_oracle_recordings) {
     std::map<std::size_t, std::string> firstFile;
     std::size_t ticksRun = 0, resyncs = 0, wrongEvents = 0, caughtChecked = 0, badRestart = 0, levelChangesChecked = 0, badLevelChange = 0;
     std::vector<std::string> files = split(testfw::config().ticks);
+    for (const auto& p : split(testfw::config().startTicks)) files.push_back(p);   // games started at a higher level through the hidden menu: replayed like the others
     if (!testfw::config().joyTicks.empty()) files.push_back(testfw::config().joyTicks);   // a game in joystick mode: the original's paddle routines steer
     if (!testfw::config().joyDemo.empty()) files.push_back(testfw::config().joyDemo);   // the attract game in joystick mode
     if (!testfw::config().demo.empty()) files.push_back(testfw::config().demo);   // the attract demo: Pac-Man steered by the original's own move stream
@@ -214,4 +215,71 @@ TEST(gamecore_against_the_oracle_recordings) {
     CHECK(wrongEvents == 0 && badRestart == 0 && caughtChecked >= 8);
     CHECK(badLevelChange == 0 && levelChangesChecked >= 7);
     CHECK(ticksRun > 10000);
+}
+
+TEST(new_game_at_a_start_level_equals_the_first_tick_of_the_real_game) {
+    if (testfw::config().startTicks.empty() || testfw::config().image.empty()) {
+        std::printf("    SKIPPED (needs --startticks and --image)\n");
+        return;
+    }
+    const auto img = readAll(testfw::config().image);
+    const auto built = datapack::buildPack(img, verify::referenceExpected(), datapack::dataManifest());
+    CHECK_MSG(built.ok, built.reason);
+    if (!built.ok) return;
+    const auto loaded = datapack::loadPack(built.bytes, verify::referenceExpected());
+    CHECK_MSG(loaded.ok, loaded.reason);
+    if (!loaded.ok) return;
+    std::size_t files = 0, bad = 0;
+    for (const auto& path : split(testfw::config().startTicks)) {
+        std::string why;
+        const auto tr = TickTrace::load(path, why);
+        CHECK_MSG(tr.ok(), path + ": " + why);
+        if (!tr.ok()) continue;
+        const int rank = tr.at(0, 0x55);
+        GameCore core;
+        CHECK(core.init(loaded.pack));
+        CHECK(core.newGame(1, rank));
+        const auto mine = toOracleLayout(core.state());
+        const auto theirs = tr.state(0);
+        std::string which;
+        std::size_t d = 0;
+        for (std::size_t i = 0; i < mine.size(); ++i) {
+            if (mine[i] == theirs[i] || i == 30 || i == 31) continue;   // ($78 $79 are leftovers of the previous screen's last ghost pass: 1 after the demo of the golden games, 0 after the hidden menu; the first ghost pass overwrites them before they are read)
+            ++d;
+            if (which.size() < 300) which += " " + offsetName(i) + " mine " + std::to_string(mine[i]) + " oracle " + std::to_string(theirs[i]);
+        }
+        ++files;
+        std::printf("    rank %d (%s): first tick differs in %zu bytes%s\n", rank, path.c_str(), d, which.c_str());
+        bad += d != 0;
+    }
+    CHECK(files >= 1 && bad == 0);
+}
+
+TEST(esc_pauses_the_tick_in_both_input_modes_and_the_jingle_poll_cost_follows_the_mode) {
+    if (testfw::config().image.empty()) {
+        std::printf("    SKIPPED (needs --image)\n");
+        return;
+    }
+    const auto img = readAll(testfw::config().image);
+    const auto built = datapack::buildPack(img, verify::referenceExpected(), datapack::dataManifest());
+    CHECK_MSG(built.ok, built.reason);
+    if (!built.ok) return;
+    const auto loaded = datapack::loadPack(built.bytes, verify::referenceExpected());
+    CHECK_MSG(loaded.ok, loaded.reason);
+    if (!loaded.ok) return;
+    for (const bool joystick : {false, true}) {
+        GameCore core;
+        CHECK(core.init(loaded.pack));
+        CHECK(core.newGame(1, 1));
+        core.port().joystickMode = joystick;
+        CHECK(core.jinglePollExtra() == 0 || joystick);
+        if (joystick) CHECK(core.jinglePollExtra() > 2500 && core.jinglePollExtra() < 2800);
+        core.state().zp(0x59) = 1;              // Pac-Man's step timer runs out in this tick: the joystick poll happens
+        core.input().pushKey(0x1B);             // Esc with no key after it: the poll waits (the tick is paused)
+        const TickEvents ev = core.tick();
+        CHECK(ev.paused);
+        core.input().pushKey(0x41);             // any key ends the pause
+        const TickEvents again = core.tick();
+        CHECK(!again.paused);
+    }
 }

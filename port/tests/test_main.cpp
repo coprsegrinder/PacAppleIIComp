@@ -18,6 +18,8 @@ int main(int argc, char** argv) {
             testfw::config().tickcalls = argv[++i];
         } else if (std::strcmp(argv[i], "--page0") == 0 && i + 1 < argc) {
             testfw::config().page0 = argv[++i];
+        } else if (std::strcmp(argv[i], "--startticks") == 0 && i + 1 < argc) {
+            testfw::config().startTicks = argv[++i];
         } else if (std::strcmp(argv[i], "--joyticks") == 0 && i + 1 < argc) {
             testfw::config().joyTicks = argv[++i];
         } else if (std::strcmp(argv[i], "--joydemo") == 0 && i + 1 < argc) {
