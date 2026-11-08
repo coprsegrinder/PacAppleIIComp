@@ -47,3 +47,5 @@ The notes were written while the project was made, in the order of the work; the
 
 ## Legal
 [`LEGAL_AND_ATTRIBUTION.md`](LEGAL_AND_ATTRIBUTION.md), [`EXTERNAL_RESOURCES.md`](EXTERNAL_RESOURCES.md), and [`../NOTICES.md`](../NOTICES.md).
+
+* [CODE_COVERAGE_PORT.md](CODE_COVERAGE_PORT.md): which lines of the port's own C++ the whole test suite runs (tools/coverage_cpp.sh, tools/linecov), with the lines that never ran.
