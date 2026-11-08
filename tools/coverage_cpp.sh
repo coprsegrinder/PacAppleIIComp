@@ -5,7 +5,7 @@
 # 2. runs the tests under the runner with every optional input (a few times slower than tools/full_suite.sh), 3. summarises per source file (tools/coverage_report.py -> docs/CODE_COVERAGE_PORT.md).
 cd "$(dirname "$0")/.." || exit 2
 S=scratch
-LOGIC=$(ls $S/ticks_[ABCD].bin $S/ticks_B10.bin $S/ticks_N00.bin $S/ticks_T00.bin $S/ticks_L[0-9][0-9].bin $S/ticks_E[0-9][0-9].bin $S/ticks_V[0-9][0-9].bin | tr '\n' ',' | sed 's/,$//')
+LOGIC=$(ls $S/ticks_[ABCD].bin $S/ticks_B10.bin $S/ticks_N00.bin $S/ticks_T00.bin $S/ticks_L[0-9][0-9].bin $S/ticks_E[0-9][0-9].bin $S/ticks_V[0-9][0-9].bin $S/ticks_W[0-9][0-9].bin | tr '\n' ',' | sed 's/,$//')
 DRAW=$(ls $S/ticks_[ABCDFGHJKLMPQRSU].bin | tr '\n' ',' | sed 's/,$//')
 cmd //c "port\\build_coverage.bat" 2>&1 | grep -E "error C|fatal|LNK" | head -5
 cmd //c "tools\\linecov\\build.bat" 2>&1 | grep -E "error C|fatal|LNK" | head -5

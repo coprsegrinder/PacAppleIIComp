@@ -2,9 +2,9 @@
 
 Made by `tools/coverage_cpp.sh` (runs the whole test suite with every optional recording under `tools/linecov`, a small debugger-based runner) and `tools/coverage_report.py`. Microsoft dotnet-coverage was tried first and cannot measure a native program (its native instrumentation is a Visual Studio component). A **line with code** is a line that the PDB lists; it is **covered** when any instruction of it ran during the test run. Line coverage says a line ran, not that its result was checked: the equality tests against the oracle are what check results.
 
-**Total: 10305 of 10938 lines with code ran (94.2 %).**
+**Total: 10310 of 10938 lines with code ran (94.3 %).**
 
-## Game logic (src/core): 6395 of 6571 lines (97.3 %)
+## Game logic (src/core): 6400 of 6571 lines (97.4 %)
 
 | File | Lines | Ran | % |
 |---|---|---|---|
@@ -31,7 +31,7 @@ Made by `tools/coverage_cpp.sh` (runs the whole test suite with every optional r
 | `core/gamestate.h` | 21 | 21 | 100.0 |
 | `core/ghostdecide_gen.cpp` | 1211 | 1203 | 99.3 |
 | `core/ghostjunction.cpp` | 203 | 203 | 100.0 |
-| `core/ghostmode.cpp` | 61 | 56 | 91.8 |
+| `core/ghostmode.cpp` | 61 | 61 | 100.0 |
 | `core/ghosttick.cpp` | 37 | 37 | 100.0 |
 | `core/input.cpp` | 145 | 145 | 100.0 |
 | `core/input.h` | 3 | 3 | 100.0 |
@@ -144,7 +144,6 @@ Made by `tools/coverage_cpp.sh` (runs the whole test suite with every optional r
 * `core/gamedriver.cpp` (8 of 227 lines not run): 40-47
 * `core/gamedriver.h` (1 of 23 lines not run): 18
 * `core/ghostdecide_gen.cpp` (8 of 1211 lines not run): 824, 859, 1135-1138, 1219-1221
-* `core/ghostmode.cpp` (5 of 61 lines not run): 31-35
 * `core/junction.cpp` (1 of 64 lines not run): 40
 * `core/monitor.cpp` (5 of 146 lines not run): 51, 58-59, 77-78
 * `core/sound.cpp` (1 of 82 lines not run): 80
