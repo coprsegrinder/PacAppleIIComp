@@ -39,6 +39,13 @@ struct PadState {
     bool operator==(const PadState&) const = default;
 };
 
+// The stick as the original's paddle routines see it (TASK-034-PADDLE): the two paddles of the game port, 0 = left / up, 255 = right / down, 127 = middle. The D-pad pushes its axis
+// to the end; otherwise the left stick's position is used as it is (the original's thresholds make the dead zone: counts 28 to 67 of 99 are the middle).
+struct PaddlePosition {
+    std::uint8_t x = 127, y = 127;
+};
+PaddlePosition padPaddles(const PadState& s) noexcept;
+
 // The direction code of the original's key poll for the state: 0 = down, 1 = up, 2 = right, 3 = left (docs/CONTROLS.md); nothing when no direction is held. The D-pad wins over the stick; a
 // diagonal gives the horizontal direction on the D-pad and the stronger axis on the stick.
 std::optional<std::uint8_t> padDirection(const PadState& s) noexcept;

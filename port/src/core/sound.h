@@ -42,11 +42,12 @@ struct SoundList {
 //             (low byte of the list address + note index > 255)
 //   engine B: n clicks per note, 31P + 11 apart; between notes 31P_next + 30,624 (key poll + fixed pause)
 //   engine C: 80 tones of period 32, 4 clicks each 299 apart; between tones 288 + 37
-std::vector<std::uint32_t> clickTimes(const SoundList& list);
+//   joystick mode (TASK-034-PADDLE): the key poll after each note of engine B is the paddle timing, `pollExtra` cycles longer (input.h, PollResult::extraCycles); engines A and C do not poll.
+std::vector<std::uint32_t> clickTimes(const SoundList& list, int pollExtra = 0);
 
 // How long the original's game stands still while the sound plays: the whole wrapper call (the engines busy-wait), measured on the oracle (docs/SOUND.md section 6).
 // GhostEaten: see the table in sound.cpp. The intermission sound ($7CF0) is not measured (never seen firing).
-std::int64_t soundFreezeCycles(SoundId id) noexcept;
+std::int64_t soundFreezeCycles(SoundId id, int pollExtra = 0) noexcept;   // pollExtra: as for clickTimes (the jingle polls 29 times)
 
 class SoundData {
 public:

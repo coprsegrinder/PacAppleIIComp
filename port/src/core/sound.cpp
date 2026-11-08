@@ -63,7 +63,7 @@ bool SoundData::load(const datapack::Pack& pack) {
     return true;
 }
 
-std::int64_t soundFreezeCycles(SoundId id) noexcept {
+std::int64_t soundFreezeCycles(SoundId id, int pollExtra) noexcept {
     switch (id) {
         case SoundId::DotEaten: return 2'932;
         case SoundId::GhostEaten: return kGhostEatenFreeze;
@@ -76,12 +76,12 @@ std::int64_t soundFreezeCycles(SoundId id) noexcept {
         case SoundId::Death5: return 18'041;
         case SoundId::Death6: return 17'351;
         case SoundId::BonusLife: return 97'770;
-        case SoundId::Jingle: return 5'153'446;
+        case SoundId::Jingle: return 5'153'446 + 29 * pollExtra;   // (29 notes, a poll after each)
         default: return 0;
     }
 }
 
-std::vector<std::uint32_t> clickTimes(const SoundList& list) {
+std::vector<std::uint32_t> clickTimes(const SoundList& list, int pollExtra) {
     std::vector<std::uint32_t> out;
     std::uint32_t t = 0;
     if (list.engine == SoundEngine::C) {
@@ -104,7 +104,7 @@ std::vector<std::uint32_t> clickTimes(const SoundList& list) {
     } else {
         for (std::uint32_t k = 0; 2 * k + 1 < list.bytes.size(); ++k) {
             const std::uint32_t p = list.bytes[2 * k], n = list.bytes[2 * k + 1];
-            if (k != 0) t += 31 * p + 30'624;
+            if (k != 0) t += 31 * p + 30'624 + static_cast<std::uint32_t>(pollExtra);
             for (std::uint32_t i = 0; i < n; ++i) {
                 if (i != 0) t += 31 * p + 11;
                 out.push_back(t);

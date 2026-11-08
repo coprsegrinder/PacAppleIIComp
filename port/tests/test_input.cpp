@@ -166,15 +166,56 @@ TEST(input_game_port_switches_and_joystick_mode) {
     p.pushKey(0xC1);
     p.poll(s, k, both);
     CHECK(s.requestedDirection() == 2);
-    PortInput joy;                                   // joystick mode: the (not rebuilt) analog result is used instead of the switches
+    PortInput joy;                                   // joystick mode: the original's paddle routines decide ($7041), the switches are not read
     joy.joystickMode = true;
     joy.switches = 1;
-    joy.joystickDirection = static_cast<std::uint8_t>(3);
+    joy.paddleX = 0;                                 // paddle 0 at the left end: left
     p.poll(s, k, joy);
     CHECK(s.requestedDirection() == 3);
-    joy.joystickDirection.reset();
+    joy.paddleX = 127;                               // the middle: $7041 still writes $63, with $80 (no direction)
     s.requestedDirection() = 9;
-    CHECK(!p.poll(s, k, joy).directionSet);
+    CHECK(p.poll(s, k, joy).directionSet && s.requestedDirection() == 0x80);
+}
+
+#include "paddle_vectors.inc"
+
+TEST(joystick_paddle_routines_equal_the_original_run_on_the_oracle) {
+    // $701E alone: the counts and the cycles for every paddle position (both paddles at the same position)
+    for (int v = 0; v < 256; ++v) {
+        const PaddleCount c = paddleRoutine701E(v, v);
+        CHECK_MSG(c.x == kCount[v][0] && c.y == kCount[v][1] && c.cycles + 6 == kCount[v][2], "position " + std::to_string(v));
+    }
+    // $7041 and the whole poll: direction, carry, counts, cycles and the cost against the keyboard poll, over a grid of positions, all four current directions, game and demo
+    std::size_t n = 0, bad = 0;
+    for (const auto& d : kDecision) {
+        const JoystickResult j = joystickRoutine7041(d[3] != 0, static_cast<std::uint8_t>(d[2]), d[0], d[1]);
+        const int extra = j.cycles + 17 - (d[3] != 0 ? 38 : 98);
+        const bool same = (j.carry ? 1 : 0) == d[4] && j.a == d[5] && j.x == d[6] && j.y == d[7] && j.cycles == d[8] && extra == d[9];
+        ++n;
+        if (!same) {
+            ++bad;
+            if (bad <= 5) std::printf("    differs: paddles %d %d, $62=%d, $E8=%d: carry %d A %02X X %d Y %d cycles %d extra %d (oracle %d %02X %d %d %d %d)\n", d[0], d[1], d[2], d[3], j.carry, j.a, j.x, j.y, j.cycles, extra, d[4], d[5], d[6], d[7], d[8], d[9]);
+        }
+    }
+    std::printf("    %zu decisions compared with the original's routines run on the oracle, %zu differ\n", n, bad);
+    CHECK(n > 6000 && bad == 0);
+    // the poll writes $63 from it in joystick mode, in the game and in the demo
+    InputPoller p;
+    GameState g = game();
+    KeyConfig k;
+    PortInput joy;
+    joy.joystickMode = true;
+    joy.paddleX = 255;
+    g.pacDirection() = 0;
+    PollResult r = p.poll(g, k, joy);
+    CHECK(r.directionSet && g.requestedDirection() == 2 && r.extraCycles > 2500 && r.extraCycles < 2800);
+    GameState demo = g;
+    demo.demo = 1;
+    r = p.poll(demo, k, joy);
+    CHECK(demo.requestedDirection() == 0x80 && r.extraCycles < 10);
+    // keyboard mode: no extra cost
+    PortInput kb;
+    CHECK(p.poll(g, k, kb).extraCycles == 0);
 }
 
 TEST(input_against_the_oracle_recordings) {

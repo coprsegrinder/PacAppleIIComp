@@ -94,7 +94,7 @@ public:
     bool gameOverPending() const noexcept { return newGamePending_; }   // the last life is lost: after the sequence the program returns to the attract loop (033-4g)
     void applySequenceStep(const SequenceStep& step);
     void showReady();    // the READY text (and Pac-Man again) on the page, as the original draws it after the rebuild
-    std::int64_t tickCycles() const noexcept { return tickCycles_; }   // modelled cost of the last tick itself (tickCostCycles; kTypicalTickCycles for a special tick)
+    std::int64_t tickCycles() const noexcept { return tickCycles_ + inputCycles_; }   // modelled cost of the last tick itself (tickCostCycles; kTypicalTickCycles for a special tick)
     std::int64_t extraCycles() const noexcept { return extraCycles_; }   // cycles of the long sequence of the last tick (0 for an ordinary tick)
 
 private:
@@ -113,6 +113,7 @@ private:
     bool staticGhosts_ = false;
     std::int64_t extraCycles_ = 0;
     std::int64_t tickCycles_ = kTypicalTickCycles;
+    std::int64_t inputCycles_ = 0;   // joystick mode: the paddle timing of the tick's input poll (TickEvents::inputCycles)
     bool playDeath_ = false;
     std::vector<SequenceStep> sequence_;
     bool newGamePending_ = false;   // after GAME OVER the next tick starts a new game

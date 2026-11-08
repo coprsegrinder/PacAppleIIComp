@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2026-11-08
+* TASK-034-PADDLE: the original's paddle / joystick routines ($701E, $7041) ported and used for every controller (Xbox, DualShock 4, DualSense) when the first menu chose it; equal to the oracle (6,120 decisions, an 8,165-tick game and a 4,000-tick demo in joystick mode). dotnet-coverage added for C++ line coverage.
 * TASK-034-VIBRATION: vibration (Off / Low / Medium / High) for Xbox, DualShock 4 and DualSense on game events; HDR and VSync scrapped (docs/MODERNIZATION.md).
 
 ## 2026-10-29

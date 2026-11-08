@@ -38,6 +38,7 @@ public:
 
 struct TickEvents {
     bool paused = false;          // Esc: nothing happened
+    int inputCycles = 0;          // joystick mode: the cycles the paddle timing of the input poll adds to the tick (input.h); 0 in keyboard mode
     bool acted = false;           // Pac-Man's step timer ran out
     bool ate = false, energizer = false;
     bool levelComplete = false;   // the last item was eaten: the tick ends here, the next level's set-up is not done by this class
@@ -61,6 +62,9 @@ public:
     InputPoller& input() noexcept { return poller_; }
     KeyConfig& keys() noexcept { return keys_; }
     PortInput& port() noexcept { return port_; }
+    // joystick mode: the cycles each key poll of the intro jingle ($7D26, after each of its 29 notes) takes longer than the keyboard poll; 0 in keyboard mode
+    int jinglePollExtra() const noexcept;
+    int lifeStartCycles() const noexcept { return lifeStartCycles_; }   // joystick mode: the cycles the paddle timing of the last life start's poll added ($5442)
     int player() const noexcept { return player_; }
     int players() const noexcept { return players_; }
     // The memory the attract game starts from after this game (the last player's bytes, every player's save, the number of players); `before` supplies what this game did not touch.
@@ -104,6 +108,8 @@ private:
     InputPoller poller_;
     KeyConfig keys_;
     PortInput port_;
+    int lifeStartCycles_ = 0;
+    void lifeStartPoll(bool demo);   // $5442: the end of $53E6 polls the input once (in joystick mode that is the paddle timing, and it writes $63)
     JunctionGraph graph_;
     StepTables steps_;
     StartTables start_;

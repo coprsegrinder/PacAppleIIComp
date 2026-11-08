@@ -254,10 +254,10 @@ struct SoundPlayer {
     app::AudioOutput audio;
     std::array<core::Pcm, static_cast<std::size_t>(core::SoundId::Count)> pcm;
     core::Pcm gapBetweenDeathSteps;   // 137,052 cycles of silence: measured between the six death steps (entry to entry minus the freeze of the earlier step)
+    core::SoundData data;
     bool ready = false;
 
     void init(const datapack::Pack& pack) {
-        core::SoundData data;
         if (!data.load(pack) || !audio.open(44100)) return;
         for (std::size_t i = 0; i < pcm.size(); ++i) {
             const auto id = static_cast<core::SoundId>(i);
@@ -273,6 +273,15 @@ struct SoundPlayer {
         const bool laterDeathStep = id == core::SoundId::Death5 || id == core::SoundId::Death4 || id == core::SoundId::Death3 || id == core::SoundId::Death2 || id == core::SoundId::Death1;
         if (laterDeathStep) audio.play(gapBetweenDeathSteps);
         audio.play(pcm[static_cast<std::size_t>(id)]);
+    }
+    void playJingle(int pollExtra) {   // joystick mode: each of the 29 polls of the jingle is the paddle timing, so the notes are further apart (sound.h)
+        if (pollExtra == 0) {
+            play(core::SoundId::Jingle);
+            return;
+        }
+        if (!ready) return;
+        const auto clicks = core::clickTimes(data.list(core::SoundId::Jingle), pollExtra);
+        if (!clicks.empty()) audio.play(core::renderSpeaker(clicks, core::soundFreezeCycles(core::SoundId::Jingle, pollExtra), 44100));
     }
     void playNow(core::SoundId id) {   // no gap: the death animation schedules its steps itself
         if (ready && !pcm[static_cast<std::size_t>(id)].samples.empty()) audio.play(pcm[static_cast<std::size_t>(id)]);
@@ -412,8 +421,9 @@ bool runGame(core::GameDriver& drv, const datapack::Pack& pack, app::GameWindow&
     bool seqActive = false;
     window.setPage(drv.page());
     // the intro jingle starts a game (before the first tick, docs/SOUND.md section 6); the game stands still for its 5 s
-    if (drv.core().input().soundOn() && !window.muted()) sounds.play(core::SoundId::Jingle);
-    budget = -(core::soundFreezeCycles(core::SoundId::Jingle) + core::kReadyPauseCycles);   // the jingle, then the READY wait (033-2)
+    const int jingleExtra = drv.core().jinglePollExtra();   // (0 with the keyboard)
+    if (drv.core().input().soundOn() && !window.muted()) sounds.playJingle(jingleExtra);
+    budget = -(core::soundFreezeCycles(core::SoundId::Jingle, jingleExtra) + core::kReadyPauseCycles);   // the jingle, then the READY wait (033-2)
     while (!quit.load() && window.ok()) {
         const std::int64_t now = core::nowNanoseconds();
         if (seconds > 0 && now - begin > static_cast<std::int64_t>(seconds) * 1'000'000'000) {
@@ -478,9 +488,12 @@ bool runGame(core::GameDriver& drv, const datapack::Pack& pack, app::GameWindow&
         }
         while (const auto key = window.popKey()) drv.core().input().pushKey(*key);
         if (const app::GamepadHub* pad = window.gamepad()) {   // a controller gives its direction to the original's own input poll: as the joystick when the first menu chose it, else as the four switches of the game port
-            const auto dir = app::padDirection(pad->state());
+            const app::PadState padState = pad->state();
+            const auto dir = app::padDirection(padState);
             core::PortInput& port = drv.core().port();
-            port.joystickDirection = dir;
+            const app::PaddlePosition paddles = app::padPaddles(padState);   // joystick mode: the original's own paddle routines ($701E, $7041) read these positions
+            port.paddleX = paddles.x;
+            port.paddleY = paddles.y;
             static constexpr std::uint8_t mask[4] = {1, 2, 4, 8};   // by direction code 0 down, 1 up, 2 right, 3 left: the switches of the table at $700E
             port.switches = dir ? mask[*dir] : 0;
         }

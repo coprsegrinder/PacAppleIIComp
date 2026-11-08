@@ -20,7 +20,7 @@ Status words: EXACT = the port's output equals the oracle's (bytes and/or cycles
 | 8 | Sprite and text drawing helpers ($61B6, $693A-$6A20, $6AEB, $6AFB) | hires.cpp, tickdraw.cpp, attract.cpp | EXACT | test_hires, test_hires_vectors, test_tickdraw, test_script |
 | 10 | Fruit, eating, delays ($6A7C, $6CB2, $6CE6-$6CF4, $6D27) | eating.cpp, gamecore.cpp, cycleclock.cpp | EXACT | test_eating, test_gamecore; busy-wait delays ($6CE6, $7BAC, $7CF7) are cycle counts in the clock/cost model (not run as loops) |
 | 13 | Ghost timers, modes, house exit ($6D30-$6F2F) | ghostmode.cpp, ghosttick.cpp, ghostjunction.cpp, steptimer.cpp, gamecore.cpp | EXACT | test_ghostmove, test_ghostjunction, test_ghosthead, test_steptimer, test_ghostworld |
-| 9 | Keyboard and digital 4-switch input; sound switch ($6F5E, $6F77, $6FD0); joystick/paddle ($701E, $7041, $7053, $706B) | input.cpp | EXACT; JOYSTICK NOT PORTED | test_input (keyboard + 16 switch masks); the analogue paddle reader ($701E, $7041, range checks $7053/$706B) is NOT rebuilt: input.cpp takes a ready direction (no hardware source on a PC) |
+| 9 | Keyboard and digital 4-switch input; sound switch ($6F5E, $6F77, $6FD0); joystick/paddle ($701E, $7041, $7053, $706B) | input.cpp | EXACT (joystick ported 2026-11-08, TASK-034-PADDLE) | test_input (keyboard + 16 switch masks); the analogue paddle reader ($701E, $7041, range checks $7053/$706B) is NOT rebuilt: input.cpp takes a ready direction (no hardware source on a PC) |
 | 6 | Lives, score, bonus life, HUD text ($7091-$7159) | lives.cpp, eating.cpp, screen.cpp, tickdraw.cpp | EXACT | test_lives, test_eating, test_screen |
 | 10 | Game tick, Pac-Man move, junctions ($75F1, $7819, $7861, $79A4-$7AAC) | gamecore.cpp, pacstep.cpp, junction.cpp, input.cpp | EXACT | test_pacstep, test_junction, test_ghostmove, test_gamecore (recorded runs equal tick for tick) |
 | 17 | Sound lists and speaker engines ($7BAC-$7D9A) | sound.cpp, squarewave.cpp | EXACT click lists; PACING MODELLED | test_sound: every list equal the oracle clicks; the busy-loop engines ($7BAC, $7CF7) become click times |
@@ -51,9 +51,9 @@ Status words: EXACT = the port's output equals the oracle's (bytes and/or cycles
 | $6D27 | 9 | limit the level to 21 (`$15`) for table look-ups | ghostmode.cpp / gamecore.cpp level clamp | EXACT (V: levels 22-40 run on the oracle, TASK-021) |
 | $6F72 | 5 | keyboard poll: keep key unless carry | input.cpp | EXACT (V: test_input) |
 | $6FCE | 2 | `SEC / RTS` (no digital input) | input.cpp | EXACT (V: test_input) |
-| $701E | 35 | analogue paddle reader (counts `$C064/$C065` while high) | NONE (input.cpp takes a ready joystick direction) | NOT PORTED |
-| $7053 | 19 | paddle X range check | NONE | NOT PORTED |
-| $706B | 19 | paddle Y range check | NONE | NOT PORTED |
+| $701E | 35 | analogue paddle reader (counts `$C064/$C065` while high) | input.cpp paddleRoutine701E | EXACT (V: 256 positions equal the oracle, counts and cycles) |
+| $7053 | 19 | paddle X range check | input.cpp joystickRoutine7041 | EXACT (V: 6,120 decisions equal the oracle) |
+| $706B | 19 | paddle Y range check | input.cpp joystickRoutine7041 | EXACT (V: same vectors) |
 | $70D8 | 29 | draws the HUD label and score of the current player | screen.cpp | EXACT (V: test_players) |
 | $780A | 8 | maps `$03` through the 4-entry table at `$7812` (I: direction mapping) | pacstep.cpp direction map | EXACT (V: test_pacstep) |
 | $7BAC | 16 | speaker busy-loop engine A: 4 loops with `BIT $C030` | sound.cpp (click times) | MODELLED pacing |
@@ -81,7 +81,8 @@ Status words: EXACT = the port's output equals the oracle's (bytes and/or cycles
 | $8CA6 | 14 | the patched `JSR $0666` = ghost decision dispatch; writes the move into the queue | ghostdecide_gen.cpp + ghostjunction.cpp | EXACT (V: test_ghostdecide) |
 
 ## 4. Result
-* **NOT PORTED (V by this audit): the analogue paddle/joystick path `$701E`, `$7041`, `$7053`, `$706B` (about 150 bytes).** Everything else of the 10,456 code bytes has a counterpart in the port.
+* **Update 2026-11-08 (TASK-034-PADDLE): the analogue paddle/joystick path `$701E`, `$7041`, `$7053`, `$706B` (about 150 bytes) is now ported** and equals the oracle (docs/CONTROLS.md, section Joystick mode). Every one of the 10,456 code bytes now has a counterpart in the port.
+* (Before: NOT PORTED (V by this audit): the analogue paddle/joystick path.)
 * **MODELLED, not instruction-exact:** the cost of the demo and game ticks (a fitted model; typical error 111 cycles per tick, +1,042 cycles over the 39.2 M of a demo turn), the death animation frames (page-crossing residue 0-66 cycles per frame), the busy-wait loops of the sound engines and delays (counted, not run), the idle-tick cost of a real game (2,987, assumed).
 * **Not routines at all:** the disk loader and boot sectors (BOOT_TRACKS.md) are replaced by the data pack; the Apple II monitor ROM runs for real (monitor.cpp / cpu6502.cpp).
 * The 70 never-executed bytes (UNEXECUTED_CODE.md) are 16 runs; 6 are proven dead by the code itself, the rest are corner paths (page-cross carries in screen addresses, one Space-in-delay path, a one-digit rank answer).

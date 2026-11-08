@@ -212,3 +212,15 @@ TEST(speaker_passes_a_long_tone_nearly_unchanged) {
     std::printf("    1 kHz tone: speaker/raw level %.2f\n", r);
     CHECK(r > 0.6 && r < 1.2);
 }
+
+TEST(joystick_mode_lengthens_the_gap_after_each_note_of_the_jingle_by_the_paddle_timing) {
+    core::SoundList l;
+    l.engine = core::SoundEngine::B;
+    l.bytes = {10, 2, 20, 3, 5, 1};   // three notes
+    const auto kb = core::clickTimes(l), joy = core::clickTimes(l, 2650);
+    CHECK(kb.size() == 6 && joy.size() == 6);
+    CHECK(joy[0] == kb[0] && joy[1] == kb[1]);                       // the first note is not delayed
+    CHECK(joy[2] == kb[2] + 2650 && joy[4] == kb[4] + 2650 && joy[5] == kb[5] + 2 * 2650);   // each later note by one more poll
+    CHECK(core::soundFreezeCycles(core::SoundId::Jingle, 2650) == core::soundFreezeCycles(core::SoundId::Jingle) + 29 * 2650);
+    CHECK(core::soundFreezeCycles(core::SoundId::GhostEaten, 2650) == core::soundFreezeCycles(core::SoundId::GhostEaten));   // the other sounds have no poll
+}

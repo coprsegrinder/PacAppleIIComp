@@ -98,6 +98,14 @@ bool parseDualSense(const std::uint8_t* d, std::size_t n, bool bluetooth, PadSta
     return true;
 }
 
+PaddlePosition padPaddles(const PadState& s) noexcept {
+    const auto axis = [](bool low, bool high, int stick) -> std::uint8_t {
+        if (low != high) return low ? 0 : 255;
+        return static_cast<std::uint8_t>(std::clamp(127 + stick, 0, 255));
+    };
+    return PaddlePosition{axis(s.dpadLeft, s.dpadRight, s.stickX), axis(s.dpadUp, s.dpadDown, s.stickY)};
+}
+
 bool parseXInput(std::uint16_t buttons, std::int16_t lx, std::int16_t ly, PadState& out) noexcept {
     out = PadState{};
     out.kind = PadKind::XInput;

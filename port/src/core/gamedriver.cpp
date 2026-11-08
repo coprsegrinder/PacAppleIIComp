@@ -15,6 +15,7 @@ bool GameDriver::newGame(int players, int rank) {
     newGamePending_ = false;   // (a finished game left this set: its first tick would have started another new game, and played its old GAME OVER sequence again)
     sequence_.clear();
     extraCycles_ = 0;
+    inputCycles_ = 0;
     tickCycles_ = kTypicalTickCycles;
     const auto high = display_.high;   // the high score survives into the next game
     display_ = DisplayState{};
@@ -167,12 +168,14 @@ TickEvents GameDriver::tickImpl(FrightenAware* fed) {
         interpOk_ = false;
         newGame();
         extraCycles_ = 0;
+        inputCycles_ = 0;
         tickCycles_ = kTypicalTickCycles;
         return TickEvents{};
     }
     const GameState before = core_.state();
     const bool acting = before.zp(0x59) == 1;
     TickEvents ev = fed != nullptr ? core_.tick(*fed) : core_.tick();
+    inputCycles_ = ev.inputCycles;
     extraCycles_ = 0;
     tickCycles_ = kTypicalTickCycles;
     lastCalls_.clear();

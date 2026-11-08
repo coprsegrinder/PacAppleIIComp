@@ -103,6 +103,8 @@ TEST(gamecore_against_the_oracle_recordings) {
     std::map<std::size_t, std::string> firstFile;
     std::size_t ticksRun = 0, resyncs = 0, wrongEvents = 0, caughtChecked = 0, badRestart = 0, levelChangesChecked = 0, badLevelChange = 0;
     std::vector<std::string> files = split(testfw::config().ticks);
+    if (!testfw::config().joyTicks.empty()) files.push_back(testfw::config().joyTicks);   // a game in joystick mode: the original's paddle routines steer
+    if (!testfw::config().joyDemo.empty()) files.push_back(testfw::config().joyDemo);   // the attract game in joystick mode
     if (!testfw::config().demo.empty()) files.push_back(testfw::config().demo);   // the attract demo: Pac-Man steered by the original's own move stream
     for (const auto& path : files) {
         std::string why;
@@ -112,12 +114,18 @@ TEST(gamecore_against_the_oracle_recordings) {
         GameCore core;
         CHECK(core.init(loaded.pack));
         core.state() = fromOracleLayout(tr.state(0));
+        const std::vector<std::uint8_t> pad = readAll(path + ".pad");   // a game played in joystick mode (tools/record_joystick_ticks.py): the paddle positions of every tick
+        if (!pad.empty()) core.port().joystickMode = true;
         std::multimap<std::uint32_t, std::uint32_t> keysAt;
         for (const auto& in : tr.inputs()) keysAt.emplace(in.tick, in.key);
         std::multimap<std::uint32_t, TickPoke> pokesAt;
         for (const auto& p : tr.pokes()) pokesAt.emplace(p.tick, p);
         FedGhosts feed;
         for (std::size_t k = 0; k + 1 < tr.ticks(); ++k) {
+            if (!pad.empty() && 2 * k + 1 < pad.size()) {
+                core.port().paddleX = pad[2 * k];
+                core.port().paddleY = pad[2 * k + 1];
+            }
             const auto kr = keysAt.equal_range(static_cast<std::uint32_t>(k));
             for (auto it = kr.first; it != kr.second; ++it) core.input().pushKey(static_cast<std::uint8_t>(it->second));
             GameState& s = core.state();
@@ -145,9 +153,15 @@ TEST(gamecore_against_the_oracle_recordings) {
             if (ev.caught && !ev.gameOver && !pokedLevel) {   // the restarted life must equal the oracle's state (except the working-slot flags $78 $79)
                 const auto m2 = toOracleLayout(core.state()), o2 = toOracleLayout(b);
                 std::size_t d = 0;
-                for (std::size_t i = 0; i < m2.size(); ++i) d += i != 30 && i != 31 && m2[i] != o2[i];
+                std::string which;
+                for (std::size_t i = 0; i < m2.size(); ++i) {
+                    if (i != 30 && i != 31 && m2[i] != o2[i]) {
+                        ++d;
+                        which += " " + offsetName(i) + " mine " + std::to_string(m2[i]) + " oracle " + std::to_string(o2[i]);
+                    }
+                }
                 ++caughtChecked;
-                if (d != 0) { ++badRestart; if (badRestart <= 3) std::printf("    %s tick %zu: restarted life differs in %zu bytes\n", path.c_str(), k, d); }
+                if (d != 0) { ++badRestart; if (badRestart <= 3) std::printf("    %s tick %zu: restarted life differs in %zu bytes:%s\n", path.c_str(), k, d, which.c_str()); }
             }
             if (ev.levelComplete && !pokedLevel) {   // TASK-031-3: the level change must equal the oracle's first state of the new level
                 core.startNextLevel();

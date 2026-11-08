@@ -333,3 +333,23 @@ TEST(vibration_crc32_and_the_output_reports_of_the_sony_pads) {
     r = app::buildDualShock4Rumble(32, false, 0, 0);
     CHECK(r[4] == 0 && r[5] == 0);
 }
+
+TEST(the_stick_is_given_to_the_original_paddle_routines_as_two_paddle_positions) {
+    PadState s;
+    auto p = app::padPaddles(s);
+    CHECK(p.x == 127 && p.y == 127);                                   // nothing pushed: the middle
+    s.dpadLeft = true;
+    CHECK(app::padPaddles(s).x == 0 && app::padPaddles(s).y == 127);   // the D-pad pushes its axis to the end
+    s.dpadLeft = false;
+    s.dpadRight = true;
+    s.dpadUp = true;
+    CHECK(app::padPaddles(s).x == 255 && app::padPaddles(s).y == 0);
+    s = PadState{};
+    s.stickX = 127;
+    s.stickY = -127;
+    CHECK(app::padPaddles(s).x == 254 && app::padPaddles(s).y == 0);   // the stick is used as it is (right and up)
+    s.stickX = 20;
+    CHECK(app::padPaddles(s).x == 147);
+    s.dpadLeft = s.dpadRight = true;                                   // both ends of one axis cancel: the stick decides
+    CHECK(app::padPaddles(s).x == 147);
+}

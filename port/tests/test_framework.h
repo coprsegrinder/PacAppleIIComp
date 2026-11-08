@@ -29,6 +29,8 @@ struct Config {
     std::string pages;  // --pages <pages_A.bin>: oracle hi-res pages every 10th tick (tools/record_tick_calls.py, local only)
     std::string tickcalls;  // --tickcalls <tick_calls_A.txt>: per-tick drawing calls of the oracle (tools/record_tick_calls.py, local only)
     std::string page0;  // --page0 <page_tick0.bin>: the oracle hi-res page at the first tick of a game (tools/record_page0.py, local only)
+    std::string joyTicks;   // --joyticks <ticks_JOY.bin>: a game played in joystick mode with its paddle positions (tools/record_joystick_ticks.py; the .pad file sits next to it); only the game-core test reads it
+    std::string joyDemo;    // --joydemo <scratch/joydemo/ticks_DEMO.bin>: the attract demo played in joystick mode (tools/record_joystick_demo.py)
     std::string demo;   // --demo <ticks_DEMO.bin>: attract-demo recording (tools/record_special.py demo; demo_stream.bin must lie next to it)
     std::string titleEvents;  // --titleevents <title_events.bin>: the oracle's routine entries of one attract title turn (tools/export_title_events.py, local only)
     std::string chaseEvents;  // --chaseevents <chase_events.bin>: the same for the chase that follows the title (tools/export_title_events.py chase)

@@ -39,7 +39,23 @@ bool GameCore::newGame(int players, int rank) {
         stores_[static_cast<std::size_t>(p)].save = savePlayer(state_);
         stores_[static_cast<std::size_t>(p)].map = state_.map;
     }
+    lifeStartPoll(false);
     return true;
+}
+
+int GameCore::jinglePollExtra() const noexcept {
+    if (!port_.joystickMode) return 0;
+    return joystickRoutine7041(false, state_.pacDirection(), port_.paddleX, port_.paddleY).cycles + 17 - 98;
+}
+
+void GameCore::lifeStartPoll(bool demo) {
+    lifeStartCycles_ = 0;
+    if (!port_.joystickMode) return;   // (keyboard mode: the poll finds no key at this moment; the keys wait for the next tick's poll)
+    const std::uint8_t saved = state_.demo;
+    state_.demo = demo ? 1 : 0;
+    const PollResult pr = poller_.poll(state_, keys_, port_);
+    state_.demo = saved;
+    lifeStartCycles_ = pr.extraCycles;
 }
 
 bool GameCore::newDemo(const AttractMemory* memory) {
@@ -51,6 +67,7 @@ bool GameCore::newDemo(const AttractMemory* memory) {
         timer_.setF3(memory->f3);
     }
     state_.demo = 1;
+    lifeStartPoll(true);
     state_.zp(0x58) = 0;
     state_.mode79 = 0;
     e5_ = memory != nullptr ? memory->e5 : 0;   // $E5 = 0 at the first tick of the first demo (recorded: tools/record_demo_full.py); later ones start with what the last one left
@@ -155,6 +172,7 @@ void GameCore::startNextLevel() {
     ghostShared_.ea = 0xA0;
     ghostShared_.eb = 0;
     ghostShared_.e4 = 0;
+    lifeStartPoll(false);
 }
 
 bool GameCore::contactTest(int g, TickEvents& ev) {
@@ -220,6 +238,7 @@ bool GameCore::contactTest(int g, TickEvents& ev) {
         ghostShared_.ea = 0xA0;
         ghostShared_.eb = 0;
         ghostShared_.e4 = 0;
+        lifeStartPoll(false);
     }
     return true;
 }
@@ -232,7 +251,7 @@ TickEvents GameCore::tickImpl(GhostSource* fed) {
     TickEvents ev;
     GameState& s = state_;
     // ---- $7861: Pac-Man ----
-    if (s.demo == 0) {
+    if (s.demo == 0 && !port_.joystickMode) {   // keyboard mode: $7865 polls at the start of every tick (joystick mode polls below, when the step timer runs out: $7871)
         const PollResult pr = poller_.poll(s, keys_, port_);
         if (pr.paused) {
             ev.paused = true;
@@ -240,6 +259,19 @@ TickEvents GameCore::tickImpl(GhostSource* fed) {
         }
     }
     ev.acted = timer_.tick(s, steps_);
+    if (ev.acted && s.demo != 0 && port_.joystickMode) {   // the same poll in the attract game: $7041 finds $E8 <> 0 and answers $80, which is written into $63 (the demo's own moves come from its stream)
+        const JoystickResult j = joystickRoutine7041(true, s.pacDirection(), port_.paddleX, port_.paddleY);
+        s.requestedDirection() = j.a;
+        ev.inputCycles = j.cycles + 17 - 38;
+    }
+    if (ev.acted && s.demo == 0 && port_.joystickMode) {   // $786D: LDA $F5; BEQ; JSR $6F5E - the paddle routines cost about 2,700 cycles, once per step of Pac-Man
+        const PollResult pr = poller_.poll(s, keys_, port_);
+        ev.inputCycles = pr.extraCycles;
+        if (pr.paused) {
+            ev.paused = true;
+            return ev;
+        }
+    }
     if (ev.acted) {
         if (fed == nullptr) modeTimerStep(s, ghostShared_, queues_);   // $7874: JSR $808C
         const auto outcome = junctionStep(s, graph_, StreamByteSource([&] {
