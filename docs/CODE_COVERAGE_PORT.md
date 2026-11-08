@@ -2,9 +2,9 @@
 
 Made by `tools/coverage_cpp.sh` (runs the whole test suite with every optional recording under `tools/linecov`, a small debugger-based runner) and `tools/coverage_report.py`. Microsoft dotnet-coverage was tried first and cannot measure a native program (its native instrumentation is a Visual Studio component). A **line with code** is a line that the PDB lists; it is **covered** when any instruction of it ran during the test run. Line coverage says a line ran, not that its result was checked: the equality tests against the oracle are what check results.
 
-**Total: 10312 of 10938 lines with code ran (94.3 %).**
+**Total: 10388 of 10938 lines with code ran (95.0 %).**
 
-## Game logic (src/core): 6402 of 6571 lines (97.4 %)
+## Game logic (src/core): 6478 of 6571 lines (98.6 %)
 
 | File | Lines | Ran | % |
 |---|---|---|---|
@@ -17,13 +17,13 @@ Made by `tools/coverage_cpp.sh` (runs the whole test suite with every optional r
 | `core/attractflow.h` | 32 | 32 | 100.0 |
 | `core/cartoon.cpp` | 198 | 196 | 99.0 |
 | `core/cartoon.h` | 1 | 1 | 100.0 |
-| `core/cpu6502.cpp` | 223 | 151 | 67.7 |
+| `core/cpu6502.cpp` | 223 | 219 | 98.2 |
 | `core/cpu6502.h` | 13 | 13 | 100.0 |
 | `core/cycleclock.cpp` | 51 | 51 | 100.0 |
 | `core/cycleclock.h` | 12 | 12 | 100.0 |
 | `core/deathtiming.cpp` | 20 | 20 | 100.0 |
 | `core/eating.cpp` | 43 | 43 | 100.0 |
-| `core/gamecore.cpp` | 272 | 264 | 97.1 |
+| `core/gamecore.cpp` | 272 | 272 | 100.0 |
 | `core/gamecore.h` | 20 | 20 | 100.0 |
 | `core/gamedriver.cpp` | 227 | 219 | 96.5 |
 | `core/gamedriver.h` | 23 | 22 | 95.7 |
@@ -139,8 +139,7 @@ Made by `tools/coverage_cpp.sh` (runs the whole test suite with every optional r
 * `core/attract.cpp` (40 of 1926 lines not run): 425-426, 442, 641-656, 665-667, 1053, 1097, 1215, 1260-1263, 1324-1325, 1329-1330, 1339, 2041-2043, 2130-2133
 * `core/attractflow.cpp` (8 of 516 lines not run): 64-68, 396-397, 614
 * `core/cartoon.cpp` (2 of 198 lines not run): 221-222
-* `core/cpu6502.cpp` (72 of 223 lines not run): 21-26, 41-50, 58-73, 86-87, 103-104, 122-128, 133-143, 152-169, 180-181, 203-204, 219-221, 256, 260-262, 278
-* `core/gamecore.cpp` (8 of 272 lines not run): 46-49, 257-258, 271-272
+* `core/cpu6502.cpp` (4 of 223 lines not run): 21, 26, 169, 278
 * `core/gamedriver.cpp` (8 of 227 lines not run): 40-47
 * `core/gamedriver.h` (1 of 23 lines not run): 18
 * `core/ghostdecide_gen.cpp` (8 of 1211 lines not run): 824, 859, 1135-1138, 1219-1221
