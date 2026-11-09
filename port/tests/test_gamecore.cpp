@@ -107,6 +107,7 @@ TEST(gamecore_against_the_oracle_recordings) {
     if (!testfw::config().joyTicks.empty()) files.push_back(testfw::config().joyTicks);   // a game in joystick mode: the original's paddle routines steer
     if (!testfw::config().joyDemo.empty()) files.push_back(testfw::config().joyDemo);   // the attract game in joystick mode
     if (!testfw::config().demo.empty()) files.push_back(testfw::config().demo);   // the attract demo: Pac-Man steered by the original's own move stream
+    std::size_t nearTotal = 0, nearFiles = 0;
     for (const auto& path : files) {
         std::string why;
         const auto tr = TickTrace::load(path, why);
@@ -136,7 +137,12 @@ TEST(gamecore_against_the_oracle_recordings) {
                 if (a >= 0x52 && a <= 0x6F) s.zp(static_cast<std::uint16_t>(a)) = static_cast<std::uint8_t>(it->second.value);
                 if (a >= 0x623A && a <= 0x65B9) s.map[a - 0x623A] = static_cast<std::uint8_t>(it->second.value);
             }
-            const GameState a = fromOracleLayout(tr.state(k));
+            GameState a = fromOracleLayout(tr.state(k));
+            for (auto it = pr.first; it != pr.second; ++it) {   // a poke that puts a ghost somewhere (tools/record_nearghost.py) moves it BEFORE the tick: it is not a step of the ghost
+                const auto addr = it->second.address;
+                if (addr >= 0x84 && addr < 0x84 + 80) a.ghosts[(addr - 0x84) / 20].b[(addr - 0x84) % 20] = static_cast<std::uint8_t>(it->second.value);
+            }
+            core.state().ghosts = a.ghosts;
             const GameState b = fromOracleLayout(tr.state(k + 1));
             feed.next = &b;
             feed.before = &a;
@@ -206,6 +212,14 @@ TEST(gamecore_against_the_oracle_recordings) {
                 core.state().ghosts = b.ghosts;
             }
         }
+        if (path.find("ticks_Y") != std::string::npos) {   // the recordings with a ghost put near Pac-Man (tools/record_nearghost.py)
+            nearTotal += core.nearGhostDelayCount();
+            ++nearFiles;
+        }
+    }
+    if (nearFiles != 0) {
+        std::printf("    near-ghost delay: added a tick %zu times in %zu recordings, and Pac-Man's step countdown equals the oracle's in every tick\n", nearTotal, nearFiles);
+        CHECK(nearTotal >= 10 * nearFiles);
     }
     std::printf("    %zu ticks run, %zu resynchronised after a catch / level end\n", ticksRun, resyncs);
     for (const auto& [off, d] : diffs) std::printf("    %-12s differs in %zu ticks (first: tick %zu of %s)\n", offsetName(off).c_str(), d.first, d.second, firstFile[off].c_str());

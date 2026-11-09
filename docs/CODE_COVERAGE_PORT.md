@@ -2,9 +2,9 @@
 
 Made by `tools/coverage_cpp.sh` (runs the whole test suite with every optional recording under `tools/linecov`, a small debugger-based runner) and `tools/coverage_report.py`. Microsoft dotnet-coverage was tried first and cannot measure a native program (its native instrumentation is a Visual Studio component). A **line with code** is a line that the PDB lists; it is **covered** when any instruction of it ran during the test run. Line coverage says a line ran, not that its result was checked: the equality tests against the oracle are what check results.
 
-**Total: 10394 of 10938 lines with code ran (95.0 %).**
+**Total: 10396 of 10940 lines with code ran (95.0 %).**
 
-## Game logic (src/core): 6484 of 6571 lines (98.7 %)
+## Game logic (src/core): 6486 of 6573 lines (98.7 %)
 
 | File | Lines | Ran | % |
 |---|---|---|---|
@@ -23,8 +23,8 @@ Made by `tools/coverage_cpp.sh` (runs the whole test suite with every optional r
 | `core/cycleclock.h` | 12 | 12 | 100.0 |
 | `core/deathtiming.cpp` | 20 | 20 | 100.0 |
 | `core/eating.cpp` | 43 | 43 | 100.0 |
-| `core/gamecore.cpp` | 272 | 272 | 100.0 |
-| `core/gamecore.h` | 20 | 20 | 100.0 |
+| `core/gamecore.cpp` | 273 | 273 | 100.0 |
+| `core/gamecore.h` | 21 | 21 | 100.0 |
 | `core/gamedriver.cpp` | 227 | 219 | 96.5 |
 | `core/gamedriver.h` | 23 | 22 | 95.7 |
 | `core/gamestate.cpp` | 27 | 27 | 100.0 |

@@ -64,6 +64,7 @@ public:
     PortInput& port() noexcept { return port_; }
     // joystick mode: the cycles each key poll of the intro jingle ($7D26, after each of its 29 notes) takes longer than the keyboard poll; 0 in keyboard mode
     int jinglePollExtra() const noexcept;
+    std::uint32_t nearGhostDelayCount() const noexcept { return nearDelays_; }   // how often the near-ghost delay of the contact test ($8B4A-$8B65) added a tick since the object was made
     int lifeStartCycles() const noexcept { return lifeStartCycles_; }   // joystick mode: the cycles the paddle timing of the last life start's poll added ($5442)
     int player() const noexcept { return player_; }
     int players() const noexcept { return players_; }
@@ -109,6 +110,7 @@ private:
     KeyConfig keys_;
     PortInput port_;
     int lifeStartCycles_ = 0;
+    std::uint32_t nearDelays_ = 0;
     void lifeStartPoll(bool demo);   // $5442: the end of $53E6 polls the input once (in joystick mode that is the paddle timing, and it writes $63)
     JunctionGraph graph_;
     StepTables steps_;

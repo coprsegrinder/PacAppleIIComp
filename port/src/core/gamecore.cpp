@@ -181,6 +181,7 @@ bool GameCore::contactTest(int g, TickEvents& ev) {
     if (gh.b[9] != 0 || gh.b[17] != 0) return false;     // eyes and ghosts still in the house (in-house flag $81 = byte 17): no contact
     const Contact c = ghostContact(s, gh);
     if (c == Contact::None) return false;
+    if (StepTimer::nearGhostDelays(s, gh)) ++nearDelays_;   // (counted for the tests)
     StepTimer::applyNearGhostDelay(s, gh);                // $8B4A-$8B65 (level 5 and up)
     if (c != Contact::Touch) return false;
     if (gh.b[8] != 0) {                                   // frightened: eaten
