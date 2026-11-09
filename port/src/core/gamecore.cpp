@@ -308,6 +308,45 @@ void contactCost(const GameState& s, const GhostRecord& g) {
 
 }  // namespace
 
+// $7DB8-$7DDB: the choice of the score image by the step $68 (2: 15 cycles, 4: 19, 8: 20, 16: 22); the constant is the cost of the step 2
+static int ghostEatenHeaderExtra(unsigned step) {
+    return step == 0x02 ? 0 : step == 0x04 ? 4 : step == 0x08 ? 5 : 7;
+}
+
+// $7DF6-$7E08: six passes of $805D (the middle of them the sound, $7BE6). Per pass and per ghost 4..1 the pass copies the ghost to the work area, looks at its eyes flag $79 and, for
+// an eyes ghost, runs the ghost step $8763 twice with the countdown $80 set to 1 (LDA #1, STA $80, JSR $8763: 11 cycles each); the step is the main loop's (head, junction, move, contact test).
+// The constant of the freeze counts the passes of no eyes ghost (LDA $79, BEQ taken: 6); an eyes ghost's 27 are 21 more.
+void GameCore::freezeWalk(int eaten, TickEvents& ev) {
+    GameState& s = state_;
+    freeze_.eaten = eaten;
+    freeze_.atStart = s;
+    for (int pass = 0; pass < 6; ++pass) {
+        for (int n = 4; n >= 1; --n) {
+            GhostRecord& gh = s.ghosts[static_cast<std::size_t>(n - 1)];
+            if (gh.b[9] == 0) continue;
+            cy(21);
+            for (int k = 0; k < 2; ++k) {
+                FreezeStep step;
+                step.ghost = n - 1;
+                step.before = s;
+                s.ghosts[static_cast<std::size_t>(n - 1)].b[16] = 1;   // LDA #1, STA $80
+                const HeadResult h = ghostHead(s, n, ghostShared_, ghostTables_);
+                if (h.acted) {
+                    ghostJunction(s, n, queues_, graph_, ghostData_, ghostTables_);
+                    ghostMove(s, n, queues_, ghostData_, &ghostShared_);
+                    contactTest(n - 1, ev);
+                }
+                cy(13);   // the call's own DEC / BNE / RTS beyond what the head replaced (as ghostCall_)
+                step.after = s;
+                step.e1 = ghostShared_.e1;
+                step.e2 = ghostShared_.e2;
+                freeze_.steps.push_back(std::move(step));
+            }
+        }
+    }
+    freeze_.atEnd = s;
+}
+
 bool GameCore::contactTest(int g, TickEvents& ev) {
     GameState& s = state_;
     GhostRecord& gh = s.ghosts[static_cast<std::size_t>(g)];
@@ -320,12 +359,14 @@ bool GameCore::contactTest(int g, TickEvents& ev) {
     if (c != Contact::Touch) return false;
     if (gh.b[8] != 0) {                                   // frightened: eaten
         const std::uint8_t livesBefore = s.lives() & 0x7F;
+        const unsigned step68 = s.zp(0x68);   // the score step of this ghost (2, 4, 8, 16): the freeze chooses its image by it
+        if (s.demo == 0 && !fedTick_) freezeWalk(g, ev);   // (the freeze runs before $8BA4: the eaten ghost is not eyes yet)
         ghostEaten(s, static_cast<std::size_t>(g), player_);
         if (s.demo == 0) {   // the score (with the bonus-life test) first, then the freeze routine plays the ghost sound ($7DFC)
             if ((s.lives() & 0x7F) > livesBefore) ev.sounds.push_back(SoundId::BonusLife);
             ev.sounds.push_back(SoundId::GhostEaten);
         }
-        if (s.demo == 0) cy(kGhostEatenTickExtraCycles + pacmanDrawPrologueCycles(s.zp(0x66), s.zp(0x62)));   // the part of the freeze that is not the sound, with Pac-Man's draw prologue ($79A4) of the path it takes
+        if (s.demo == 0) cy(kGhostEatenTickExtraCycles + ghostEatenHeaderExtra(step68) + cost79A4(s.zp(0x66)));   // the part of the freeze that is not the sound, with Pac-Man's draw prologue ($79A4) of the path it takes
         ghostEatenTimer(s, ghostShared_, ghostModes_);    // $8BA4-$8BB5
         s.mode78 = 0;
         s.mode79 = 1;
@@ -386,6 +427,8 @@ TickEvents GameCore::tick() { return tickImpl(nullptr); }
 TickEvents GameCore::tickImpl(GhostSource* fed) {
     TickEvents ev;
     meter_.reset();
+    freeze_ = FreezeLog{};
+    fedTick_ = fed != nullptr;
     struct MeterScope {   // the counting is on while this tick runs
         CycleMeter* previous;
         explicit MeterScope(CycleMeter* m) : previous(g_cycleMeter) { g_cycleMeter = m; }
@@ -470,6 +513,10 @@ TickEvents GameCore::tickImpl(GhostSource* fed) {
             }
             ghostJunction(s, n, queues_, graph_, ghostData_, ghostTables_);
             ghostMove(s, n, queues_, ghostData_, &ghostShared_);
+            {   // the draw is the end of the step: the flags and the timer as they stand now (the contact test that follows may eat the ghost, and $8BA4 then adds to the timer)
+                const GhostRecord& gr = s.ghosts[static_cast<std::size_t>(n - 1)];
+                drawInfo_[static_cast<std::size_t>(n - 1)] = GhostDrawInfo{static_cast<std::uint16_t>(ghostShared_.e1 | (ghostShared_.e2 << 8)), gr.b[8], gr.b[9]};
+            }
             const bool over = contactTest(n - 1, ev);
             ghostCall_[static_cast<std::size_t>(n - 1)] = meter_.total() - before + 13;
             if (over) return ev;

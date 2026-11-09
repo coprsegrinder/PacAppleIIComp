@@ -8,6 +8,7 @@
 
 #include <array>
 #include <cstdint>
+#include <vector>
 
 #include "../datapack/datapack.h"
 #include "eating.h"
@@ -21,6 +22,7 @@
 #include "lives.h"
 #include "sound.h"
 #include "steptimer.h"
+#include "tickdraw.h"
 
 namespace pacman::core {
 
@@ -50,6 +52,19 @@ struct TickEvents {
     bool demoOver = false;        // the attract game's Pac-Man was caught: the demo ends (the state is the moment of the catch)
     std::array<bool, 4> ghostEaten{};
     std::vector<SoundId> sounds;  // the sounds the original starts in this tick, in order (none in the demo); each freezes the game for soundFreezeCycles()
+};
+
+// The ghost-eaten freeze ($7DB8) in a game: besides the sound it runs six passes of $805D, each of which gives every ghost that is EYES two more full steps of $8763 (TASK-034-FREEZE).
+// The log keeps what the drawing needs: the state when the freeze begins and ends, and every extra step with the state before and after it and the frightened timer then.
+struct FreezeStep {
+    int ghost = 0;                   // 0-3
+    GameState before, after;
+    std::uint8_t e1 = 0, e2 = 0;     // $E1/$E2 after the step
+};
+struct FreezeLog {
+    int eaten = -1;                  // the ghost (0-3) that was eaten in this tick, -1 if none (or in the attract game)
+    GameState atStart, atEnd;
+    std::vector<FreezeStep> steps;
 };
 
 class GameCore {
@@ -89,6 +104,9 @@ public:
     // ... and one tick with the ghost logic of this class (M5): the mode timer, the energizer's effect, the ghosts' turns, their contact with Pac-Man.
     TickEvents tick();
     GhostShared& ghostShared() noexcept { return ghostShared_; }
+    // What ghost n (1-4) was drawn with in the last tick (the flags and the frightened timer as its own step left them); valid for a ghost that stepped, in the free-running tick only
+    GhostDrawInfo ghostDrawInfo(int n) const noexcept { return drawInfo_[static_cast<std::size_t>(n - 1) & 3]; }
+    const FreezeLog& freezeLog() const noexcept { return freeze_; }   // the freeze of the last tick (steps empty if no eyes ghost walked)
     const GameState& caughtState() const noexcept { return caughtState_; }   // the state at the moment of the last catch (before the new life was set up)
     GhostQueues& ghostQueues() noexcept { return queues_; }
     // The level change (TASK-031-3): level + 1, the pristine maze, the counters of a fresh level, the score and the lives kept, then the start of a life.
@@ -107,6 +125,10 @@ private:
     TickEvents tickImpl(GhostSource* fed);
     bool contactTest(int ghostIndex, TickEvents& ev);   // $8B34 and what follows for one ghost; true if Pac-Man was caught (the tick ends)
     void blinks();
+    void freezeWalk(int eatenIndex, TickEvents& ev);   // $7DF6-$7E08: six passes of $805D
+    FreezeLog freeze_;
+    std::array<GhostDrawInfo, 4> drawInfo_{};
+    bool fedTick_ = false;
     void fruitEatenCheck(TickEvents& ev);
     void fruit();
     const datapack::Pack* pack_ = nullptr;

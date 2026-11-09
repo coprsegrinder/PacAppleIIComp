@@ -33,6 +33,8 @@ EatResult eatAt(GameState& s, const ItemTest& at, StepTimer& timer, const StepTa
     const std::size_t index = static_cast<std::size_t>(at.column) * 32 + at.row;   // $7A6B: $623A + 32 * column + row
     if (index >= s.map.size()) {                                                   // outside the map: the original would read the master copy behind it
         r.outsideMap = true;
+        unsigned outside;
+        cy(6 + costCellAddress(at.column, at.row, outside) + 2 + 5 + 3 + 6);       // the cost of the empty cell ($7A5F-$7A66: JSR $7A6B, LDY #0, LDA ($16),Y, BEQ taken, RTS), the value seen on the oracle (GH1 tick 581: 82)
         return r;
     }
     const std::uint8_t cell = s.map[index];

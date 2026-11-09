@@ -36,13 +36,23 @@ std::uint16_t ghostImageBase(const GameState& state, std::size_t ghost, std::uin
 // Sprite calls for the step from `before` to `after` (positions compared). Empty if nothing moved or the pack lacks the tables.
 // pacmanActed: Pac-Man's step timer ran out in this tick. An acting Pac-Man that did not move is BLOCKED ($7905-$7912): he is erased and redrawn standing
 // ($66 was set to 2) at the same place.
-std::vector<DrawCall> spriteCalls(const GameState& before, const GameState& after, const datapack::Pack& pack, bool pacmanActed = false, std::uint16_t frightenedTimer = 0);
+// What a ghost's image is chosen by, as its own step left it: the frightened and eyes flags ($78, $79) and the frightened timer (the flash phase). The free-running core records it;
+// without it the end of the tick's flags and timer are used with a correction for the ghosts that step after it (right unless the tick ends the frightened period in the middle of the
+// ghost loop - the ghosts before that one were drawn blue - or eats a ghost - $8BA4 adds to the timer after the eaten ghost's draw).
+struct GhostDrawInfo {
+    std::uint16_t timer = 0;
+    std::uint8_t frightened = 0, eyes = 0;
+};
+std::vector<DrawCall> spriteCalls(const GameState& before, const GameState& after, const datapack::Pack& pack, bool pacmanActed = false, std::uint16_t frightenedTimer = 0,
+                                  const std::array<GhostDrawInfo, 4>* drawInfo = nullptr);
 
 // Zero-page values outside the logical state of the recordings that the drawing needs (recorded by tools/record_tick_calls.py at the start of each tick):
 // the frightened timer $E1/$E2, the 1UP blink counter and phase $E5/$E6, the fruit state $E7, $E4.
 struct TickExtras {
     std::uint8_t e1 = 0, e2 = 0, e5 = 0, e6 = 0, e7 = 0, e4 = 0;
     int player = 1;                              // $50: the current player (1 or 2) in a two-player game
+    std::array<GhostDrawInfo, 4> ghostDraw{};    // what each ghost that stepped in this tick was drawn with (the free-running core records it); valid if haveGhostDraw
+    bool haveGhostDraw = false;
     std::uint16_t frightenedTimer() const noexcept { return static_cast<std::uint16_t>(e1 | (e2 << 8)); }
 };
 

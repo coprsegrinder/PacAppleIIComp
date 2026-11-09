@@ -79,6 +79,18 @@ for _l in range(2, 27):   # Z02-Z26 (TASK-034-ICONS): the level before is poked 
 if SC in ('T3', 'T4', 'T5'):
     stored = dict(json.load(open('tests/golden/gameplay_traces.json'))['scenarios']['A'])
     G.SCENARIOS[SC] = dict(G.SCENARIOS['A'])
+elif SC.startswith('GH'):   # a recording made by tools/record_eatchain.py: its keys and pokes come from its own file (scratch/ticks_<S>.bin, which is NOT rewritten here)
+    _d = open('scratch/ticks_%s.bin' % SC, 'rb').read()
+    _n = struct.unpack('<I', _d[4:8])[0]
+    _o = 44 + _n * 1010
+    _ni = struct.unpack_from('<I', _d, _o)[0]; _o += 4
+    _inputs = []
+    for _ in range(_ni):
+        _t, _k = struct.unpack_from('<II', _d, _o); _o += 8
+        _inputs.append([_t, _k & 0x7F])
+    _np = struct.unpack_from('<I', _d, _o)[0]; _o += 4
+    stored = dict(inputs=_inputs, pokes=[list(struct.unpack_from('<III', _d, _o + 12 * _i)) for _i in range(_np)])
+    G.SCENARIOS[SC] = dict(seed=0, ticks=_n - 1, pokes=[])
 elif SC in CUSTOM:
     stored = dict(json.load(open('tests/golden/gameplay_traces.json'))['scenarios']['A'])
     stored['pokes'] = CUSTOM[SC]

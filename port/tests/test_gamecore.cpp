@@ -55,8 +55,19 @@ public:
                 GhostRecord moved1 = cand;
                 moved1.b[0] = static_cast<std::uint8_t>(cand.b[0] + dx[cand.b[2] & 3]);
                 moved1.b[1] = static_cast<std::uint8_t>(cand.b[1] + dy[cand.b[2] & 3]);
+                if (cand.b[0] == 0x8B && cand.b[1] == 0x47 && cand.b[17] != 0) moved1.b[17] = 0;   // a ghost in the house-exit script that steps off the door cell clears its in-house flag in that step (GH1 tick 3515)
                 s.ghosts[g] = cand;
-                if (ghostContact(s, cand) != Contact::Touch && ghostContact(s, moved1) == Contact::Touch) s.ghosts[g] = moved1;
+                if (cand.b[0] == 0x8B && cand.b[1] == 0x47 && cand.b[17] != 0) {   // a ghost leaving the door cell is still in the house before its step and may turn either way in it (GH1 tick 3515): try all four steps
+                    for (int d = 0; d < 4; ++d) {
+                        GhostRecord out = cand;
+                        out.b[0] = static_cast<std::uint8_t>(cand.b[0] + dx[d]);
+                        out.b[1] = static_cast<std::uint8_t>(cand.b[1] + dy[d]);
+                        out.b[17] = 0;
+                        if (ghostContact(s, out) == Contact::Touch) { s.ghosts[g] = out; break; }
+                    }
+                } else if (ghostContact(s, cand) != Contact::Touch && ghostContact(s, moved1) == Contact::Touch) {
+                    s.ghosts[g] = moved1;
+                }
             }
             return {true, true, true, true};
         }

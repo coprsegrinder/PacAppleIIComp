@@ -193,6 +193,10 @@ TickEvents GameDriver::tickImpl(FrightenAware* fed) {
         now.e2 = core_.ghostShared().e2;
         now.e4 = core_.ghostShared().e4;
     }
+    if (fed == nullptr) {
+        for (int n = 1; n <= 4; ++n) now.ghostDraw[static_cast<std::size_t>(n - 1)] = core_.ghostDrawInfo(n);
+        now.haveGhostDraw = true;
+    }
     now.e5 = core_.blink1UpCounter();
     now.e6 = core_.blink1UpPhase();
     now.e7 = core_.fruitState();
@@ -240,7 +244,38 @@ TickEvents GameDriver::tickImpl(FrightenAware* fed) {
         prev_ = now;
         return ev;
     }
-    const auto calls = tickCalls(before, after, *pack_, acting && ev.acted, display_, prev_, now);
+    std::vector<DrawCall> calls;
+    const FreezeLog& freeze = core_.freezeLog();
+    if (freeze.eaten >= 0 && !freeze.steps.empty()) {
+        // The freeze of a ghost eaten while other ghosts are eyes (TASK-034-FREEZE): those ghosts take twelve steps each in the middle of the tick, right after the score image. The ghosts that
+        // step before the freeze (higher numbers) are shown at their place when it begins, those that step after it (lower numbers) from the place where it ends; the extra steps are drawn
+        // one by one, as the original's ghost step draws them.
+        GameState b2 = before, a2 = after;
+        for (int m = 0; m < 4; ++m) {
+            if (m > freeze.eaten) a2.ghosts[static_cast<std::size_t>(m)] = freeze.atStart.ghosts[static_cast<std::size_t>(m)];
+            else if (m < freeze.eaten) b2.ghosts[static_cast<std::size_t>(m)] = freeze.atEnd.ghosts[static_cast<std::size_t>(m)];
+        }
+        calls = tickCalls(b2, a2, *pack_, acting && ev.acted, display_, prev_, now);
+        DisplayState ds = display_;
+        ds.lastFlag1E = 1;
+        for (const auto& c : calls)
+            if (c.type == 9) { ds.lastFlag1E = c.p[4]; break; }   // (the score image does not set $1E: the steps start with the flag of the eaten ghost's own image)
+        std::vector<DrawCall> extra;
+        for (const auto& st : freeze.steps) {
+            TickExtras ex = now;
+            ex.e1 = st.e1;
+            ex.e2 = st.e2;
+            ex.haveGhostDraw = false;   // (the extra steps are drawn from their own before and after)
+            const auto c = tickCalls(st.before, st.after, *pack_, false, ds, ex, ex);
+            extra.insert(extra.end(), c.begin(), c.end());
+        }
+        std::size_t at = calls.size();
+        for (std::size_t i = 0; i < calls.size(); ++i)
+            if (calls[i].type == 9) { at = i + 1; break; }
+        calls.insert(calls.begin() + static_cast<std::ptrdiff_t>(at), extra.begin(), extra.end());
+    } else {
+        calls = tickCalls(before, after, *pack_, acting && ev.acted, display_, prev_, now);
+    }
     lastCalls_ = calls;
     // The cost of the tick: the idle tick, the cycles the logic spent beyond it on the paths it took (cycles.h; the ghosts' and Pac-Man's steps, the bookkeeping routines) and the drawing
     // routines with the glue around their calls (TASK-034-TIMING). With ghosts fed from a recording (the tests) the ghosts' share is missing.

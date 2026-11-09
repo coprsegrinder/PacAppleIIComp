@@ -89,8 +89,19 @@ public:
                 static constexpr int dx[4] = {0, 0, 2, -2}, dy[4] = {2, -2, 0, 0};
                 moved1.b[0] = static_cast<std::uint8_t>(cand.b[0] + dx[cand.b[2] & 3]);
                 moved1.b[1] = static_cast<std::uint8_t>(cand.b[1] + dy[cand.b[2] & 3]);
+                if (cand.b[0] == 0x8B && cand.b[1] == 0x47 && cand.b[17] != 0) moved1.b[17] = 0;   // a ghost in the house-exit script that steps off the door cell clears its in-house flag in that step (GH1 tick 3515)
                 s.ghosts[g] = cand;
-                if (ghostContact(s, cand) != Contact::Touch && ghostContact(s, moved1) == Contact::Touch) s.ghosts[g] = moved1;
+                if (cand.b[0] == 0x8B && cand.b[1] == 0x47 && cand.b[17] != 0) {   // a ghost leaving the door cell is still in the house before its step and may turn either way in it (GH1 tick 3515): try all four steps
+                    for (int d = 0; d < 4; ++d) {
+                        GhostRecord out = cand;
+                        out.b[0] = static_cast<std::uint8_t>(cand.b[0] + dx[d]);
+                        out.b[1] = static_cast<std::uint8_t>(cand.b[1] + dy[d]);
+                        out.b[17] = 0;
+                        if (ghostContact(s, out) == Contact::Touch) { s.ghosts[g] = out; break; }
+                    }
+                } else if (ghostContact(s, cand) != Contact::Touch && ghostContact(s, moved1) == Contact::Touch) {
+                    s.ghosts[g] = moved1;
+                }
             }
             return {true, true, true, true};
         }
@@ -156,7 +167,7 @@ TEST(gamedriver_pages_equal_the_oracle_end_to_end) {
         const auto logged = parseLog(dir + "tick_calls_" + letter + ".txt");
         // the call logs, pages and extras cover only the first ticks of a recording (A 2,090, D 1,600, ...)
         // the recorded range of each scenario, as in the drawing test (A 2,090, D 1,093 here - from tick 1094 the poked position of Pac-Man leaves the map -, G 1,399, H 499, the others 700; beyond it the call logs and pages are not usable)
-        const std::size_t recorded = letter == "D" ? 1093 : letter == "A" ? 2090 : letter == "G" ? 1399 : letter == "H" ? 499 : 700;
+        const std::size_t recorded = letter == "GH1" ? 1330 : letter == "D" ? 1093 : letter == "A" ? 2090 : letter == "G" ? 1399 : letter == "H" ? 499 : 700;
         const std::size_t limit = std::min<std::size_t>({tr.ticks() - 1, extras.size() / 6 - 1, logged.empty() ? tr.ticks() : logged.size() - 1, recorded});
         FedGhosts feed;
         std::size_t badCalls = 0;
@@ -336,7 +347,7 @@ TEST(gamedriver_free_running_pages_equal_the_oracle_with_its_own_ghosts) {
         const auto logged = parseLog(dir + "tick_calls_" + letter + ".txt");
         // the call logs, pages and extras cover only the first ticks of a recording (A 2,090, D 1,600, ...)
         // the recorded range of each scenario, as in the drawing test (A 2,090, D 1,093 here - from tick 1094 the poked position of Pac-Man leaves the map -, G 1,399, H 499, the others 700; beyond it the call logs and pages are not usable)
-        const std::size_t recorded = letter == "D" ? 1093 : letter == "A" ? 2090 : letter == "G" ? 1399 : letter == "H" ? 499 : 700;
+        const std::size_t recorded = letter == "GH1" ? 8000 : letter == "D" ? 1093 : letter == "A" ? 2090 : letter == "G" ? 1399 : letter == "H" ? 499 : 700;
         const std::size_t limit = std::min<std::size_t>({tr.ticks() - 1, extras.size() / 6 - 1, logged.empty() ? tr.ticks() : logged.size() - 1, recorded});
         std::size_t badCalls = 0;
         std::size_t nextPage = 0, compared = 0, badPages = 0, resyncs = 0, shown = 0;
@@ -408,7 +419,7 @@ TEST(gamedriver_free_running_pages_equal_the_oracle_with_its_own_ghosts) {
                 drv.core().state() = b;
                 loadShared(ram.data() + 12 + (k + 1) * 1280);
                 if (outside) drv.core().itemEatenOutsideTheMap();
-                drv.rebuildScreen();
+                if (ev.caught || ev.levelComplete || oracleRestart) drv.rebuildScreen();   // (a step outside the map only needs the state: the oracle's screen is not rebuilt, and a rebuild would put the energizers in the wrong blink phase)
                 ++resyncs;
                 if (false) std::printf("    %s resync at tick %zu: caught %d level %d outside %d oracle %d\n", letter.c_str(), k, ev.caught, ev.levelComplete, ev.outsideMap, oracleRestart);
             }
@@ -634,13 +645,11 @@ TEST(tick_cost_in_a_keyboard_game_equals_the_oracles_on_the_ticks_that_draw_noth
 
 
 TEST(pacman_draw_prologue_cycles_by_mouth_phase) {
-    // $79A4-$79CA as read on the oracle in four ghost-eaten ticks (T00 tick 1204: phase 3, 48; D tick 467: phase 1, 47); phases 0 and 2 from the code (33, 50)
-    CHECK(pacmanDrawPrologueCycles(0x0F, 3) == 48);
-    CHECK(pacmanDrawPrologueCycles(0x05, 2) == 47);
-    CHECK(pacmanDrawPrologueCycles(0x0E, 3) == 50);
-    CHECK(pacmanDrawPrologueCycles(0x0E, 0) == 50);
-    CHECK(pacmanDrawPrologueCycles(0x00, 1) == 33);
-    CHECK(pacmanDrawPrologueCycles(0x04, 0) == 33);
+    // $79A4-$79CA as read on the oracle in the ghost-eaten ticks (T00 tick 1204: phase 3, 48; D tick 467: phase 1, 47); the code gives phase 0 33 and phase 2 50
+    CHECK(cost79A4(0x0F) == 48);
+    CHECK(cost79A4(0x05) == 47);
+    CHECK(cost79A4(0x0E) == 50);
+    CHECK(cost79A4(0x00) == 33);
 }
 
 TEST(tick_cost_model_idle_tick) {

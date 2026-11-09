@@ -56,7 +56,7 @@ bool ghostStepped(const GhostRecord& a, const GhostRecord& b) {
 }
 }  // namespace
 
-std::vector<DrawCall> spriteCalls(const GameState& before, const GameState& after, const datapack::Pack& pack, bool pacmanActed, std::uint16_t timer) {
+std::vector<DrawCall> spriteCalls(const GameState& before, const GameState& after, const datapack::Pack& pack, bool pacmanActed, std::uint16_t timer, const std::array<GhostDrawInfo, 4>* drawInfo) {
     std::vector<DrawCall> out;
     const auto pacFrames = pack.find(0x96E8, 18);
     if (pacFrames.empty()) return out;
@@ -74,9 +74,16 @@ std::vector<DrawCall> spriteCalls(const GameState& before, const GameState& afte
         // drawn with the timer of the end of the tick plus one for each lower-numbered ghost that steps after it (found at the attract game's tick 7140: blue and white flash
         // frames within one tick)
         std::uint16_t drawTimer = timer;
-        for (int h = 0; h < g; ++h)
-            if (ghostStepped(before.ghosts[static_cast<std::size_t>(h)], after.ghosts[static_cast<std::size_t>(h)])) ++drawTimer;
-        const std::uint16_t base = ghostImageBase(drawnState(before, after, static_cast<std::size_t>(g)), static_cast<std::size_t>(g), drawTimer, pack, flag);
+        if (drawInfo != nullptr) drawTimer = (*drawInfo)[static_cast<std::size_t>(g)].timer;
+        else
+            for (int h = 0; h < g; ++h)
+                if (ghostStepped(before.ghosts[static_cast<std::size_t>(h)], after.ghosts[static_cast<std::size_t>(h)])) ++drawTimer;
+        GameState drawn = drawnState(before, after, static_cast<std::size_t>(g));
+        if (drawInfo != nullptr) {
+            drawn.ghosts[static_cast<std::size_t>(g)].b[8] = (*drawInfo)[static_cast<std::size_t>(g)].frightened;
+            drawn.ghosts[static_cast<std::size_t>(g)].b[9] = (*drawInfo)[static_cast<std::size_t>(g)].eyes;
+        }
+        const std::uint16_t base = ghostImageBase(drawn, static_cast<std::size_t>(g), drawTimer, pack, flag);
         out.push_back(DrawCall{3, {kMaskTable, a.x() - 4, a.y() - 4, 0, 0}, 1 + g, 38});   // (glue: JSR $699E and its JSR $7D9A)
         out.push_back(DrawCall{1, {base, b.x(), b.y(), 1, flag}, 1 + g, 6});      // (glue: JSR $6A20)
     }
@@ -179,7 +186,7 @@ std::vector<DrawCall> tickCalls(const GameState& before, const GameState& after,
                                 const TickExtras& exBefore, const TickExtras& exAfter) {
     std::vector<DrawCall> out;
     const std::uint16_t timer = exAfter.frightenedTimer();
-    const auto sprites = spriteCalls(before, after, pack, pacmanActed, timer);
+    const auto sprites = spriteCalls(before, after, pack, pacmanActed, timer, exAfter.haveGhostDraw ? &exAfter.ghostDraw : nullptr);
     // Pac-Man's calls come first (the first two, if any), then the score display, then the ghosts' calls with their dot redraws
     const bool pacDrawn = pacmanActed;
     std::size_t split = pacDrawn ? 2 : 0;
@@ -218,8 +225,6 @@ std::vector<DrawCall> tickCalls(const GameState& before, const GameState& after,
         const GhostRecord& a = before.ghosts[static_cast<std::size_t>(g)];
         const GhostRecord& b = after.ghosts[static_cast<std::size_t>(g)];
         if (!ghostStepped(a, b)) continue;
-        int flag = 0;
-        ghostImageBase(drawnState(before, after, static_cast<std::size_t>(g)), static_cast<std::size_t>(g), timer, pack, flag);
         const int flagBefore = display.lastFlag1E;   // what the previous image draw left in $1E: the door lines are drawn with it
         out.push_back(sprites[k++]);   // the clear at the old place
         if (a.b[9] == 1 && b.b[9] == 0) {              // back in the house: the ghost is put at its start place first ($6D30) and cleared there, then it steps
@@ -228,6 +233,7 @@ std::vector<DrawCall> tickCalls(const GameState& before, const GameState& after,
             out.push_back(DrawCall{3, {kMaskTable, startX - 4, startY - 4, 0, 0}, -1, 38});   // (glue: JSR $699E and its JSR $7D9A)
         }
         out.push_back(sprites[k++]);
+        const int flag = out.back().p[4];   // (the flag of the image just chosen, with the timer of this ghost's own step)
         display.lastFlag1E = flag;   // the ghost's own draw sets $1E from the table
         // $8A19: a ghost that leaves the door cell redraws the ghost-house door (two dotted lines); not logged by the call collector (type 8: hline)
         if (a.x() == 0x8B && a.y() == 0x47 && a.b[17] != 0) {   // a ghost in the house exit script ($81 <> 0) LEAVES the door cell (old position: $70 is tested before the step)
@@ -253,7 +259,7 @@ std::vector<DrawCall> tickCalls(const GameState& before, const GameState& after,
             const int px = after.pacX(), py = after.pacY(), gx = b.x(), gy = b.y();
             out.push_back(DrawCall{3, {kMaskTable, px - 4, py - 4, 0, 0}});
             out.push_back(DrawCall{3, {kMaskTable, gx - 4, gy - 4, 0, 0}});
-            out.push_back(DrawCall{9, {image, gx, gy, 1, 1}});
+            out.push_back(DrawCall{9, {image, gx, gy, 1, display.lastFlag1E}});   // ($1D = 1 and $1E as the eaten ghost's own image draw left them: the dispatcher takes the path by $1E, the score image does not set it)
             out.push_back(DrawCall{3, {0x6A04, gx - 5, gy - 4, 0, 0}});
             const auto frames = pack.find(0x96E8, 18);
             if (!frames.empty()) out.push_back(DrawCall{1, {word(frames, static_cast<std::size_t>(pacmanFrame(after))), px, py, 1, 0x80}});

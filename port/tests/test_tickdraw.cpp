@@ -224,7 +224,7 @@ TEST(tickdraw_calls_and_pages_equal_the_oracle) {
         std::size_t ticks = 0, withCalls = 0, calls = 0, badTicks = 0, pagesCompared = 0, badPages = 0, shown = 0, doorCalls = 0, doorLowBit = 0;
         std::uint32_t nextPage = 0;
         // the recorder replays N ticks with the scenario's keys and pokes and runs on a little without them: only the first N ticks are valid (A, B, C: 700; D: 1600)
-        const std::size_t scenarioLimit = sc.letter == "D" ? 1600 : sc.letter == "A" ? 2090 : sc.letter == "G" ? 1399 : sc.letter == "H" ? 499 : sc.letter == "P" ? 2299 : sc.letter == "Q" ? 4699 : sc.letter == "R" ? 5574 : sc.letter == "S" ? 6999 : sc.letter == "U" ? 2599 : sc.letter.size() > 1 ? 100000 : 700;   // (the recordings with a longer name - Z08.., T3, T5 - are recorded to their end)
+        const std::size_t scenarioLimit = sc.letter == "D" ? 1600 : sc.letter == "A" ? 2090 : sc.letter == "G" ? 1399 : sc.letter == "H" ? 499 : sc.letter == "P" ? 2299 : sc.letter == "Q" ? 4699 : sc.letter == "R" ? 5574 : sc.letter == "S" ? 6999 : sc.letter == "U" ? 2599 : sc.letter == "GH1" ? 1330 : sc.letter.size() > 1 ? 100000 : 700;   // (the recordings with a longer name - Z08.., T3, T5 - are recorded to their end; GH1 only up to its first freeze with an eyes ghost, tick 1331: this test draws from the recorded states, and the extra steps of the freeze are not in them - the driver tests cover the rest)
         const std::size_t limit = std::min<std::size_t>(scenarioLimit, std::min(logged.size(), tr.ticks()) - 1);
         for (std::size_t k = 0; k < limit; ++k) {
             // page comparison at the START of tick k (everything before it has been drawn)
