@@ -325,7 +325,7 @@ bool GameCore::contactTest(int g, TickEvents& ev) {
             if ((s.lives() & 0x7F) > livesBefore) ev.sounds.push_back(SoundId::BonusLife);
             ev.sounds.push_back(SoundId::GhostEaten);
         }
-        if (s.demo == 0) cy(kGhostEatenTickExtraCycles);   // the part of the freeze that is not the sound
+        if (s.demo == 0) cy(kGhostEatenTickExtraCycles + pacmanDrawPrologueCycles(s.zp(0x66), s.zp(0x62)));   // the part of the freeze that is not the sound, with Pac-Man's draw prologue ($79A4) of the path it takes
         ghostEatenTimer(s, ghostShared_, ghostModes_);    // $8BA4-$8BB5
         s.mode78 = 0;
         s.mode79 = 1;

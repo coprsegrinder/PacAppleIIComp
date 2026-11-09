@@ -28,9 +28,40 @@ struct EatResult {
 inline constexpr int kEnergizerTickCycles = 87 + 110 - 7;   // (the 7 from the oracle: 7 of the 197 counted from the listing are not run or are counted elsewhere)
 
 // The tick in which a ghost is eaten (game): besides the sound's freeze (sound.cpp) it spends six passes of $805D (the loop over the four ghosts that lets the eyes walk on: 3,378 cycles each
-// when no ghost is eyes) and the set-up of $7DB8, 20,806 cycles in the two ticks of the oracle's recordings (20,807 in one: a page-crossing that is not found yet); the attract game waits in a
+// when no ghost is eyes) and the set-up of $7DB8, 20,806 to 20,809 cycles on the oracle, depending on the path of Pac-Man's draw prologue $79A4 (below); the attract game waits in a
 // delay loop instead (gamedriver.h: kDemoGhostEatenTickCycles)
-inline constexpr int kGhostEatenTickExtraCycles = 20'806;
+// (This is the sum without Pac-Man's draw prologue $79A4-$79CA, which the freeze routine ends with (JMP $79A4) and whose path depends on Pac-Man's mouth phase $66 and direction $62:
+// 20,806 - 47, the 47 being the path of phase 1 that the first two recordings happened to take; the recording T00 takes phase 3 (48) and cost one cycle more.)
+inline constexpr int kGhostEatenTickExtraCycles = 20'759;
+
+// $79A4-$79CA: LDA $66, AND #$0F, STA $66, AND #3 and the choice of Pac-Man's image (frame table $96E8 indexed by 2 * ($62 + 1 or + 5)), up to the JMP $6A20 (its own cost is the draw call's).
+// Phase 0: 33; phase 1: 47; phase 2: 50; phase 3: 48 (read on the oracle: T00 tick 1204 and the first ghost-eaten ticks of D); an indexed read of the frame table that carries over a page costs one more.
+inline int pacmanDrawPrologueCycles(unsigned z66, unsigned z62) {
+    const unsigned phase = z66 & 3;
+    int c = 3 + 2 + 3 + 2;                             // LDA $66, AND #$0F, STA $66, AND #3
+    unsigned frame = 0;
+    if (phase == 0) {
+        c += 3;                                        // BEQ taken
+    } else {
+        c += 2 + 2;                                    // BEQ, CMP #3
+        if (phase == 3) c += 2 + 2;                    // BNE not taken, LDA #1
+        else c += 3;                                   // BNE taken
+        const unsigned seen = phase == 3 ? 1u : phase;
+        c += 2 + 3;                                    // ROR A, LDA $62
+        if ((seen & 1) != 0) {
+            c += 3;                                    // BCS taken
+            frame = z62 + 1;
+        } else {
+            c += 2 + 2 + 2;                            // BCS, ADC #4, SEC
+            frame = z62 + 5;
+        }
+        c += 2;                                        // ADC #0
+    }
+    const unsigned x = (frame * 2) & 255u;
+    c += 2 + 2 + 2 + 3;                                // ASL A, TAX, LDA #$80, STA $1E
+    c += 4 + (0xE8 + x > 0xFF ? 1 : 0) + 4 + (0xE9 + x > 0xFF ? 1 : 0) + 3;   // LDA $96E8,X, LDY $96E9,X, JMP $6A20
+    return c;
+}
 
 void addToScore(GameState& state, std::uint8_t bcdLow);
 

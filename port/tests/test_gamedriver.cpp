@@ -16,6 +16,7 @@
 
 #include "../src/core/attract.h"
 #include "../src/core/deathtiming.h"
+#include "../src/core/eating.h"
 #include "../src/core/gamedriver.h"
 #include "../src/core/sound.h"
 #include "../src/datapack/datapack.h"
@@ -624,13 +625,23 @@ TEST(tick_cost_in_a_keyboard_game_equals_the_oracles_on_the_ticks_that_draw_noth
         reportCost(name.c_str(), r);
         CHECK(r.idleTicks >= 100);
         CHECK(r.idleExact == r.idleTicks);
-        CHECK(r.ticks - r.exactTicks <= 1);   // every ordinary tick equal to the oracle's cycles, with ghosts, steps, dots, energizers, bonus routines and the score; except the ghost-eaten tick of D (1 cycle: a page crossing not found yet)
+        CHECK(r.ticks == r.exactTicks);   // every ordinary tick equal to the oracle's cycles, with ghosts, steps, dots, energizers, bonus routines and the score; the ghost-eaten ticks too (Pac-Man's draw prologue $79A4 by its path: T00 tick 1204 took phase 3)
         CHECK(std::llabs(r.totalMine - r.totalOracle) <= 1);
         ++runs;
     }
     if (runs == 0) std::printf("    SKIPPED (no ticks_X.bin.cyc among the recordings)\n");
 }
 
+
+TEST(pacman_draw_prologue_cycles_by_mouth_phase) {
+    // $79A4-$79CA as read on the oracle in four ghost-eaten ticks (T00 tick 1204: phase 3, 48; D tick 467: phase 1, 47); phases 0 and 2 from the code (33, 50)
+    CHECK(pacmanDrawPrologueCycles(0x0F, 3) == 48);
+    CHECK(pacmanDrawPrologueCycles(0x05, 2) == 47);
+    CHECK(pacmanDrawPrologueCycles(0x0E, 3) == 50);
+    CHECK(pacmanDrawPrologueCycles(0x0E, 0) == 50);
+    CHECK(pacmanDrawPrologueCycles(0x00, 1) == 33);
+    CHECK(pacmanDrawPrologueCycles(0x04, 0) == 33);
+}
 
 TEST(tick_cost_model_idle_tick) {
     using namespace pacman::core;
