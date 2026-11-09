@@ -423,7 +423,7 @@ bool runGame(core::GameDriver& drv, const datapack::Pack& pack, app::GameWindow&
     // the intro jingle starts a game (before the first tick, docs/SOUND.md section 6); the game stands still for its 5 s
     const int jingleExtra = drv.core().jinglePollExtra();   // (0 with the keyboard)
     if (drv.core().input().soundOn() && !window.muted()) sounds.playJingle(jingleExtra);
-    budget = -(core::soundFreezeCycles(core::SoundId::Jingle, jingleExtra) + core::kReadyPauseCycles);   // the jingle, then the READY wait (033-2)
+    budget = -(core::soundFreezeCycles(core::SoundId::Jingle, jingleExtra) + core::kReadyPauseCycles + drv.core().lifeStartCycles());   // the jingle, then the READY wait (033-2)
     while (!quit.load() && window.ok()) {
         const std::int64_t now = core::nowNanoseconds();
         if (seconds > 0 && now - begin > static_cast<std::int64_t>(seconds) * 1'000'000'000) {

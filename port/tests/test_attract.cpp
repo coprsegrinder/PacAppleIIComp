@@ -327,6 +327,52 @@ TEST(attract_demo_tick_cost_report) {
     std::printf("\n");
 }
 
+TEST(attract_demo_tick_cost_in_joystick_mode) {
+    if (testfw::config().image.empty() || testfw::config().joyDemoCycles.empty()) {
+        std::printf("    SKIPPED (needs --image and --joydemocycles)\n");
+        return;
+    }
+    datapack::Pack pack;
+    CHECK(loadPack(pack));
+    const auto f = readFile(testfw::config().joyDemoCycles);
+    CHECK(f.size() >= 8);
+    if (f.size() < 8) return;
+    std::uint32_t count = 0;
+    std::memcpy(&count, f.data(), 4);
+    CHECK(f.size() == 4 + static_cast<std::size_t>(count) * 4);
+    std::vector<std::uint32_t> cyc(count);
+    std::memcpy(cyc.data(), f.data() + 4, static_cast<std::size_t>(count) * 4);
+    core::GameDriver drv;
+    CHECK(drv.init(pack));
+    hires::Page blank;
+    CHECK(drv.newDemo(blank));
+    drv.core().port().joystickMode = true;
+    std::map<long long, int> hist;
+    std::size_t n = 0, exact = 0, actedN = 0, idleN = 0;
+    std::int64_t totalOracle = 0, totalModel = 0, actedErr = 0, idleErr = 0;
+    for (std::uint32_t k = 0; k + 1 < count; ++k) {
+        const core::TickEvents ev = drv.tick();
+        if (ev.demoOver) break;
+        const std::int64_t oracle = static_cast<std::int64_t>(cyc[k + 1]) - static_cast<std::int64_t>(cyc[k]);
+        const std::int64_t mine = drv.tickCycles();
+        ++hist[mine - oracle];
+        if (ev.acted) { actedErr += mine - oracle; ++actedN; } else if (drv.lastCalls().empty()) { idleErr += mine - oracle; ++idleN; }
+        exact += mine == oracle;
+        totalOracle += oracle;
+        totalModel += mine;
+        ++n;
+    }
+    std::printf("    %zu ticks in joystick mode: oracle total %lld, cost model %lld (%+lld); %zu ticks exact; most frequent errors (count x cycles):", n, static_cast<long long>(totalOracle),
+                static_cast<long long>(totalModel), static_cast<long long>(totalModel - totalOracle), exact);
+    std::vector<std::pair<int, long long>> top;
+    for (const auto& kv : hist) top.emplace_back(kv.second, kv.first);
+    std::sort(top.rbegin(), top.rend());
+    for (std::size_t i = 0; i < top.size() && i < 8; ++i) std::printf(" %dx%lld", top[i].first, top[i].second);
+    std::printf("\n    ticks in which Pac-Man steps: %zu, mean error %.2f; ticks that draw nothing: %zu, mean error %.2f\n", actedN, actedN ? static_cast<double>(actedErr) / static_cast<double>(actedN) : 0.0, idleN,
+                idleN ? static_cast<double>(idleErr) / static_cast<double>(idleN) : 0.0);
+    CHECK(n >= 3000);
+}
+
 TEST(attract_pictures_equal_the_oracle) {
     if (testfw::config().image.empty() || testfw::config().titleEvents.empty() || testfw::config().titleSnaps.empty()) {
         std::printf("    SKIPPED (needs --image, --titleevents and --titlesnaps)\n");

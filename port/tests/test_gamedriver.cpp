@@ -14,8 +14,10 @@
 #include <string>
 #include <vector>
 
+#include "../src/core/attract.h"
 #include "../src/core/deathtiming.h"
 #include "../src/core/gamedriver.h"
+#include "../src/core/sound.h"
 #include "../src/datapack/datapack.h"
 #include "../src/verify/verify.h"
 #include "test_framework.h"
@@ -419,6 +421,182 @@ TEST(gamedriver_free_running_pages_equal_the_oracle_with_its_own_ghosts) {
 }
 
 // TASK-033-4d: a tick without any drawing costs exactly what the attract game's 4,757 idle ticks cost (the model for ticks with drawing is checked in test_attract)
+namespace {
+
+struct CostReplay {
+    bool ran = false;
+    std::size_t idleTicks = 0, idleExact = 0, otherTicks = 0, skipped = 0;
+    std::int64_t idleErr = 0, otherErr = 0, otherAbs = 0, totalOracle = 0, totalMine = 0;
+};
+
+// Replays a recorded game through the driver (ghosts fed from the recording) and sets the cost of every tick against the oracle's cycles. `path` = ticks_X.bin with ticks_X.bin.cyc (u32 count, then the
+// cycle at which every tick starts), extra_X.bin (the frightened timers etc.) next to it, and, for a game in joystick mode, ticks_X.bin.pad. Keys and pokes of the recording are applied.
+CostReplay costReplay(const datapack::Pack& pack, const std::string& path, bool joystick, const std::string& csvPath, std::size_t maxTicks) {
+    CostReplay out;
+    const std::size_t slash = path.find_last_of("/\\");
+    const std::string dir = slash == std::string::npos ? std::string() : path.substr(0, slash + 1);
+    const std::string name = path.substr(slash == std::string::npos ? 0 : slash + 1);
+    const std::string letter = name.size() > 10 ? name.substr(6, name.size() - 10) : std::string();
+    const auto pad = joystick ? readAll(path + ".pad") : std::vector<std::uint8_t>(), cyc = readAll(path + ".cyc"), extras = readAll(dir + "extra_" + letter + ".bin");
+    CHECK(cyc.size() >= 8 && !extras.empty() && (!joystick || !pad.empty()));
+    if (cyc.size() < 8 || extras.empty() || (joystick && pad.empty())) return out;
+    std::string why;
+    const auto tr = TickTrace::load(path, why);
+    CHECK_MSG(tr.ok(), why);
+    if (!tr.ok()) return out;
+    auto cycleAt = [&](std::size_t k) {
+        std::uint32_t v = 0;
+        std::memcpy(&v, cyc.data() + 4 + 4 * k, 4);
+        return static_cast<std::int64_t>(v);
+    };
+    GameDriver drv;
+    CHECK(drv.init(pack));
+    CHECK(drv.newGame());
+    drv.core().state() = fromOracleLayout(tr.state(0));
+    drv.core().port().joystickMode = joystick;
+    drv.rebuildScreen();
+    std::multimap<std::uint32_t, std::uint32_t> keysAt;
+    for (const auto& in : tr.inputs()) keysAt.emplace(in.tick, in.key);
+    std::multimap<std::uint32_t, TickPoke> pokesAt;
+    for (const auto& p : tr.pokes()) pokesAt.emplace(p.tick, p);
+    FedGhosts feed;
+    std::size_t limit = std::min<std::size_t>({tr.ticks() - 1, extras.size() / 6 - 1, cyc.size() / 4 - 2, maxTicks});
+    if (joystick) limit = std::min<std::size_t>(limit, pad.size() / 2);
+    std::map<long long, int> idleHist;
+    std::ofstream csv(csvPath);   // one row per tick for the analysis in tools/tick_fit_game.py
+    csv << "input,oracle,mine,exact,acted,ate,energizer,moved,eaten,z59,e5,e7,ncalls,t1,t2,t3,t4,t5,t6,t7,t8,t9,t10,t11,t12\n";
+    for (std::size_t k = 0; k < limit; ++k) {
+        if (joystick) {
+            drv.core().port().paddleX = pad[2 * k];
+            drv.core().port().paddleY = pad[2 * k + 1];
+        }
+        const auto kr = keysAt.equal_range(static_cast<std::uint32_t>(k));
+        for (auto it = kr.first; it != kr.second; ++it) drv.core().input().pushKey(static_cast<std::uint8_t>(it->second));
+        GameState& s = drv.core().state();
+        const auto pr = pokesAt.equal_range(static_cast<std::uint32_t>(k));
+        for (auto it = pr.first; it != pr.second; ++it) {
+            const auto a = it->second.address;
+            if (a >= 0x52 && a <= 0x6F) s.zp(static_cast<std::uint16_t>(a)) = static_cast<std::uint8_t>(it->second.value);
+            if (a >= 0x623A && a <= 0x65B9) s.map[a - 0x623A] = static_cast<std::uint8_t>(it->second.value);
+            if (a == 0xE1) drv.core().ghostShared().e1 = static_cast<std::uint8_t>(it->second.value);
+            if (a == 0xE2) drv.core().ghostShared().e2 = static_cast<std::uint8_t>(it->second.value);
+            if (a == 0xE4) drv.core().ghostShared().e4 = static_cast<std::uint8_t>(it->second.value);
+            if (a >= 0x84 && a <= 0xD3) s.ghosts[(a - 0x84) / 20].b[(a - 0x84) % 20] = static_cast<std::uint8_t>(it->second.value);
+            if (a == 0x78) s.mode78 = static_cast<std::uint8_t>(it->second.value);
+            if (a == 0x79) s.mode79 = static_cast<std::uint8_t>(it->second.value);
+            if (a == 0xE9) s.cornerPhase = static_cast<std::uint8_t>(it->second.value);
+        }
+        const GameState a = fromOracleLayout(tr.state(k));
+        const GameState b = fromOracleLayout(tr.state(k + 1));
+        feed.before = &a;
+        feed.next = &b;
+        feed.caughtTick = (b.lives() & 0x7F) < (a.lives() & 0x7F) && a.lives() != 0;
+        drv.setPreviousFrighten(extras[6 * k], extras[6 * k + 1], extras[6 * k + 5]);
+        feed.f1 = extras[6 * (k + 1)];
+        feed.f2 = extras[6 * (k + 1) + 1];
+        feed.f4 = extras[6 * (k + 1) + 5];
+        drv.syncExtras();
+        const TickEvents ev = drv.tick(feed);
+        bool poked = false;
+        for (auto it = pr.first; it != pr.second; ++it) poked = poked || it->second.address == 0x55 || it->second.address == 0x58;
+        const bool oracleRestart = (b.lives() & 0x7F) < (a.lives() & 0x7F) || (b.level() > a.level() && a.dotsLeft() == 1);
+        const std::int64_t oracle = cycleAt(k + 1) - cycleAt(k);
+        if (ev.caught || ev.levelComplete || oracleRestart || ev.paused || poked || oracle > 100'000) {
+            drv.core().state() = b;
+            drv.rebuildScreen();
+            ++out.skipped;
+            continue;
+        }
+        std::int64_t mine = drv.tickCycles();
+        for (const SoundId id : ev.sounds) mine += soundFreezeCycles(id);   // (the sounds freeze the game; the live program charges that apart from the tick)
+        std::int64_t exact = 0;
+        int cnt[16] = {};
+        for (const auto& c : drv.lastCalls()) {
+            exact += drawCallCycles(c, pack);
+            ++cnt[std::min(c.type, 15)];
+        }
+        int moved = 0;
+        for (std::size_t g = 0; g < 4; ++g) moved += a.ghosts[g].b[0] != b.ghosts[g].b[0] || a.ghosts[g].b[1] != b.ghosts[g].b[1];
+        csv << ev.inputCycles << ',' << oracle << ',' << mine << ',' << exact << ',' << ev.acted << ',' << ev.ate << ',' << ev.energizer << ',' << moved << ','
+            << (ev.ghostEaten[0] || ev.ghostEaten[1] || ev.ghostEaten[2] || ev.ghostEaten[3]) << ',' << static_cast<int>(b.zp(0x59)) << ',' << static_cast<int>(extras[6 * (k + 1) + 2]) << ','
+            << static_cast<int>(extras[6 * (k + 1) + 4]) << ',' << drv.lastCalls().size();
+        for (int t : {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}) csv << ',' << cnt[t];
+        csv << '\n';
+        out.totalOracle += oracle;
+        out.totalMine += mine;
+        if (drv.lastCalls().empty() && !ev.ate && !ev.energizer && kr.first == kr.second) {   // (a tick in which a key is pressed costs more: the poll runs down its list of keys)
+            ++out.idleTicks;
+            out.idleExact += mine == oracle;
+            out.idleErr += mine - oracle;
+            if (mine != oracle && ++idleHist[mine - oracle] <= 3)
+                std::printf("      tick %zu: mine %lld oracle %lld acted %d dir %u req %u z59 %u\n", k, static_cast<long long>(mine), static_cast<long long>(oracle), ev.acted, a.pacDirection(), a.zp(0x63), a.zp(0x59));
+        } else {
+            ++out.otherTicks;
+            out.otherErr += mine - oracle;
+            out.otherAbs += std::llabs(mine - oracle);
+        }
+    }
+    out.ran = true;
+    return out;
+}
+
+void reportCost(const char* what, const CostReplay& r) {
+    std::printf("    %s: %zu ticks that draw nothing: %zu exact (mean error %.2f cycles); %zu other ticks: mean error %.1f, mean absolute error %.1f; %zu restart / poll-pause ticks left out;"
+                " the whole run: oracle %lld, model %lld (%+.3f %%)\n", what, r.idleTicks, r.idleExact, r.idleTicks ? static_cast<double>(r.idleErr) / static_cast<double>(r.idleTicks) : 0.0, r.otherTicks,
+                r.otherTicks ? static_cast<double>(r.otherErr) / static_cast<double>(r.otherTicks) : 0.0, r.otherTicks ? static_cast<double>(r.otherAbs) / static_cast<double>(r.otherTicks) : 0.0, r.skipped,
+                static_cast<long long>(r.totalOracle), static_cast<long long>(r.totalMine),
+                r.totalOracle ? 100.0 * static_cast<double>(r.totalMine - r.totalOracle) / static_cast<double>(r.totalOracle) : 0.0);
+}
+
+}  // namespace
+
+TEST(tick_cost_in_joystick_mode_equals_the_oracles_on_the_ticks_that_draw_nothing) {
+    // A game played with the paddles (tools/record_joystick_ticks.py: the states, the paddle positions, the cycle at which every tick starts and the frightened timers). The ghosts are fed from the
+    // recording and Pac-Man steers by the original's paddle routines, so every tick's cost can be set against the oracle's. A tick that draws nothing costs exactly the idle tick plus the
+    // joystick poll (none unless Pac-Man steps: the start-of-tick poll is skipped, $7861); the others are the cost model's approximation, summed up.
+    if (testfw::config().joyTicks.empty() || testfw::config().image.empty()) {
+        std::printf("    SKIPPED (needs --image and --joyticks)\n");
+        return;
+    }
+    const auto built = datapack::buildPack(readAll(testfw::config().image), verify::referenceExpected(), datapack::dataManifest());
+    CHECK_MSG(built.ok, built.reason);
+    if (!built.ok) return;
+    const auto loaded = datapack::loadPack(built.bytes, verify::referenceExpected());
+    CHECK_MSG(loaded.ok, loaded.reason);
+    if (!loaded.ok) return;
+    const CostReplay r = costReplay(loaded.pack, testfw::config().joyTicks, true, "scratch/tickfit_joy.csv", 100000);
+    reportCost("paddle game", r);
+    CHECK(r.idleTicks >= 1000);
+    CHECK(r.idleExact == r.idleTicks);
+}
+
+TEST(tick_cost_in_a_keyboard_game_equals_the_oracles_on_the_ticks_that_draw_nothing) {
+    // The same for the golden keyboard games that have a cycle file (ticks_X.bin.cyc, from tools/tick_cost_record.py via tools/export_tick_cycles.py).
+    if (testfw::config().ticks.empty() || testfw::config().image.empty()) {
+        std::printf("    SKIPPED (needs --image and --ticks)\n");
+        return;
+    }
+    const auto built = datapack::buildPack(readAll(testfw::config().image), verify::referenceExpected(), datapack::dataManifest());
+    CHECK_MSG(built.ok, built.reason);
+    if (!built.ok) return;
+    const auto loaded = datapack::loadPack(built.bytes, verify::referenceExpected());
+    CHECK_MSG(loaded.ok, loaded.reason);
+    if (!loaded.ok) return;
+    std::size_t runs = 0;
+    for (const auto& path : split(testfw::config().ticks)) {
+        if (readAll(path + ".cyc").empty()) continue;
+        const std::size_t slash = path.find_last_of("/\\");
+        const std::string name = path.substr(slash == std::string::npos ? 0 : slash + 1);
+        const CostReplay r = costReplay(loaded.pack, path, false, "scratch/tickfit_" + name + ".csv", name == "ticks_D.bin" ? 1093 : 100000);   // (D: from tick 1094 the poked position of Pac-Man leaves the map)
+        reportCost(name.c_str(), r);
+        CHECK(r.idleTicks >= 300);
+        CHECK(r.idleExact == r.idleTicks);
+        ++runs;
+    }
+    if (runs == 0) std::printf("    SKIPPED (no ticks_X.bin.cyc among the recordings)\n");
+}
+
+
 TEST(tick_cost_model_idle_tick) {
     using namespace pacman::core;
     datapack::Pack none;
@@ -470,6 +648,44 @@ TEST(gamedriver_death_and_game_over_sequences_have_the_oracles_shape) {
             CHECK(seq.back().at - seq[seq.size() - 2].at > 3'000'000 && seq.back().at > 6'000'000 && seq.back().at < 6'100'000);   // about 6.0 million cycles in all
         }
     }
+}
+
+TEST(the_death_sequence_ends_later_by_the_paddle_poll_of_the_new_life_in_joystick_mode) {
+    // $5442: the end of a life's set-up polls the input once; with the paddles that costs about 2,650 cycles more than the keyboard poll, and the READY wait before the first tick is that much longer
+    if (testfw::config().image.empty()) {
+        std::printf("    SKIPPED (needs --image)\n");
+        return;
+    }
+    const auto built = datapack::buildPack(readAll(testfw::config().image), verify::referenceExpected(), datapack::dataManifest());
+    CHECK_MSG(built.ok, built.reason);
+    if (!built.ok) return;
+    const auto loaded = datapack::loadPack(built.bytes, verify::referenceExpected());
+    CHECK_MSG(loaded.ok, loaded.reason);
+    if (!loaded.ok) return;
+    auto run = [&](bool joystick, std::int64_t& poll) {
+        GameDriver drv;
+        CHECK(drv.init(loaded.pack));
+        CHECK(drv.newGame());
+        drv.core().port().joystickMode = joystick;
+        drv.setPlayDeath(true);
+        for (int i = 0; i < 20; ++i) drv.tick();
+        GameState& s = drv.core().state();
+        s.zp(0x58) = static_cast<std::uint8_t>(0x80 | 3);
+        for (auto& g : s.ghosts) {
+            g.b[0] = s.pacX();
+            g.b[1] = s.pacY();
+        }
+        TickEvents ev;
+        for (int i = 0; i < 3 && !ev.caught; ++i) ev = drv.tick();
+        CHECK(ev.caught);
+        poll = drv.core().lifeStartCycles();
+        return drv.sequence().empty() ? std::int64_t{0} : drv.sequence().back().at;
+    };
+    std::int64_t keyboardPoll = -1, joystickPoll = -1;
+    const std::int64_t keyboard = run(false, keyboardPoll), joystick = run(true, joystickPoll);
+    CHECK(keyboard > 6'000'000 && keyboardPoll == 0);
+    CHECK(joystickPoll > 2'000 && joystickPoll < 3'000);
+    CHECK(joystick - keyboard == joystickPoll);
 }
 
 // The modern pacing (src/app/pacing.h) locks Pac-Man's step in real time: the same pellets a second and steps a second before and after the ghosts turn blue. Native (the original's timing) is

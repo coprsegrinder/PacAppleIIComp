@@ -126,6 +126,37 @@ struct Builder {
         }
         add(6);
     }
+    // $6EE2: the 12 x 3 image (the fruit); the pointer is stored into the operand of the ORA at $6EFF (self-modifying: STA $6F00 / STY $6F01)
+    void rImage12x3(int pointer) {
+        Busy window(*this);
+        add(4 + 4 + 2 + 3 + 2 + 3);
+        z[0x18] = 12;
+        z[0x03] = 0;
+        for (;;) {
+            add(6);
+            const int lo12 = r5b58();
+            add(3 + 3 + 2 + 3);
+            int x = z[0x03];
+            int yy = z[0x04];
+            for (int i = 0; i < 3; ++i) {
+                add(5 + cross(lo12, yy) + 2 + 4 + cross(pointer, x) + 6 + 2 + 2 + 5);
+                add(branch(i < 2, 0x6F0A, 0x6EFB));   // (both loops branch backwards over the page boundary $6F00: one more cycle)
+                ++x;
+                ++yy;
+            }
+            z[0x03] = x;
+            z[0x10] += 1;
+            z[0x18] -= 1;
+            add(3 + 5 + 5);
+            if (z[0x18] != 0) {
+                add(branch(true, 0x6F12, 0x6EF0));
+            } else {
+                add(2);
+                break;
+            }
+        }
+        add(6);
+    }
     // $6172: the small dot
     void rDot() {
         Busy window(*this);
@@ -1844,6 +1875,12 @@ std::int64_t drawCallCycles(const DrawCall& c, const datapack::Pack& pack) {
             b.z[0x10] = c.p[2];
             b.rTile();
             break;
+        case 7:
+            b.z[0x04] = c.p[1];
+            b.z[0x10] = c.p[2];
+            if (c.p[1] == 19 && c.p[2] == 102) b.add(2 + 3 + 2 + 3);   // entered at $6EDA: LDX #$66, STX $10, LDX #$13, STX $04
+            b.rImage12x3(c.p[0]);
+            break;
         case 9:
             b.z[0x16] = c.p[0] & 255;
             b.z[0x17] = c.p[0] >> 8;
@@ -1869,7 +1906,7 @@ std::int64_t drawCallCycles(const DrawCall& c, const datapack::Pack& pack) {
 std::int64_t tickCostCycles(const std::vector<DrawCall>& calls, const datapack::Pack& pack, bool demo, bool ate, bool energizer) {
     const std::int64_t idle = demo ? kIdleTickCyclesDemo : kIdleTickCyclesGame;
     if (calls.empty() && !ate && !energizer) return idle;
-    std::int64_t c = idle + 12;   // 2,939 for a tick that draws (fitted)
+    std::int64_t c = idle + (demo ? 12 : 0);   // 2,939 for a tick of the attract game that draws (fitted); the +12 are the attract game's own bookkeeping ($80E3, see gamedriver.cpp)
     for (const auto& d : calls) {
         c += drawCallCycles(d, pack);
         switch (d.type) {

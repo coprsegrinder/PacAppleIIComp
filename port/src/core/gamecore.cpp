@@ -252,6 +252,10 @@ TickEvents GameCore::tickImpl(GhostSource* fed) {
     TickEvents ev;
     GameState& s = state_;
     // ---- $7861: Pac-Man ----
+    // Joystick mode: `LDA $F5 / BNE $7868` skips the poll at the start of the tick. The keyboard tick pays LDA (3) + BNE (2) + JSR (6) + the poll's body (62 in the attract game, 122 in a game) and
+    // the joystick tick LDA (3) + BNE taken (3): 67 / 127 cycles less. In a tick in which Pac-Man steps, the poll of $786D comes back and the difference to the keyboard tick is the whole
+    // PollResult::extraCycles (set below), which already contains the skipped poll (V: tools/record_joystick_demo.py, tools/record_joystick_ticks.py, tests/test_attract.cpp, test_gamedriver.cpp).
+    if (port_.joystickMode) ev.inputCycles = s.demo != 0 ? -67 : -127;
     if (s.demo == 0 && !port_.joystickMode) {   // keyboard mode: $7865 polls at the start of every tick (joystick mode polls below, when the step timer runs out: $7871)
         const PollResult pr = poller_.poll(s, keys_, port_);
         if (pr.paused) {
@@ -263,11 +267,11 @@ TickEvents GameCore::tickImpl(GhostSource* fed) {
     if (ev.acted && s.demo != 0 && port_.joystickMode) {   // the same poll in the attract game: $7041 finds $E8 <> 0 and answers $80, which is written into $63 (the demo's own moves come from its stream)
         const JoystickResult j = joystickRoutine7041(true, s.pacDirection(), port_.paddleX, port_.paddleY);
         s.requestedDirection() = j.a;
-        ev.inputCycles = j.cycles + 17 - 38;
+        ev.inputCycles = j.cycles + 17 - 38;   // (the whole difference to the keyboard tick: the skipped start-of-tick poll is in it)
     }
     if (ev.acted && s.demo == 0 && port_.joystickMode) {   // $786D: LDA $F5; BEQ; JSR $6F5E - the paddle routines cost about 2,700 cycles, once per step of Pac-Man
         const PollResult pr = poller_.poll(s, keys_, port_);
-        ev.inputCycles = pr.extraCycles;
+        ev.inputCycles = pr.extraCycles;       // (likewise)
         if (pr.paused) {
             ev.paused = true;
             return ev;

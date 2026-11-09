@@ -45,6 +45,7 @@ struct Config {
     std::string hidden;       // --hidden <hidden.bin>: the hidden-menu runs of the oracle (tools/capture_hidden.py, tools/export_hidden.py)
     std::string prompts;      // --prompts <prompts.bin>: the Space/prompt runs of the oracle (tools/capture_prompts.py, tools/export_prompts.py)
     std::string charRom;      // --charrom <file>: the Apple II character generator ROM dump (for the picture test of the text screens)
+    std::string joyDemoCycles;   // --joydemocycles <scratch/joydemo/demo_cycles.bin>: the same for the attract game in joystick mode (tools/record_joystick_demo.py)
     std::string demoCycles;   // --democycles <demo_cycles.bin>: the cycle at which every tick of the attract game starts (tools/record_demo_full.py)
     std::string titleSnaps;   // --titlesnaps <title_snaps.bin>: screen memory of the oracle every 50,000 cycles of that turn (tools/capture_title_snaps.py, local only)
     std::string deaths;  // --deaths <death_timing.bin>: measured landmarks of 220 deaths (tools/export_deaths.py, local only)

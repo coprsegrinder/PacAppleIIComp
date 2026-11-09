@@ -20,7 +20,7 @@ def main(ticks=8000, seed=11):
     for st in ('key:2', 'key:cr', '70_000_000'):      # joystick mode
         do_step(mc, st, lambda *_: None)
     start_game(mc)
-    states, pads = [], bytearray()
+    states, pads, cycles, extra = [], bytearray(), [], bytearray()
     hold = {'left': 0, 'x': 127, 'y': 127}
     done = {'v': False}
     step = mc.cpu.step
@@ -28,6 +28,8 @@ def main(ticks=8000, seed=11):
     def hook():
         if mc.cpu.pc == TICK_PC and mc.m[0xE8] == 0 and not done['v']:
             states.append(state_bytes(mc.m))
+            cycles.append(mc.cpu.cycles)
+            extra.extend(mc.m[a] for a in (0xE1, 0xE2, 0xE5, 0xE6, 0xE7, 0xE4))
             if len(states) > ticks:
                 done['v'] = True
             else:
@@ -64,6 +66,9 @@ def main(ticks=8000, seed=11):
         f.write(struct.pack('<I', 0))
         f.write(struct.pack('<I', 0))
     open('scratch/ticks_JOY.bin.pad', 'wb').write(bytes(pads))
+    with open('scratch/ticks_JOY.bin.cyc', 'wb') as f:      # u32 count, then the cycle at which every tick starts (for the cost-model test)
+        f.write(struct.pack('<I', len(states)) + b''.join(struct.pack('<I', c) for c in cycles[:len(states)]))
+    open('scratch/extra_JOY.bin', 'wb').write(bytes(extra[:6 * len(states)]))      # as tools/record_tick_calls.py: $E1 $E2 $E5 $E6 $E7 $E4 at the start of every tick
     print('J: ticks recorded', len(states), 'paddle bytes', len(pads), 'game over reached:', mc.m[0xE8] != 0, flush=True)
 
 

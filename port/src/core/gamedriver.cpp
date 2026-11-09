@@ -151,7 +151,7 @@ void GameDriver::buildDeathSequence(const GameState& caught, bool gameOver) {
     ready.ready = true;
     sequence_.push_back(ready);
     SequenceStep end;   // the READY wait is over: the page of the first tick (no READY) and the first tick follows
-    end.at = tl.total;
+    end.at = tl.total + core_.lifeStartCycles();   // (joystick mode: the poll at the end of the life's set-up, $5442, takes the paddle timing)
     end.rebuild = true;
     sequence_.push_back(end);
 }
@@ -235,7 +235,7 @@ TickEvents GameDriver::tickImpl(FrightenAware* fed) {
                 return ev;
             }
         }
-        extraCycles_ = ev.levelComplete ? kLevelEndCycles : kDeathSequenceCycles;   // level end: measured in 033-1b
+        extraCycles_ = (ev.levelComplete ? kLevelEndCycles : kDeathSequenceCycles) + core_.lifeStartCycles();   // level end: measured in 033-1b; the joystick poll of the new life's set-up ($5442) on top
         rebuildScreen();
         prev_ = now;
         return ev;
@@ -243,6 +243,16 @@ TickEvents GameDriver::tickImpl(FrightenAware* fed) {
     const auto calls = tickCalls(before, after, *pack_, acting && ev.acted, display_, prev_, now);
     lastCalls_ = calls;
     tickCycles_ = tickCostCycles(calls, *pack_, before.demo != 0, ev.ate, ev.energizer);
+    // The tick in which $59 = 1 after the countdown (Pac-Man steps in the next one) costs more in a game, by two bookkeeping routines that fall through their CMP #1:
+    //  * $58B3 (the 1UP blink counter): LDA $E8, BEQ, LDA $E5, BEQ not taken, DEC $E5 = 15 cycles more than the BNE taken, while the counter $E5 has not run out;
+    //  * $6AA7 (the fruit): while there is none ($E7 = 0) LDA $E7 / BEQ = 5 more; while it is on the screen ($E7 = 1) the countdown $5A/$5B runs ((LDA, BNE, DEC, CLC, LDA, ADC, BNE, LDA, CMP, BEQ,
+    //    LDA, LDY, JMP) = 37 more than the BNE taken and the RTS), and the fruit's image is drawn (type 7, drawCallCycles).
+    // V: every tick of the paddle game (tests/test_gamedriver.cpp). In the attract game the same tick calls $80E3 instead; its cost is in the fitted glue of tickCostCycles.
+    if (before.demo == 0 && after.zp(0x59) == 1) {
+        if (prev_.e5 != 0) tickCycles_ += 15;
+        if (now.e7 == 0) tickCycles_ += 5;
+        else if (now.e7 == 1) tickCycles_ += 37;
+    }
     std::vector<DrawCall> actorCalls;
     for (const auto& c : calls) {
         executeCall(page_, c, *pack_);
