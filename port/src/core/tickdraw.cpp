@@ -398,10 +398,12 @@ std::vector<DrawCall> restartCalls(RestartKind kind, const RestartInputs& in, co
         for (int g = 3; g >= 0; --g)                                                  // $8BEF-$8BFC: ghosts 4, 3, 2, 1
             out.push_back(DrawCall{3, {kMaskTable, in.ghostXY[static_cast<std::size_t>(g) * 2] - 4, in.ghostXY[static_cast<std::size_t>(g) * 2 + 1] - 4, 0, 0}});
         out.push_back(DrawCall{3, {kMaskTable, clearX, clearY, 0, 0}});              // $8BFE-$8C01: Pac-Man
-        out.push_back(DrawCall{1, {in.pacImage, in.pacX, in.pacY, 1, 0}});          // $7EC0: the death animation
+        // the death animation draws with the $1E that the last image draw of the tick left (a ghost's table flag, 0 or 1, or Pac-Man's $80): TASK-034-SWITCH found a catch with 1
+        const int deathFlag = display.lastFlag1E;
+        out.push_back(DrawCall{1, {in.pacImage, in.pacX, in.pacY, 1, deathFlag}});          // $7EC0: the death animation
         out.push_back(DrawCall{3, {kMaskTable, clearX, clearY, 0, 0}});
         for (int k = 0; k < 6; ++k) {
-            out.push_back(DrawCall{9, {0x7F13 + 30 * k, in.pacX, in.pacY, 1, 0}});
+            out.push_back(DrawCall{9, {0x7F13 + 30 * k, in.pacX, in.pacY, 1, deathFlag}});
             out.push_back(DrawCall{3, {0x6A04, in.pacX - 5, in.pacY - 4, 0, 0}});
         }
     } else {

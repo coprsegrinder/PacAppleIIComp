@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-11-09
+* TASK-034-DRAW: the last drawing gaps closed on the oracle: the door's low bit (scenario K, proven by changing the code), the level icon of every level 2-26, the player switch with 3 and 5 players across the whole rotation; fixed the colour flag of the death animation (it follows $1E).
+
 ## 2026-11-08
 * TASK-034-PADDLE: the original's paddle / joystick routines ($701E, $7041) ported and used for every controller (Xbox, DualShock 4, DualSense) when the first menu chose it; equal to the oracle (6,120 decisions, an 8,165-tick game and a 4,000-tick demo in joystick mode). C++ line coverage added (tools/coverage_cpp.sh; dotnet-coverage cannot measure native code, so tools/linecov does it): 94.2 % of the port's lines run, docs/CODE_COVERAGE_PORT.md.
 * TASK-034-VIBRATION: vibration (Off / Low / Medium / High) for Xbox, DualShock 4 and DualSense on game events; HDR and VSync scrapped (docs/MODERNIZATION.md).

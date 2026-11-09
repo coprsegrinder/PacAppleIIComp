@@ -6,7 +6,7 @@
 cd "$(dirname "$0")/.." || exit 2
 S=scratch
 LOGIC=$(ls $S/ticks_[ABCD].bin $S/ticks_B10.bin $S/ticks_N00.bin $S/ticks_T00.bin $S/ticks_L[0-9][0-9].bin $S/ticks_E[0-9][0-9].bin $S/ticks_V[0-9][0-9].bin $S/ticks_W[0-9][0-9].bin | tr '\n' ',' | sed 's/,$//')
-DRAW=$(ls $S/ticks_[ABCDFGHJKLMPQRSU].bin | tr '\n' ',' | sed 's/,$//')
+DRAW=$(ls $S/ticks_[ABCDFGHJKLMPQRSU].bin $S/ticks_Z[0-9][0-9].bin $S/ticks_T[345].bin | tr '\n' ',' | sed 's/,$//')
 cmd //c "port\\build_coverage.bat" 2>&1 | grep -E "error C|fatal|LNK" | head -5
 cmd //c "tools\\linecov\\build.bat" 2>&1 | grep -E "error C|fatal|LNK" | head -5
 out/cov/linecov.exe '\port\src\' $S/linecov.tsv out/cov/pacman_tests.exe --image "Pacman (1983)(Atari).dsk" --reference "third_party/AppleWin/DOS 3.3 System Master - 680-0210-A.dsk" \

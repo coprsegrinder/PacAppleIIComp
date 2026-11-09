@@ -31,6 +31,24 @@ def patched():
     def hook():
         if mc.cpu.pc == 0x7861 and mc.m[0xE8] == 0:
             state['t'] += 1
+            if SC in ('T3', 'T4', 'T5'):   # every player is left with ONE life 5 ticks into his turn, so that each of them dies at his first catch (TASK-034-SWITCH)
+                dyn = holder.setdefault('dyn', {'cur': 0, 'turn': 0, 'done': False, 'pokes': []})
+                cur = mc.m[0x50]
+                if cur != dyn['cur']:
+                    dyn.update(cur=cur, turn=state['t'], done=False, placed=False)
+                if not dyn['done'] and state['t'] >= dyn['turn'] + 5:   # (every player is left with TWO lives in his first turn, so that the rotation comes round again; the second death ends his game)
+                    if (mc.m[0x58] & 0x7F) > 2:
+                        mc.m[0x58] = 0x82
+                        dyn['pokes'].append([state['t'], 0x58, 0x82])
+                    dyn['done'] = True
+                if dyn['done'] and not dyn.get('placed') and state['t'] >= dyn['turn'] + 40:   # then Pac-Man is put on a ghost that is out of the house and not blue: the next contact test catches him
+                    for gb in (0x84, 0x98, 0xAC, 0xC0):
+                        if mc.m[gb + 17] == 0 and mc.m[gb + 9] == 0 and mc.m[gb + 8] == 0:
+                            for addr, val in ((0x60, mc.m[gb]), (0x61, mc.m[gb + 1])):
+                                mc.m[addr] = val
+                                dyn['pokes'].append([state['t'], addr, val])
+                            dyn['placed'] = True
+                            break
             col.records.append([-1, [state['t']], None, None])
             extra.extend([mc.m[0xE1], mc.m[0xE2], mc.m[0xE5], mc.m[0xE6], mc.m[0xE7], mc.m[0xE4]])
             holder.setdefault('extra2', bytearray()).extend([mc.m[0x50], mc.m[0x51]])
@@ -56,7 +74,12 @@ CUSTOM = {
     'P': [],                                    # TWO PLAYERS: A's keys, the players prompt answered with 2
     'J': [[200, 0x84, 0x8B], [200, 0x85, 0x47], [200, 0x95, 1]],      # ghost 1 is put on the door cell with its in-house flag set: it runs the house-exit script and redraws the door with $1E = its own flag 1                            # level 6; at tick 100 one item is left: the next item ends the level (-> level 7: icons)
 }
-if SC in CUSTOM:
+for _l in range(2, 27):   # Z02-Z26 (TASK-034-ICONS): the level before is poked at tick 5, its last item at tick 100: the level end draws the screen of level _l with its icon
+    CUSTOM['Z%02d' % _l] = [[5, 0x55, _l - 1], [110 if _l in (12, 13) else 100, 0x56, 1]]   # (for 12 and 13 at tick 100 Pac-Man eats an item in the same tick as the poke, which the level-end detection of the tests cannot see)
+if SC in ('T3', 'T4', 'T5'):
+    stored = dict(json.load(open('tests/golden/gameplay_traces.json'))['scenarios']['A'])
+    G.SCENARIOS[SC] = dict(G.SCENARIOS['A'])
+elif SC in CUSTOM:
     stored = dict(json.load(open('tests/golden/gameplay_traces.json'))['scenarios']['A'])
     stored['pokes'] = CUSTOM[SC]
     G.SCENARIOS[SC] = dict(G.SCENARIOS['A'])
@@ -69,10 +92,10 @@ elif SC == 'F':
 else:
     stored = json.load(open('tests/golden/gameplay_traces.json'))['scenarios'][SC]
 G.SCENARIOS[SC]['ticks'] = N
-if SC in ('P', 'Q', 'R', 'S', 'U'):
+if SC in ('P', 'Q', 'R', 'S', 'U', 'T3', 'T4', 'T5'):
     def two_players(mc):
         from play import do_step
-        for st in ('key:sp', '3_000_000', 'key:2', '3_000_000', 'key:cr', '1_000_000'):
+        for st in ('key:sp', '3_000_000', 'key:%s' % (SC[1] if SC[0] == 'T' else '2'), '3_000_000', 'key:cr', '1_000_000'):
             do_step(mc, st, lambda *_: None)
     G.start_game = two_players
 states = []
@@ -84,7 +107,9 @@ def rec(m):
 G.state_bytes = rec
 G.run(SC, stored['inputs'], stored['pokes'])
 G.state_bytes = orig_state
-if SC in ('F', 'G', 'H', 'J', 'K', 'L', 'M', 'P', 'Q', 'R', 'S', 'U'):
+if SC in ('T3', 'T4', 'T5'):
+    stored['pokes'] = holder.get('dyn', {}).get('pokes', [])
+if SC in ('F', 'G', 'H', 'J', 'K', 'L', 'M', 'P', 'Q', 'R', 'S', 'U') or SC.startswith('Z') or SC in ('T3', 'T4', 'T5'):
     import struct as _st
     states = states[:N + 1]   # a run that ends early (game over leaves the main loop) has fewer states than requested
     h = b''

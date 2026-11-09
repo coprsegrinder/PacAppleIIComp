@@ -5,6 +5,7 @@
 //    erase calls of the blinks are not logged by the collector, so those are removed from the comparison), tick by tick, in order;
 // 2. executing ALL derived calls on the first-screen page gives the oracle's page at every 10th tick, byte for byte (no area is excluded any more).
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <cstring>
 #include <fstream>
@@ -15,6 +16,7 @@
 
 #include "../src/core/lifestart.h"
 #include "../src/core/screen.h"
+#include "../src/core/cartoon.h"
 #include "../src/core/tickdraw.h"
 #include "../src/datapack/datapack.h"
 #include "../src/verify/verify.h"
@@ -64,6 +66,40 @@ std::uint32_t otherScoreAt(const PlayerInfo& pi, const TickTrace& tr, std::size_
     return 0;
 }
 
+// 3-5 players: every player's score as last seen while he was the current player (index = player; a player who has not played yet has 0).
+std::array<std::uint32_t, 6> scoresAt(const PlayerInfo& pi, const TickTrace& tr, std::size_t t) {
+    // A player's score is final when his turn ends; the state of the tick in which he dies is already the next player's, so a gain in that very tick (a dot eaten) is not in any recorded state
+    // before the switch. It is in the state at the START of his next turn (the score does not change between), so that one is used when the player comes round again.
+    std::array<std::uint32_t, 6> out{};
+    std::array<bool, 6> have{};
+    const auto scoreAt = [&](std::size_t u) {
+        const GameState g = fromOracleLayout(tr.state(u));
+        return static_cast<std::uint32_t>(g.zp(0x52) | (g.zp(0x53) << 8) | (g.zp(0x54) << 16));
+    };
+    const int now = pi.current(t);
+    for (std::size_t u = t + 1; u < tr.ticks(); ++u) {
+        const int cur = pi.current(u);
+        if (cur < 1 || cur > 5 || cur == now || have[static_cast<std::size_t>(cur)]) continue;
+        out[static_cast<std::size_t>(cur)] = scoreAt(u);
+        have[static_cast<std::size_t>(cur)] = true;
+    }
+    for (std::size_t u = t + 1; u-- > 0;) {
+        const int cur = pi.current(u);
+        if (cur < 1 || cur > 5 || have[static_cast<std::size_t>(cur)]) continue;
+        out[static_cast<std::size_t>(cur)] = scoreAt(u);
+        have[static_cast<std::size_t>(cur)] = true;
+    }
+    return out;
+}
+
+// The tile that marks a player's label (the digit 1..5: $7201 + $70 x (player - 1)) at the column of the left (x 47: players 1, 3, 5) or the right (x 271: players 2, 4) block.
+bool isPlayerMark(const DrawCall& c) {
+    if (c.type != 6 || (c.p[1] != 47 && c.p[1] != 271)) return false;
+    for (int i = 0; i < 5; ++i)
+        if (c.p[0] == 0x7201 + 0x70 * i) return true;
+    return false;
+}
+
 // Pac-Man was caught: the lives went down. A poke of the lives byte ($58) in the recording (scenario Q) is not a catch.
 bool livesDropped(const TickTrace& tr, std::size_t k, const GameState& a, const GameState& b) {
     for (const auto& pk : tr.pokes())
@@ -82,8 +118,9 @@ std::vector<Scenario> scenarios() {
         const std::size_t slash = p.find_last_of("/\\");
         const std::string dir = slash == std::string::npos ? std::string() : p.substr(0, slash + 1);
         const std::string name = p.substr(slash == std::string::npos ? 0 : slash + 1);
-        if (name.size() != 11 || name.rfind("ticks_", 0) != 0 || name.substr(7) != ".bin") continue;   // ticks_X.bin
-        Scenario s{std::string(1, name[6]), p, dir + "tick_calls_" + name[6] + ".txt", dir + "pages_" + name[6] + ".bin", dir + "extra_" + name[6] + ".bin"};
+        if (name.size() < 11 || name.rfind("ticks_", 0) != 0 || name.compare(name.size() - 4, 4, ".bin") != 0) continue;   // ticks_X.bin (X: one letter, or a name such as Z08 or T3)
+        const std::string id = name.substr(6, name.size() - 10);
+        Scenario s{id, p, dir + "tick_calls_" + id + ".txt", dir + "pages_" + id + ".bin", dir + "extra_" + id + ".bin"};
         if (readAll(s.callsPath).empty() || readAll(s.pagesPath).empty() || readAll(s.extraPath).empty()) continue;
         out.push_back(s);
     }
@@ -187,7 +224,7 @@ TEST(tickdraw_calls_and_pages_equal_the_oracle) {
         std::size_t ticks = 0, withCalls = 0, calls = 0, badTicks = 0, pagesCompared = 0, badPages = 0, shown = 0, doorCalls = 0, doorLowBit = 0;
         std::uint32_t nextPage = 0;
         // the recorder replays N ticks with the scenario's keys and pokes and runs on a little without them: only the first N ticks are valid (A, B, C: 700; D: 1600)
-        const std::size_t scenarioLimit = sc.letter == "D" ? 1600 : sc.letter == "A" ? 2090 : sc.letter == "G" ? 1399 : sc.letter == "H" ? 499 : sc.letter == "P" ? 2299 : sc.letter == "Q" ? 4699 : sc.letter == "R" ? 5574 : sc.letter == "S" ? 6999 : sc.letter == "U" ? 2599 : 700;
+        const std::size_t scenarioLimit = sc.letter == "D" ? 1600 : sc.letter == "A" ? 2090 : sc.letter == "G" ? 1399 : sc.letter == "H" ? 499 : sc.letter == "P" ? 2299 : sc.letter == "Q" ? 4699 : sc.letter == "R" ? 5574 : sc.letter == "S" ? 6999 : sc.letter == "U" ? 2599 : sc.letter.size() > 1 ? 100000 : 700;   // (the recordings with a longer name - Z08.., T3, T5 - are recorded to their end)
         const std::size_t limit = std::min<std::size_t>(scenarioLimit, std::min(logged.size(), tr.ticks()) - 1);
         for (std::size_t k = 0; k < limit; ++k) {
             // page comparison at the START of tick k (everything before it has been drawn)
@@ -247,9 +284,23 @@ TEST(tickdraw_calls_and_pages_equal_the_oracle) {
                 // Pac-Man was caught: the original plays the death animation and then builds the first screen again from the state (walls, door, dots of the CURRENT
                 // map, labels, the score and high score, lives icons, Pac-Man at his start); the ghosts appear with the steps of the next ticks. The animation itself is
                 // inside this tick and not rebuilt, only its result: the page is replaced.
+                {   // the high score shown is the best of all the players' scores (the dying player's last gain is in his next turn's first state)
+                    std::uint32_t best = b.zp(0x52) | (b.zp(0x53) << 8) | (b.zp(0x54) << 16);
+                    if (pinfo.count(k + 1) > 2) {
+                        for (const std::uint32_t sc2 : scoresAt(pinfo, tr, k + 1)) best = std::max(best, sc2);
+                    } else {
+                        best = std::max(best, otherScoreAt(pinfo, tr, k + 1));
+                    }
+                    const std::uint32_t old = display.high[0] | (display.high[1] << 8) | (display.high[2] << 16);
+                    best = std::max(best, old);
+                    display.high = {static_cast<std::uint8_t>(best), static_cast<std::uint8_t>(best >> 8), static_cast<std::uint8_t>(best >> 16)};
+                }
                 hires::Page fresh;
                 CHECK(drawPlayfield(fresh, b, pack));
-                CHECK(drawHud(fresh, b, pack, display.high, pinfo.count(k + 1), otherScoreAt(pinfo, tr, k + 1), pinfo.current(k + 1)));
+                if (pinfo.count(k + 1) > 2)   // 3-5 players: all the blocks, with every player's score
+                    CHECK(drawHudPlayers(fresh, b, pack, display.high, pinfo.count(k + 1), pinfo.current(k + 1), scoresAt(pinfo, tr, k + 1)));
+                else
+                    CHECK(drawHud(fresh, b, pack, display.high, pinfo.count(k + 1), otherScoreAt(pinfo, tr, k + 1), pinfo.current(k + 1)));
                 CHECK(drawPacman(fresh, b, pack, false));
                 page = fresh;
                 display.lastFlag1E = 0;
@@ -260,7 +311,8 @@ TEST(tickdraw_calls_and_pages_equal_the_oracle) {
         std::printf("    scenario %s: %zu ticks, %zu with calls (%zu logged calls), %zu ticks differ; %zu pages compared, %zu differ; door redraws %zu (%zu with the low-bit OR)\n", sc.letter.c_str(), ticks, withCalls, calls, badTicks,
                     pagesCompared, badPages, doorCalls, doorLowBit);
         CHECK(badTicks == 0);
-        CHECK(pagesCompared >= 50 && badPages == 0);
+        CHECK(pagesCompared >= (sc.letter.size() > 1 ? 10u : 50u) && badPages == 0);
+        if (sc.letter == "K") CHECK_MSG(doorLowBit >= 1, "scenario K must redraw the door with the previous draw's low palette bit ($1E = 1): checked by changing the code (the page then differs at tick 210)");
     }
 }
 
@@ -290,7 +342,7 @@ TEST(tickdraw_death_and_level_end_sequences_equal_the_oracle_log) {
             std::size_t start = 0;
             bool found = false;
             for (std::size_t i = 0; i + 1 < block.size(); ++i)
-                if (block[i].type == 2 && block[i].p[0] == 0x55F7 && block[i + 1].type == 6 && ((block[i + 1].p[0] == 0x7201 && block[i + 1].p[1] == 47) || (block[i + 1].p[0] == 0x7271 && block[i + 1].p[1] == 271))) {
+                if (block[i].type == 2 && block[i].p[0] == 0x55F7 && isPlayerMark(block[i + 1])) {
                     start = i + 2;
                     found = true;
                     if (death) break;      // the first pair is the blink; for a level end the LAST pair before the dot pass counts (below)
@@ -300,6 +352,11 @@ TEST(tickdraw_death_and_level_end_sequences_equal_the_oracle_log) {
             in.players = pinfo.count(k + 1);
             in.current = pinfo.current(k + 1);
             in.otherScore = otherScoreAt(pinfo, tr, k + 1);
+            std::array<std::uint32_t, 6> allScores{};
+            if (in.players > 2) {   // 3-5 players: the labels and scores of every player (TASK-033-6b)
+                allScores = scoresAt(pinfo, tr, k + 1);
+                in.scores = &allScores;
+            }
             if (death) {
                 // positions and the last Pac-Man image are what the game core knows at that moment; here they are read from the first calls of the tail
                 std::vector<DrawCall> tail(block.begin() + static_cast<std::ptrdiff_t>(start), block.end());
@@ -314,7 +371,7 @@ TEST(tickdraw_death_and_level_end_sequences_equal_the_oracle_log) {
                 // level end: the tail starts with the Pac-Man clear that follows the label pair; take the pair that precedes a type 3
                 std::size_t s2 = 0;
                 for (std::size_t i = 0; i + 2 < block.size(); ++i)
-                    if (block[i].type == 6 && ((block[i].p[0] == 0x7201 && block[i].p[1] == 47) || (block[i].p[0] == 0x7271 && block[i].p[1] == 271)) && block[i + 1].type == 3 && block[i + 2].type == 1) s2 = i + 1;
+                    if (isPlayerMark(block[i]) && block[i + 1].type == 3 && block[i + 2].type == 1) s2 = i + 1;
                 if (s2 == 0) continue;
                 start = s2;
                 in.pacX = block[start].p[1] + 4;
@@ -322,20 +379,41 @@ TEST(tickdraw_death_and_level_end_sequences_equal_the_oracle_log) {
                 in.pacImage = block[start + 1].p[0];
             }
             DisplayState display;
+            if (death) {   // the death animation is drawn with the $1E that the last image draw before it left (a ghost's table flag)
+                for (std::size_t i = start; i-- > 0;)
+                    if (block[i].type == 1) {
+                        display.lastFlag1E = block[i].p[4];
+                        break;
+                    }
+            }
             {   // the high score is the best score of the runs (in two-player games the other player's score may be the higher one)
-                const std::uint32_t mineScore = b.zp(0x52) | (b.zp(0x53) << 8) | (b.zp(0x54) << 16), best = std::max(mineScore, in.otherScore);
+                const std::uint32_t mineScore = b.zp(0x52) | (b.zp(0x53) << 8) | (b.zp(0x54) << 16);
+                std::uint32_t best = std::max(mineScore, in.otherScore);
+                if (in.players > 2)
+                    for (const std::uint32_t sc2 : allScores) best = std::max(best, sc2);
                 display.high = {static_cast<std::uint8_t>(best), static_cast<std::uint8_t>(best >> 8), static_cast<std::uint8_t>(best >> 16)};
             }
             const auto mine = restartCalls(death ? RestartKind::Death : RestartKind::LevelEnd, in, b, pack, display);
             std::vector<DrawCall> theirs;
             for (std::size_t i = start; i < block.size(); ++i) theirs.push_back(block[i]);
-            const bool same = mine == theirs;
-            std::printf("    %s tick %zu (%s): %zu calls logged, %zu derived, %s\n", sc.letter.c_str(), k, death ? "death" : "level end", theirs.size(), mine.size(), same ? "EQUAL" : "DIFFERENT");
+            bool same = mine == theirs;
+            bool cartoonInside = false;
+            if (!same && levelEnd && !death && cartoonAfterLevel(a.level()) != 0 && theirs.size() > mine.size()) {
+                // after this level the intermission plays inside the tick: the calls of the level end before it and the rebuilt screen after it are mine, the cartoon between them is checked on its own (test_cartoon)
+                std::size_t prefix = 0, suffix = 0;
+                while (prefix < mine.size() && mine[prefix] == theirs[prefix]) ++prefix;
+                while (suffix < mine.size() - prefix && mine[mine.size() - 1 - suffix] == theirs[theirs.size() - 1 - suffix]) ++suffix;
+                same = prefix + suffix >= mine.size();
+                cartoonInside = same;
+            }
+            std::printf("    %s tick %zu (%s): %zu calls logged, %zu derived, %s\n", sc.letter.c_str(), k, death ? "death" : "level end", theirs.size(), mine.size(), same ? (cartoonInside ? "EQUAL around the intermission" : "EQUAL") : "DIFFERENT");
             if (!same) {
                 for (std::size_t i = 0; i < std::min(mine.size(), theirs.size()); ++i)
                     if (!(mine[i] == theirs[i])) {
-                        std::printf("      first difference at call %zu: mine [%d %d %d %d] oracle [%d %d %d %d]\n", i, mine[i].type, mine[i].p[0], mine[i].p[1], mine[i].p[2], theirs[i].type, theirs[i].p[0],
-                                    theirs[i].p[1], theirs[i].p[2]);
+                        std::printf("      first difference at call %zu: mine [%d %d %d %d %d %d] oracle [%d %d %d %d %d %d]\n", i, mine[i].type, mine[i].p[0], mine[i].p[1], mine[i].p[2], mine[i].p[3], mine[i].p[4], theirs[i].type, theirs[i].p[0],
+                                    theirs[i].p[1], theirs[i].p[2], theirs[i].p[3], theirs[i].p[4]);
+                        for (std::size_t j = i > 4 ? i - 4 : 0; j < std::min(i + 5, std::min(mine.size(), theirs.size())); ++j)
+                            std::printf("        call %zu: mine [%d %d %d %d %d %d] oracle [%d %d %d %d %d %d]\n", j, mine[j].type, mine[j].p[0], mine[j].p[1], mine[j].p[2], mine[j].p[3], mine[j].p[4], theirs[j].type, theirs[j].p[0], theirs[j].p[1], theirs[j].p[2], theirs[j].p[3], theirs[j].p[4]);
                         break;
                     }
             }
@@ -363,6 +441,11 @@ TEST(tickdraw_death_and_level_end_sequences_equal_the_oracle_log) {
                 in.pacY = block[start + 4].p[2] + 4;
                 in.pacImage = block[start + 5].p[0];
                 DisplayState display;
+                for (std::size_t i = start; i-- > 0;)   // the death is drawn with the $1E that the last image draw of the tick left
+                    if (block[i].type == 1) {
+                        display.lastFlag1E = block[i].p[4];
+                        break;
+                    }
                 const GameState last = fromOracleLayout(tr.state(tr.ticks() - 1));
                 const auto mine = restartCalls(RestartKind::GameOver, in, last, pack, display);
                 const std::vector<DrawCall> theirs(block.begin() + static_cast<std::ptrdiff_t>(start), block.end());
