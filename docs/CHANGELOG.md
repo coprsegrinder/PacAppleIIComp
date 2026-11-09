@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2026-11-09
+* TASK-034-TIMING-2: the moving ticks exact: the fitted logic cost is replaced by the cycles of the paths the transliterated routines take (cycles.h, tools/block_costs.py); 29,493 of 29,494 ordinary ticks of the 41 logic recordings equal the oracle to the cycle, every call of the ghost routine equal, the attract turn after a game equal to the cycle in 4 of 5 runs. Open: the ghost-eaten, caught and level-end ticks stay measured constants.
 * TASK-034-TIMING: the tick cost set against the oracle tick by tick (paddle game and keyboard games A-D): ticks that draw nothing exact (8,314 of 8,314), whole runs within -0.14 % .. +0.11 %. Fixed: joystick mode skips the start-of-tick poll (every tick without a step was 67 / 127 cycles too long, the demo 1.4 % too long), the tick before Pac-Man steps costs 20-42 cycles more in a game, the fruit's image had no cycle count (1,796), the READY wait lacked the paddle poll of the new life.
 * TASK-034-DRAW: the last drawing gaps closed on the oracle: the door's low bit (scenario K, proven by changing the code), the level icon of every level 2-26, the player switch with 3 and 5 players across the whole rotation; fixed the colour flag of the death animation (it follows $1E).
 

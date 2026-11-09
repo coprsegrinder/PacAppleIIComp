@@ -289,9 +289,13 @@ TEST(attract_demo_tick_cost_report) {
     CHECK(drv.init(pack));
     hires::Page blank;
     CHECK(drv.newDemo(blank));
+
+    std::ofstream ghostCsv("scratch/ghostcalls_port.csv");   // tick, ghost, the port's cycles of the call of $8763 without the drawing routines (compared with the oracle's by tools/ghost_call_compare.py)
+    ghostCsv << "tick,ghost,mine\n";
+    std::ofstream altCsv("scratch/tickalt.csv");   // the ticks that are not exact: tick, oracle minus model, acted, ate, energizer, $59 after, number of calls, the calls (type:actor)
     std::ofstream csv("scratch/tickfit.csv");   // one row per tick for the analysis in tools/tick_fit.py
-    csv << "oracle,exact,acted,ate,energizer,eaten,z59,ncalls,t1,t2,t3,t4,t5,t6,t9,t10,t11,t12\n";
-    std::map<long long, int> hist;
+    csv << "oracle,exact,acted,ate,energizer,eaten,z59,ncalls,t1,t2,t3,t4,t5,t6,t9,t10,t11,t12,logic\n";
+    std::map<long long, int> hist, altHist;
     double sum = 0, sum2 = 0;
     std::size_t n = 0;
     std::int64_t totalOracle = 0, totalExact = 0, totalModel = 0;
@@ -299,13 +303,26 @@ TEST(attract_demo_tick_cost_report) {
         const core::TickEvents ev = drv.tick();
         const std::int64_t oracle = static_cast<std::int64_t>(cyc[k + 1]) - static_cast<std::int64_t>(cyc[k]);
         if (ev.demoOver) break;
+        if (ev.acted && core::g_stepCounter1F == 0) std::printf("      $1F wrapped at tick %u\n", k);
+        for (int g = 4; g >= 1; --g) ghostCsv << (k + 1) << ',' << g << ',' << drv.core().ghostCallCycles(g) << '\n';
         std::int64_t exact = 0;
         for (const auto& c : drv.lastCalls()) exact += core::drawCallCycles(c, pack);
         {
             int cnt[16] = {};
             for (const auto& c : drv.lastCalls()) ++cnt[std::min(c.type, 15)];
             csv << oracle << ',' << exact << ',' << ev.acted << ',' << ev.ate << ',' << ev.energizer << ',' << (ev.ghostEaten[0] || ev.ghostEaten[1] || ev.ghostEaten[2] || ev.ghostEaten[3]) << ',' << static_cast<int>(drv.core().state().zp(0x59)) << ','
-                << drv.lastCalls().size() << ',' << cnt[1] << ',' << cnt[2] << ',' << cnt[3] << ',' << cnt[4] << ',' << cnt[5] << ',' << cnt[6] << ',' << cnt[9] << ',' << cnt[10] << ',' << cnt[11] << ',' << cnt[12] << '\n';
+                << drv.lastCalls().size() << ',' << cnt[1] << ',' << cnt[2] << ',' << cnt[3] << ',' << cnt[4] << ',' << cnt[5] << ',' << cnt[6] << ',' << cnt[9] << ',' << cnt[10] << ',' << cnt[11] << ',' << cnt[12] << ',' << drv.core().logicCycles() << '\n';
+        }
+        {
+            std::int64_t glue = 0;
+            for (const auto& c : drv.lastCalls()) glue += c.glue;
+            const std::int64_t alt = 2927 + drv.core().logicCycles() + exact + glue;   // the idle tick, the cycles the logic counted, the drawing routines
+            ++altHist[oracle - alt];
+            if (oracle != alt) {
+                altCsv << k << ',' << (oracle - alt) << ',' << ev.acted << ',' << ev.ate << ',' << ev.energizer << ',' << static_cast<int>(drv.core().state().zp(0x59)) << ',' << drv.lastCalls().size();
+                for (const auto& c : drv.lastCalls()) altCsv << ' ' << c.type << ':' << c.actor;
+                altCsv << '\n';
+            }
         }
         const std::int64_t resid = oracle - exact;
         hist[resid]++;
@@ -322,6 +339,14 @@ TEST(attract_demo_tick_cost_report) {
     std::vector<std::pair<int, long long>> top;
     for (const auto& kv : hist) top.emplace_back(kv.second, kv.first);
     std::sort(top.rbegin(), top.rend());
+    {
+        std::vector<std::pair<int, long long>> alt;
+        for (const auto& kv : altHist) alt.emplace_back(kv.second, kv.first);
+        std::sort(alt.rbegin(), alt.rend());
+        std::printf("    oracle minus (idle + counted logic + drawing routines), most frequent (count x cycles):");
+        for (std::size_t i = 0; i < alt.size() && i < 14; ++i) std::printf(" %dx%lld", alt[i].first, alt[i].second);
+        std::printf("\n");
+    }
     std::printf("    most frequent residuals (count x cycles):");
     for (std::size_t i = 0; i < top.size() && i < 16; ++i) std::printf(" %dx%lld", top[i].first, top[i].second);
     std::printf("\n");

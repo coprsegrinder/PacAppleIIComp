@@ -1303,6 +1303,10 @@ struct Builder {
         add(3 + 2 + 2 + 4 + cross(0x6992, x) + 3 + 4 + cross(0x6993, x) + 3);
         z[0x04] = u8(0x6992 + x);
         z[0x10] = u8(0x6993 + x);
+        rBoxBody();
+    }
+    // $6978: 12 rows of 8 bytes cleared to $80 at column $04, row $10 (the body of $696A; the 1UP box and the fruit's box call it directly)
+    void rBoxBody() {
         add(2 + 3);
         z[0x18] = 12;
         for (;;) {
@@ -1858,9 +1862,28 @@ std::int64_t drawCallCycles(const DrawCall& c, const datapack::Pack& pack) {
             b.rMclearBody();
             break;
         case 4:
-        case 10:
-            b.z[0x50] = c.type == 4 ? c.p[0] : c.p[0] + 1;
+            b.z[0x50] = c.p[0];
             b.r696a();
+            break;
+        case 10: {                                  // $58E7 -> JMP $6978: column and row of the 1UP box of the player (row - $0F: the SBC without carry)
+            const int x2 = 2 * (c.p[0] + 1);
+            b.z[0x04] = b.u8(0x6992 + x2);
+            b.z[0x10] = (b.u8(0x6993 + x2) - 0x0F) & 255;
+            b.rBoxBody();
+            break;
+        }
+        case 12:                                    // $6978 at (column, row): the fruit's box
+            b.z[0x04] = c.p[0];
+            b.z[0x10] = c.p[1];
+            b.rBoxBody();
+            break;
+        case 8:                                     // $5CF0 (the ghost house's door lines; $1D = 1)
+            b.z[0x0C] = c.p[0] & 255;
+            b.z[0x0E] = c.p[1] & 255;
+            b.z[0x10] = c.p[2];
+            b.z[0x1D] = 1;
+            b.z[0x1E] = c.p[4];
+            b.rHline();
             break;
         case 5:
             b.z[0x0C] = c.p[0] & 255;

@@ -1,5 +1,7 @@
 #include "steptimer.h"
 
+#include "cycles.h"
+
 #include <algorithm>
 
 namespace pacman::core {
@@ -35,11 +37,21 @@ bool StepTimer::tick(GameState& s, const StepTables& t) {
     counter = static_cast<std::uint8_t>(counter - 1);  // DEC $59
     if (counter != 0) return false;
     // reload ($7874-$789B): the mode tick ($808C) and the cost of ghost states
+    // The cycles: instead of the idle path (BEQ not taken 2 + RTS 6) the branch is taken (3); $786D asks the joystick flag (LDA $F5, BEQ taken in keyboard mode, the paddle poll is input.cpp's);
+    // JSR $808C (the routine itself: modeTimerStep), JSR $6D1E (+ body), TAX, LDA $7851,X, CLC, LDX #8 and the four tests of the ghosts' flags.
+    cy(-8 + 3 + 3 + 3);                                                // the idle path is replaced; $786D: LDA $F5, BEQ taken
+    cy(6 + 6 + (s.level() < 15 ? 14 : 15) + 2 + 4 + 2 + 2);            // JSR $808C, JSR $6D1E (+ body), TAX, LDA $7851,X, CLC, LDX #8
+    const bool f[4] = {s.ghosts[1].b[8] != 0, s.ghosts[3].b[8] != 0, s.ghosts[0].b[9] != 0, s.ghosts[2].b[9] != 0};
+    cy(4 + (f[0] ? 2 + 2 : 3) + 4 + (f[1] ? 2 + 2 : 3) + 2 + 2 + 4 + (f[2] ? 2 + 2 : 3) + 4 + (f[3] ? 2 + 2 : 3));   // LDY $98,X ... SBC #1
+    cy(3 + 3);                                                         // STA $59, LDA $F3
     const unsigned value = reloadValue(s, t);
     counter = static_cast<std::uint8_t>(value);
     if (f3_ != 0) {                       // $789D-$78A3
+        cy(2 + 5 + 5);                                                 // BEQ not taken, DEC $F3, INC $59
         --f3_;
         counter = static_cast<std::uint8_t>(counter + 1);
+    } else {
+        cy(3);                                                         // BEQ taken
     }
     return true;
 }

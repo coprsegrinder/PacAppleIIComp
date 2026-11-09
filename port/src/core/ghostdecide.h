@@ -13,6 +13,7 @@ struct DecisionEnv {
     std::uint8_t ghostDir = 0;             // $72 (a few routines set it)
     std::uint8_t pacDir = 0;               // $62: Pac-Man's direction
     std::uint8_t pacTunnel = 0;            // $69: Pac-Man in the tunnel (I)
+    std::int64_t cycles = 0;               // the cycles the routine spent (every instruction at its base cost, a taken branch one more, two across a page; the JSR to the routine is not in it)
 };
 
 // A = the ghost's incoming direction, X/Y = the target (Pac-Man's position or the ghost's corner).

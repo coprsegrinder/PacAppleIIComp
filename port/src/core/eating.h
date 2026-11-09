@@ -23,6 +23,15 @@ struct EatResult {
 };
 
 // BCD addition on the three score bytes $52 (low), $53, $54 (high), as the 6502's decimal mode does it.
+// The tick in which an energizer is eaten, beyond a dot's: JSR $7C45 and its body (the sound itself is the freeze of sound.cpp), the saved pointer, the decimal addition of 50 points, JSR $6D60 (the
+// effect: ghostmode.cpp), CLC, BCC taken (87) and the loop over the four energizer places of $5743 (110; its calls are the glue of the type 11 clears)
+inline constexpr int kEnergizerTickCycles = 87 + 110 - 7;   // (the 7 from the oracle: 7 of the 197 counted from the listing are not run or are counted elsewhere)
+
+// The tick in which a ghost is eaten (game): besides the sound's freeze (sound.cpp) it spends six passes of $805D (the loop over the four ghosts that lets the eyes walk on: 3,378 cycles each
+// when no ghost is eyes) and the set-up of $7DB8, 20,806 cycles in the two ticks of the oracle's recordings (20,807 in one: a page-crossing that is not found yet); the attract game waits in a
+// delay loop instead (gamedriver.h: kDemoGhostEatenTickCycles)
+inline constexpr int kGhostEatenTickExtraCycles = 20'806;
+
 void addToScore(GameState& state, std::uint8_t bcdLow);
 
 // The item test of $7A5F for the cell Pac-Man's step reported. Cell value 0: nothing happens. Otherwise: StepTimer::itemEaten, then

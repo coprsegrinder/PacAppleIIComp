@@ -62,7 +62,7 @@ std::vector<DrawCall> spriteCalls(const GameState& before, const GameState& afte
     if (pacFrames.empty()) return out;
     // Pac-Man is drawn when his step timer ran out (he moved, or was blocked and is redrawn where he stands); a changed position without an acting tick is a poke
     if (pacmanActed) {
-        out.push_back(DrawCall{3, {kMaskTable, before.pacX() - 4, before.pacY() - 4, 0, 0}, 0});
+        out.push_back(DrawCall{3, {kMaskTable, before.pacX() - 4, before.pacY() - 4, 0, 0}, 0, 38});   // (glue: JSR $699E and its JSR $7D9A; the JSR $7D80 before it is the logic's)
         out.push_back(DrawCall{1, {word(pacFrames, static_cast<std::size_t>(pacmanFrame(after))), after.pacX(), after.pacY(), 1, 0x80}, 0});
     }
     for (int g = 3; g >= 0; --g) {
@@ -77,21 +77,28 @@ std::vector<DrawCall> spriteCalls(const GameState& before, const GameState& afte
         for (int h = 0; h < g; ++h)
             if (ghostStepped(before.ghosts[static_cast<std::size_t>(h)], after.ghosts[static_cast<std::size_t>(h)])) ++drawTimer;
         const std::uint16_t base = ghostImageBase(drawnState(before, after, static_cast<std::size_t>(g)), static_cast<std::size_t>(g), drawTimer, pack, flag);
-        out.push_back(DrawCall{3, {kMaskTable, a.x() - 4, a.y() - 4, 0, 0}, 1 + g});
-        out.push_back(DrawCall{1, {base, b.x(), b.y(), 1, flag}, 1 + g});
+        out.push_back(DrawCall{3, {kMaskTable, a.x() - 4, a.y() - 4, 0, 0}, 1 + g, 38});   // (glue: JSR $699E and its JSR $7D9A)
+        out.push_back(DrawCall{1, {base, b.x(), b.y(), 1, flag}, 1 + g, 6});      // (glue: JSR $6A20)
     }
     return out;
 }
 
 namespace {
 
+// $70F5-$7119: the digits of a number from the right: per digit the four rotations of the 24-bit value, JSR $7159 (the image address, the position, JSR $693A = the drawing call), the step
+// to the left and the test whether anything is left; the cycles around the drawing call go into the call's glue (183 + the JSR 6 + the test; the last digit also pays the RTS)
 void digitCalls(std::vector<DrawCall>& out, std::uint32_t bcd, int x, int y, const datapack::Pack& pack) {
     const auto words = pack.find(0x717D, 20);
     if (words.empty()) return;
     do {
         const unsigned d = bcd & 0xF;
         bcd >>= 4;
-        out.push_back(DrawCall{6, {words[d * 2] | (words[d * 2 + 1] << 8), x, y, 0, 0}});
+        int test;   // LDA $07, BNE taken (4) / not (2); LDA $06 ...; LDA $05 ...; RTS
+        if ((bcd >> 16) != 0) test = 3 + 4;
+        else if (((bcd >> 8) & 0xFF) != 0) test = 3 + 2 + 3 + 4;
+        else if ((bcd & 0xFF) != 0) test = 3 + 2 + 3 + 2 + 3 + 4;
+        else test = 3 + 2 + 3 + 2 + 3 + 2 + 6;
+        out.push_back(DrawCall{6, {words[d * 2] | (words[d * 2 + 1] << 8), x, y, 0, 0}, -1, 183 + 6 + test});
         x -= 6;
     } while (bcd != 0);
 }
@@ -139,15 +146,30 @@ PlayerSpot playerSpot(const datapack::Pack& pack, int p) {
     return s;
 }
 
-void scoreDisplay(std::vector<DrawCall>& out, std::uint32_t score, DisplayState& display, const datapack::Pack& pack, int player) {
+// $7091: the comparison of the score with the high score (three bytes, highest first), the copies and the one or two displays ($70D8): the cycles around the drawing calls are their glue
+void scoreDisplay(std::vector<DrawCall>& out, std::uint32_t score, DisplayState& display, const datapack::Pack& pack, int player, std::uint8_t lives58) {
     const std::uint32_t hi = display.high[0] | (display.high[1] << 8) | (display.high[2] << 16);
+    const unsigned s2 = (score >> 16) & 255, s1 = (score >> 8) & 255, s0 = score & 255, h2 = (hi >> 16) & 255, h1 = (hi >> 8) & 255, h0 = hi & 255;
+    int compare = 3 + 3;                                // LDA $54, CMP $02
+    if (s2 == h2) {
+        compare += 3 + 3 + 3;                           // BEQ taken, LDA $53, CMP $01
+        if (s1 == h1) compare += 3 + 3 + 3 + (s0 < h0 ? 3 : 2);   // BEQ taken, LDA $52, CMP $00, BCC
+        else compare += s1 < h1 ? 2 + 3 : 2 + 2 + 3;    // BEQ, BCC taken / BEQ, BCC, BCS taken
+    } else {
+        compare += s2 < h2 ? 2 + 3 : 2 + 2 + 3;         // BEQ, BCC taken (smaller) / BEQ, BCC, BCS taken (greater)
+    }
+    // $70DB-$70F2 (the position and the image table), JSR $70F5, JMP $7124, $7124-$7140: LDA $50, BEQ, BIT $58, BPL (taken at once once the bonus life is awarded: bit 7 clear), LDA $54, CMP #1, BCC, RTS
+    int second = 30 + 6 + 3 + ((lives58 & 0x80) != 0 ? 24 : 17);
     if (score >= hi) {                                // $7091: the high score follows the score
         display.high = {static_cast<std::uint8_t>(score & 0xFF), static_cast<std::uint8_t>((score >> 8) & 0xFF), static_cast<std::uint8_t>((score >> 16) & 0xFF)};
-        out.push_back(DrawCall{4, {0, 0, 0, 0, 0}});
+        // the compare, the copies $70AB-$70BF, JSR $70D8, the first display (with $50 = 0: $7124 returns at once), the reload of $50 and the copies $70CC-$70D6
+        out.push_back(DrawCall{4, {0, 0, 0, 0, 0}, -1, compare + 38 + 6 + 30 + 6 + 3 + 12 + 3 + 3 + 18});
         digitCalls(out, score, 40, 94, pack);
+    } else {
+        second += compare + 18;                         // the compare ends at $70CC
     }
     const PlayerSpot spot = playerSpot(pack, player);
-    out.push_back(DrawCall{4, {player < 1 ? 1 : player, 0, 0, 0, 0}});      // $696A with $50 = the player: its score box; digits from the player's x ($7141)
+    out.push_back(DrawCall{4, {player < 1 ? 1 : player, 0, 0, 0, 0}, -1, second});      // $696A with $50 = the player: its score box; digits from the player's x ($7141)
     digitCalls(out, score, spot.scoreX, spot.scoreY, pack);
 }
 
@@ -177,7 +199,7 @@ std::vector<DrawCall> tickCalls(const GameState& before, const GameState& after,
         static constexpr std::size_t cells[4] = {1 * 32 + 3, 1 * 32 + 23, 26 * 32 + 3, 26 * 32 + 23};
         static constexpr int maskX[4] = {63, 63, 214, 214}, maskY[4] = {21, 141, 21, 141};
         for (int m = 0; m < 4; ++m)
-            if (before.map[cells[m]] != 0) out.push_back(DrawCall{11, {maskX[m], maskY[m], 0, 0, 0}});
+            if (before.map[cells[m]] != 0) out.push_back(DrawCall{11, {maskX[m], maskY[m], 0, 0, 0}, -1, 15});   // (glue: the energizer loop's calls)
     }
     bool ghostEatenAny = false;
     for (int g = 0; g < 4; ++g)
@@ -189,7 +211,7 @@ std::vector<DrawCall> tickCalls(const GameState& before, const GameState& after,
         out.push_back(DrawCall{12, {16, 102, 0, 0, 0}});
         out.push_back(DrawCall{4, {1, 0, 0, 0, 0}});
     }
-    if (scoreAfterItem != scoreBefore) scoreDisplay(out, scoreAfterItem, display, pack, exAfter.player);
+    if (scoreAfterItem != scoreBefore) scoreDisplay(out, scoreAfterItem, display, pack, exAfter.player, after.zp(0x58));
     const auto dot = pack.find(0x61A8, hires::kDotTableBytes);
     std::size_t k = split;
     for (int g = 3; g >= 0; --g) {
@@ -203,14 +225,14 @@ std::vector<DrawCall> tickCalls(const GameState& before, const GameState& after,
         if (a.b[9] == 1 && b.b[9] == 0) {              // back in the house: the ghost is put at its start place first ($6D30) and cleared there, then it steps
             static constexpr int dx[4] = {0, 0, 2, -2}, dy[4] = {2, -2, 0, 0};   // directions 0 down, 1 up, 2 right, 3 left
             const int startX = b.x() - dx[b.b[2] & 3], startY = b.y() - dy[b.b[2] & 3];
-            out.push_back(DrawCall{3, {kMaskTable, startX - 4, startY - 4, 0, 0}});
+            out.push_back(DrawCall{3, {kMaskTable, startX - 4, startY - 4, 0, 0}, -1, 38});   // (glue: JSR $699E and its JSR $7D9A)
         }
         out.push_back(sprites[k++]);
         display.lastFlag1E = flag;   // the ghost's own draw sets $1E from the table
         // $8A19: a ghost that leaves the door cell redraws the ghost-house door (two dotted lines); not logged by the call collector (type 8: hline)
         if (a.x() == 0x8B && a.y() == 0x47 && a.b[17] != 0) {   // a ghost in the house exit script ($81 <> 0) LEAVES the door cell (old position: $70 is tested before the step)
-            out.push_back(DrawCall{8, {0x87, 0x93, 0x4D, 2, flagBefore}});
-            out.push_back(DrawCall{8, {0x87, 0x93, 0x4E, 2, flagBefore}});
+            out.push_back(DrawCall{8, {0x87, 0x93, 0x4D, 2, flagBefore}, -1, 6});   // (glue: JSR $5CF0)
+            out.push_back(DrawCall{8, {0x87, 0x93, 0x4E, 2, flagBefore}, -1, 6});
         }
         // the cell the ghost has just left ($7B/$7C = record bytes 11/12, $7D/$7E = bytes 13/14)
         const unsigned dir = b.b[2];
@@ -239,7 +261,7 @@ std::vector<DrawCall> tickCalls(const GameState& before, const GameState& after,
             std::uint32_t afterItem = scoreBefore;
             for (std::size_t m = 0; m < before.map.size(); ++m)
                 if (before.map[m] != 0 && after.map[m] == 0) afterItem = addBcd(afterItem, (before.map[m] >> 1) != 0 ? 0x50 : 0x10);
-            if (scoreAfter != afterItem) scoreDisplay(out, scoreAfter, display, pack, exAfter.player);
+            if (scoreAfter != afterItem) scoreDisplay(out, scoreAfter, display, pack, exAfter.player, after.zp(0x58));
         }
         // the cell dot: only for a ghost that is outside the house (in-house flag $81 = byte 17 is 0) and moved normally; an eaten ghost still goes on to move, so its dot
         // is redrawn AFTER the eaten sequence; a ghost that has just arrived back in the house (eyes 1 -> 0) is placed at its start and shows no dot
@@ -247,7 +269,7 @@ std::vector<DrawCall> tickCalls(const GameState& before, const GameState& after,
         if (a.b[17] != 0 || b.b[17] != 0) left = false;
         if (left && col >= 0 && row >= 0 && static_cast<std::size_t>(col) * 32 + static_cast<std::size_t>(row) < after.map.size() && !dot.empty() &&
             (after.map[static_cast<std::size_t>(col) * 32 + static_cast<std::size_t>(row)] & 1) != 0)
-            out.push_back(DrawCall{5, {col * 6 + 0x3B, row * 6 + 5, 0, 0, 0}});   // type 5: p0 = x, p1 = y (as logged)
+            out.push_back(DrawCall{5, {col * 6 + 0x3B, row * 6 + 5, 0, 0, 0}, -1, 6});   // type 5 (glue: JSR $6172): p0 = x, p1 = y (as logged)
     }
     // $6A7C at the end of the main loop: the bonus fruit. In the tick in which $59 has counted down to 1 (the next tick is the acting one) the lifetime ($5A/$5B,
     // counted down by the routine) is checked: while it runs, the fruit image ($5C/$5D, 12 x 3) is drawn at column 19, row 102 ($E7 = 1) or the fruit's points are shown as
@@ -268,15 +290,15 @@ std::vector<DrawCall> tickCalls(const GameState& before, const GameState& after,
     }
     // $570C -> $58B3: in the attract game the words GAME OVER are drawn again ($80E3, an OR blit: it restores what a ghost has wiped out) in every tick in which $59 = 1
     if (after.demo != 0 && after.zp(0x59) == 1) {
-        out.push_back(DrawCall{2, {0x811D, 15, 105, 4, 7}});
-        out.push_back(DrawCall{2, {0x8139, 21, 105, 4, 7}});
+        out.push_back(DrawCall{2, {0x811D, 15, 105, 4, 7}, -1, 59});   // (glue: JSR $80E3 with the set-up of the two strings, 119 for the pair)
+        out.push_back(DrawCall{2, {0x8139, 21, 105, 4, 7}, -1, 60});
     }
     // $570C at the end of the tick: the 1UP blink, then the energizer blink
     if (exBefore.e6 != exAfter.e6) {
         if (exAfter.e6 == 1) {                                                   // $58FA -> $556E: label and mark
             const PlayerSpot spot = playerSpot(pack, exAfter.player);            // the blinking label is the current player's: PLAYER #1 (column 0) ... #5 (the table $55C7)
-            out.push_back(DrawCall{2, {0x55F7, spot.labelCol, spot.labelRow, 7, 7}});
-            out.push_back(DrawCall{6, {spot.markImage, spot.markX, spot.markY, 0, 0}});
+            out.push_back(DrawCall{2, {0x55F7, spot.labelCol, spot.labelRow, 7, 7}, -1, 94});   // (glue: JSR $556E and its set-up, 141 for the label and its mark)
+            out.push_back(DrawCall{6, {spot.markImage, spot.markX, spot.markY, 0, 0}, -1, 47});
         } else {                                                                 // $58E7 -> $6978: box clear at (column, row - $0F)
             out.push_back(DrawCall{10, {(exAfter.player < 1 ? 1 : exAfter.player) - 1, 0, 0, 0, 0}});
         }
@@ -286,8 +308,8 @@ std::vector<DrawCall> tickCalls(const GameState& before, const GameState& after,
         static constexpr Spot spots[4] = {{1 * 32 + 3, 64, 22, 63, 21}, {1 * 32 + 23, 64, 142, 63, 141}, {26 * 32 + 3, 214, 22, 214, 21}, {26 * 32 + 23, 214, 142, 214, 141}};
         for (const Spot& sp : spots) {
             if (after.map[sp.cell] == 0) continue;
-            if (after.zp(0x5F) == 1) out.push_back(DrawCall{6, {0x61CA, sp.tileX, sp.tileY, 0, 0}});
-            else out.push_back(DrawCall{11, {sp.maskX, sp.maskY, 0, 0, 0}});
+            if (after.zp(0x5F) == 1) out.push_back(DrawCall{6, {0x61CA, sp.tileX, sp.tileY, 0, 0}, -1, 47});   // (glue: the energizer loop's calls)
+            else out.push_back(DrawCall{11, {sp.maskX, sp.maskY, 0, 0, 0}, -1, 15});
         }
     }
     return out;

@@ -34,7 +34,7 @@ else:
             for st in ('key:sp', '3_000_000', 'key:2', '3_000_000', 'key:cr', '1_000_000'):
                 do_step(mc, st, lambda *_: None)
         G.start_game = two_players
-recs, states = [], []
+recs, states, cycles, extras = [], [], [], bytearray()
 orig = G.state_bytes
 
 
@@ -42,6 +42,8 @@ def rec(m):
     b = orig(m)
     states.append(b)
     recs.append(bytes(m[0:256]) + bytes(m[0x800:0xC00]))
+    cycles.append(cov_close.MACHINES[-1].cpu.cycles)     # the cycle at which the tick starts (for the cost tests: scratch/ticks_X.bin.cyc)
+    extras.extend(m[a] for a in (0xE1, 0xE2, 0xE5, 0xE6, 0xE7, 0xE4))
     return b
 
 
@@ -63,4 +65,8 @@ with open('scratch/ghostram_%s.bin' % name, 'wb') as f:
     f.write(b'GRAM' + struct.pack('<II', len(recs), 1280))
     for r in recs:
         f.write(r)
+with open('scratch/ticks_%s.bin.cyc' % name, 'wb') as f:      # u32 count, then the cycle at which every tick starts
+    f.write(struct.pack('<I', len(cycles)) + b''.join(struct.pack('<I', c) for c in cycles))
+if not os.path.exists('scratch/extra_%s.bin' % name):
+    open('scratch/extra_%s.bin' % name, 'wb').write(bytes(extras))      # $E1 $E2 $E5 $E6 $E7 $E4 at the start of every tick (as tools/record_tick_calls.py)
 print(name, 'ticks', len(recs))

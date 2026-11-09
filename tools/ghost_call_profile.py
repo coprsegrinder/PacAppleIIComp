@@ -26,7 +26,7 @@ def hook():
         ticks[0] += 1
     if not S['in']:
         if pc == 0x8763:
-            S.update({'in': True, 'self': 0, 'path': [], 'callees': {}, 'stack': [], 'ghost': m[0xE0]})
+            S.update({'in': True, 'self': 0, 'path': [], 'callees': {}, 'stack': [], 'ghost': m[0xE0], 'c_in': cpu.cycles, 'draw': 0})
         else:
             return step()
     op = m[pc]
@@ -39,12 +39,14 @@ def hook():
     elif op == 0x60:
         if S['stack']:
             t, t0 = S['stack'].pop()
+            if t in (0x6A20, 0x699E, 0x6172, 0x5CF0) and not any(x in (0x6A20, 0x699E, 0x6172, 0x5CF0) for x, _ in S['stack']):
+                S['draw'] += cpu.cycles - t0                  # a drawing routine at any depth (the dot restore $6172 is called from $895F, the door lines $5CF0 from $8A7D)
             if not S['stack']:
                 S['callees']['%04X' % t] = S['callees'].get('%04X' % t, 0) + cpu.cycles - t0 - 6 + 6
                 S['self'] += 6 - 6               # (RTS counted inside the callee)
         else:
             S['self'] += dc
-            rec.append([S['ghost'], S['self'], ''.join(S['path']), S['callees']])
+            rec.append([S['ghost'], S['self'], ''.join(S['path']), S['callees'], cpu.cycles - S['c_in'], S['draw'], ticks[0]])
             S['in'] = False
     elif not S['stack']:
         S['self'] += dc
@@ -67,4 +69,5 @@ while True:
     if ticks[0] and len(rec) > 31000:
         break
 json.dump(rec, open('scratch/ghostcalls.json', 'w'))
+json.dump([[r[0], r[4], r[5], r[6]] for r in rec], open('scratch/ghostcalls_total.json', 'w'))   # [ghost, entry-to-RTS cycles, of which drawing routines ($6A20, $699E), tick index]
 print('calls', len(rec))

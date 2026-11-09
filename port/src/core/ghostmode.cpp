@@ -1,5 +1,7 @@
 #include "ghostmode.h"
 
+#include "cycles.h"
+
 #include <algorithm>
 
 namespace pacman::core {
@@ -23,16 +25,54 @@ void reverseGhosts(GameState& s, GhostQueues& queues) {
     }
 }
 
+namespace {
+
+// $80C1: the ghosts turn round: for each of the four, JSR $86FC (copy the record to the working area), the test of the house flag, the reversal into the queue, JSR $8712 (copy back)
+void reverseCost(const GameState& s) {
+    cy(6 + 2 + 3);                                                     // (the JSR $80C1), LDA #4, STA $E0
+    for (int n = 4; n >= 1; --n) {
+        cy(6 + 334 + 3);                                               // JSR $86FC (+ body), LDA $81
+        if (s.ghosts[static_cast<std::size_t>(n - 1)].b[17] != 0) cy(3);   // BNE taken
+        else cy(2 + 27);                                               // BNE, LDA $72, EOR #1, STA $72, LDY $77, STA ($75),Y, LDA #$FF, INY, STA ($75),Y
+        cy(6 + 314 + 5 + (n == 1 ? 2 : 3));                            // JSR $8712 (+ body), DEC $E0, BNE
+    }
+    cy(6);                                                             // RTS
+}
+
+}  // namespace
+
 void modeTimerStep(GameState& s, GhostShared& sh, GhostQueues& queues) {
-    if (sh.ea == 0) sh.eb = static_cast<std::uint8_t>(sh.eb - 1);
+    cy(3);                                                             // $808C: LDA $EA
+    if (sh.ea == 0) {
+        cy(2 + 5);                                                     // BNE, DEC $EB
+        sh.eb = static_cast<std::uint8_t>(sh.eb - 1);
+    } else {
+        cy(3);                                                         // BNE taken
+    }
     sh.ea = static_cast<std::uint8_t>(sh.ea - 1);
-    if (static_cast<unsigned>(sh.ea) + sh.eb != 0) return;            // only an exact zero (no carry out, no remainder) flips the phase
+    cy(5 + 2 + 3 + 3);                                                 // DEC $EA, CLC, LDA $EA, ADC $EB
+    const unsigned sum = static_cast<unsigned>(sh.ea) + sh.eb;
+    if (sum > 255) {
+        cy(3 + 6);                                                     // BCS taken, RTS
+        return;
+    }
+    if ((sum & 255) != 0) {
+        cy(2 + 3 + 6);                                                 // BCS, BNE taken, RTS
+        return;
+    }
+    cy(2 + 2 + 3);                                                     // BCS, BNE, LDA $E9
     if (s.cornerPhase == 0) {                                          // chase -> corner
+        cy(2);                                                         // BNE not taken
+        reverseCost(s);
+        cy(2 + 3 + 2 + 3 + 2 + 3 + 6);                                 // LDA #1, STA $E9, LDA #$8C, STA $EA, LDA #0, STA $EB, RTS
         reverseGhosts(s, queues);
         s.cornerPhase = 1;
         sh.ea = 0x8C;
         sh.eb = 0;
     } else {                                                           // corner -> chase
+        cy(3);                                                         // BNE taken
+        reverseCost(s);
+        cy(2 + 3 + 2 + 3 + 2 + 3 + 6);                                 // LDA #0, STA $E9, LDA #2, STA $EB, LDA #$58, STA $EA, RTS
         reverseGhosts(s, queues);
         s.cornerPhase = 0;
         sh.eb = 0x02;
@@ -41,7 +81,22 @@ void modeTimerStep(GameState& s, GhostShared& sh, GhostQueues& queues) {
 }
 
 void energizerGhostEffects(GameState& s, GhostShared& sh, GhostQueues& queues, const GhostModeTables& tables) {
-    if (s.level() >= 0x15) return;
+    cy(3 + 2);                                                         // $6D60: LDX $55, CPX #$15
+    if (s.level() >= 0x15) {
+        cy(3 + 6);                                                     // BCS taken, RTS
+        return;
+    }
+    cy(2 + 2 + 3);                                                     // BCS, LDA #4, STA $E0
+    for (int n = 4; n >= 1; --n) {
+        cy(6 + 334 + 3);                                               // JSR $86FC (+ body), LDA $79
+        cy(s.ghosts[static_cast<std::size_t>(n - 1)].b[9] != 0 ? 3 : 2 + 2 + 3);   // BNE taken / BNE, LDA #1, STA $78
+        cy(6 + 314 + 5 + (n == 1 ? 2 : 3));                            // JSR $8712 (+ body), DEC $E0, BNE
+    }
+    cy(2 + 3 + 2 + 3 + 6 + (s.level() < 0x15 ? 14 : 15) + 2 + 2);      // LDA #2, STA $68, LDA #1, STA $E4, JSR $6D27 (+ body), ASL, TAX
+    cy(4 + cyCross(0x6DEF, 2 * static_cast<int>(std::min<std::size_t>(s.level(), 21))) + 3 + 4 + cyCross(0x6DF0, 2 * static_cast<int>(std::min<std::size_t>(s.level(), 21))) + 3);   // LDA $6DEF,X, STA $E1, LDA $6DF0,X, STA $E2
+    cy(2 + 3 + 3 + 2 + 3);                                             // LDA #4, STA $EA, STA $EB, LDA #1, STA $E9
+    reverseCost(s);
+    cy(6);                                                             // RTS
     for (auto& g : s.ghosts)
         if (g.b[9] == 0) g.b[8] = 1;
     s.mode78 = s.ghosts[0].b[8];                                       // the working copies after the last pass of the loop (ghost 1)

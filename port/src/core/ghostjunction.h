@@ -41,6 +41,6 @@ JunctionStepResult ghostJunction(GameState& s, int ghostNumber, GhostQueues& que
 // The move of a ghost ($8866-$8957, tunnel variant $8A9C-$8B12, house $8988-$8A38): for a ghost in the house the house routine runs first (release timer $82, the exit
 // moves it queues, the turns at the ends of its box, the departure through the door), then the plain move: two units along the direction of travel (the tunnel wraps at
 // x = $DD and x = $3B and exchanges the junction numbers) and the cell counters $7B/$7D (horizontal), $7C/$7E (vertical). The contact test and all drawing are not part of it.
-void ghostMove(GameState& s, int ghostNumber, GhostQueues& queues, const GhostDecisionData& data);
+void ghostMove(GameState& s, int ghostNumber, GhostQueues& queues, const GhostDecisionData& data, const GhostShared* shared = nullptr);   // `shared` only for the cycle count (the colour choice of the drawing looks at $E1/$E2)
 
 }  // namespace pacman::core

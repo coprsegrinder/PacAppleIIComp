@@ -1,5 +1,7 @@
 #include "input.h"
 
+#include "cycles.h"
+
 namespace pacman::core {
 
 namespace {
@@ -140,6 +142,22 @@ PollResult InputPoller::poll(GameState& state, const KeyConfig& keys, const Port
         code = next;                                 // the key that ends the pause is processed like a normal key (A is reloaded at $6F9A)
     }
     if (have) {
+        // The cycles beyond the poll without a key (LDA $C000, BPL taken, SEC, RTS: 15): the key goes down the list of $6F7C-$6FC9 (the game's four keys are A, Z and the two arrows; the
+        // entries at $6FC4 / $6FC7 run through the BIT instructions that hide the next LDA) and a key that is taken costs STA $63 and a BCS that is not taken (2 more).
+        // The attract game looks for the space bar only.
+        if (demo) {
+            cy(27);
+        } else if (code == keys.up) {
+            cy(26 + 2);
+        } else if (code == keys.right) {
+            cy(30 + 4 + 2);
+        } else if (code == keys.left) {
+            cy(34 + 8 + 2);
+        } else if (code == keys.down) {
+            cy(49 + 2);
+        } else {
+            cy(36);
+        }
         if (demo) {
             if (code == 0xA0) r.leaveToPlayersPrompt = true;
         } else if (code == keys.up) {

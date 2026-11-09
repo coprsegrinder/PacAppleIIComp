@@ -94,6 +94,30 @@ for ad in sorted(code):
         s += 'if (%s) { pc = 0x%04X; continue; }' % (cond, t)
     else:
         raise SystemExit('unhandled %s %s at %04X' % (mn, mode, ad))
+    # the cycles of the instruction (TASK-034-TIMING): the routines only use immediate and zero-page operands, implied instructions, branches, one JSR and two JMPs
+    if mode == 'rel':
+        t = (nxt + (raw[1] - 256 if raw[1] > 127 else raw[1])) & 0xFFFF
+        taken = 3 + (1 if (nxt >> 8) != (t >> 8) else 0)
+        s = s.replace(' pc = 0x%04X; continue;' % t, ' env.cycles += %d; pc = 0x%04X; continue;' % (taken, t), 1)
+        s += ' env.cycles += 2;'
+        base = 2
+    elif mn == 'JMP':
+        base = 3
+    elif mn == 'JSR' or mn == 'RTS':
+        base = 6
+    elif mn == 'PHA':
+        base = 3
+    elif mn == 'PLA':
+        base = 4
+    elif mode == 'imp':
+        base = 2
+    elif mode == 'imm':
+        base = 2
+    elif mode == 'zp':
+        base = 3
+    else:
+        raise SystemExit('cycles of %s %s' % (mn, mode))
+    s = s.replace('case 0x%04X: ' % ad, 'case 0x%04X: ' % ad + ('' if mode == 'rel' else 'env.cycles += %d; ' % base), 1)
     if mn not in ('JMP', 'JSR', 'RTS'):
         s += ' pc = 0x%04X; continue;' % nxt if not s.endswith('continue;') else ''
     w('            ' + s)

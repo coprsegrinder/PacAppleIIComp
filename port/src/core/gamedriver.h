@@ -40,7 +40,7 @@ inline constexpr std::int64_t kIdleTickCyclesGame = 2'987;
 // The tick in which Pac-Man is caught costs 6,273 to 18,916 cycles up to the end of its drawing (mean 8,917 over 245 deaths of the oracle); the death sequence counts from there.
 inline constexpr std::int64_t kCatchTickCycles = 8'917;
 inline constexpr std::int64_t kDemoCatchTickCycles = 3'996;      // the attract game's last tick up to the start of the death routine at $8BDD (that tick is always the same)
-inline constexpr std::int64_t kDemoGhostEatenTickCycles = 277'633;   // the attract game's one ghost-eaten tick (always the same: the animation with its delay instead of the sound)
+inline constexpr std::int64_t kDemoGhostEatenTickCycles = 277'633;   // the attract game's one ghost-eaten tick (277,633 in the first turn of a boot, 277,723 in the turn after a 3-player game: the sequence of $7DB8 is not counted yet; the animation with its delay instead of the sound)
 std::int64_t tickCostCycles(const std::vector<DrawCall>& calls, const datapack::Pack& pack, bool demo, bool ate, bool energizer);
 
 // TASK-033-3: the death animation as a timed list of steps (opt-in, setPlayDeath). Times are cycles after the end of the catching tick (the oracle's offsets from the tick

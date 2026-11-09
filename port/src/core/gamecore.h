@@ -12,6 +12,7 @@
 #include "../datapack/datapack.h"
 #include "eating.h"
 #include "attractmemory.h"
+#include "cycles.h"
 #include "gamestate.h"
 #include "input.h"
 #include "junction.h"
@@ -65,6 +66,10 @@ public:
     // joystick mode: the cycles each key poll of the intro jingle ($7D26, after each of its 29 notes) takes longer than the keyboard poll; 0 in keyboard mode
     int jinglePollExtra() const noexcept;
     std::uint32_t nearGhostDelayCount() const noexcept { return nearDelays_; }   // how often the near-ghost delay of the contact test ($8B4A-$8B65) added a tick since the object was made
+    // The cycles the logic of the last tick spent beyond the idle tick (cycles.h): what the routines that ran took on the paths they took.
+    std::int64_t logicCycles() const noexcept { return meter_.total(); }
+    // What the call of $8763 for ghost n (1-4) cost in the last tick without the drawing routines: 13 for a ghost whose step timer had not run out (tests, tools/ghost_call_profile.py)
+    std::int64_t ghostCallCycles(int n) const noexcept { return ghostCall_[static_cast<std::size_t>(n - 1) & 3]; }
     int lifeStartCycles() const noexcept { return lifeStartCycles_; }   // joystick mode: the cycles the paddle timing of the last life start's poll added ($5442)
     int player() const noexcept { return player_; }
     int players() const noexcept { return players_; }
@@ -110,6 +115,8 @@ private:
     KeyConfig keys_;
     PortInput port_;
     int lifeStartCycles_ = 0;
+    CycleMeter meter_;
+    std::array<std::int64_t, 4> ghostCall_{};
     std::uint32_t nearDelays_ = 0;
     void lifeStartPoll(bool demo);   // $5442: the end of $53E6 polls the input once (in joystick mode that is the paddle timing, and it writes $63)
     JunctionGraph graph_;

@@ -427,17 +427,21 @@ struct CostReplay {
     bool ran = false;
     std::size_t idleTicks = 0, idleExact = 0, otherTicks = 0, skipped = 0;
     std::int64_t idleErr = 0, otherErr = 0, otherAbs = 0, totalOracle = 0, totalMine = 0;
+    std::size_t exactTicks = 0, ticks = 0;
+    int wrapSeen = -1;   // the value of $1F (cycles.h) at the first step that cost 4 cycles more in the oracle: the oracle's byte had reached $FB there
 };
 
 // Replays a recorded game through the driver (ghosts fed from the recording) and sets the cost of every tick against the oracle's cycles. `path` = ticks_X.bin with ticks_X.bin.cyc (u32 count, then the
 // cycle at which every tick starts), extra_X.bin (the frightened timers etc.) next to it, and, for a game in joystick mode, ticks_X.bin.pad. Keys and pokes of the recording are applied.
-CostReplay costReplay(const datapack::Pack& pack, const std::string& path, bool joystick, const std::string& csvPath, std::size_t maxTicks) {
+CostReplay costReplay(const datapack::Pack& pack, const std::string& path, bool joystick, const std::string& csvPath, std::size_t maxTicks, bool freeRunning = false, unsigned counter1F = 0) {
     CostReplay out;
     const std::size_t slash = path.find_last_of("/\\");
     const std::string dir = slash == std::string::npos ? std::string() : path.substr(0, slash + 1);
     const std::string name = path.substr(slash == std::string::npos ? 0 : slash + 1);
     const std::string letter = name.size() > 10 ? name.substr(6, name.size() - 10) : std::string();
     const auto pad = joystick ? readAll(path + ".pad") : std::vector<std::uint8_t>(), cyc = readAll(path + ".cyc"), extras = readAll(dir + "extra_" + letter + ".bin");
+    const auto ram = freeRunning ? readAll(dir + "ghostram_" + letter + ".bin") : std::vector<std::uint8_t>();   // the ghost working area and queues of every tick (tools/record_ghost_ram.py)
+    if (freeRunning && ram.size() < 12 + 1280) return out;
     CHECK(cyc.size() >= 8 && !extras.empty() && (!joystick || !pad.empty()));
     if (cyc.size() < 8 || extras.empty() || (joystick && pad.empty())) return out;
     std::string why;
@@ -454,6 +458,18 @@ CostReplay costReplay(const datapack::Pack& pack, const std::string& path, bool 
     CHECK(drv.newGame());
     drv.core().state() = fromOracleLayout(tr.state(0));
     drv.core().port().joystickMode = joystick;
+    auto loadShared = [&](const std::uint8_t* z) {   // $E1 $E2 $E4 $EA $EB and the four ghost queues, as the free-running test of the driver does
+        GhostShared& sh = drv.core().ghostShared();
+        sh.e1 = z[0xE1];
+        sh.e2 = z[0xE2];
+        sh.e4 = z[0xE4];
+        sh.ea = z[0xEA];
+        sh.eb = z[0xEB];
+        for (std::size_t g = 0; g < 4; ++g) std::copy(z + 256 + 256 * g, z + 512 + 256 * g, drv.core().ghostQueues()[g].begin());
+        drv.syncExtras();
+    };
+    if (freeRunning) loadShared(ram.data() + 12);
+    g_stepCounter1F = counter1F;
     drv.rebuildScreen();
     std::multimap<std::uint32_t, std::uint32_t> keysAt;
     for (const auto& in : tr.inputs()) keysAt.emplace(in.tick, in.key);
@@ -464,6 +480,8 @@ CostReplay costReplay(const datapack::Pack& pack, const std::string& path, bool 
     if (joystick) limit = std::min<std::size_t>(limit, pad.size() / 2);
     std::map<long long, int> idleHist;
     std::ofstream csv(csvPath);   // one row per tick for the analysis in tools/tick_fit_game.py
+    std::ofstream ghostCsv(csvPath + ".ghosts");   // tick, ghost, the cycles of the call of $8763 without the drawing routines (compared by tools/ghost_call_compare.py --scenario)
+    ghostCsv << "tick,ghost,mine\n";
     csv << "input,oracle,mine,exact,acted,ate,energizer,moved,eaten,z59,e5,e7,ncalls,t1,t2,t3,t4,t5,t6,t7,t8,t9,t10,t11,t12\n";
     for (std::size_t k = 0; k < limit; ++k) {
         if (joystick) {
@@ -481,6 +499,8 @@ CostReplay costReplay(const datapack::Pack& pack, const std::string& path, bool 
             if (a == 0xE1) drv.core().ghostShared().e1 = static_cast<std::uint8_t>(it->second.value);
             if (a == 0xE2) drv.core().ghostShared().e2 = static_cast<std::uint8_t>(it->second.value);
             if (a == 0xE4) drv.core().ghostShared().e4 = static_cast<std::uint8_t>(it->second.value);
+            if (a == 0xEA) drv.core().ghostShared().ea = static_cast<std::uint8_t>(it->second.value);
+            if (a == 0xEB) drv.core().ghostShared().eb = static_cast<std::uint8_t>(it->second.value);
             if (a >= 0x84 && a <= 0xD3) s.ghosts[(a - 0x84) / 20].b[(a - 0x84) % 20] = static_cast<std::uint8_t>(it->second.value);
             if (a == 0x78) s.mode78 = static_cast<std::uint8_t>(it->second.value);
             if (a == 0x79) s.mode79 = static_cast<std::uint8_t>(it->second.value);
@@ -496,17 +516,21 @@ CostReplay costReplay(const datapack::Pack& pack, const std::string& path, bool 
         feed.f2 = extras[6 * (k + 1) + 1];
         feed.f4 = extras[6 * (k + 1) + 5];
         drv.syncExtras();
-        const TickEvents ev = drv.tick(feed);
+        const TickEvents ev = freeRunning ? drv.tick() : drv.tick(feed);
         bool poked = false;
         for (auto it = pr.first; it != pr.second; ++it) poked = poked || it->second.address == 0x55 || it->second.address == 0x58;
         const bool oracleRestart = (b.lives() & 0x7F) < (a.lives() & 0x7F) || (b.level() > a.level() && a.dotsLeft() == 1);
         const std::int64_t oracle = cycleAt(k + 1) - cycleAt(k);
-        if (ev.caught || ev.levelComplete || oracleRestart || ev.paused || poked || oracle > 100'000) {
+        const bool eatenGhost = ev.ghostEaten[0] || ev.ghostEaten[1] || ev.ghostEaten[2] || ev.ghostEaten[3];
+        if (ev.caught || ev.levelComplete || oracleRestart || ev.paused || poked || (oracle > 100'000 && !eatenGhost)) {
             drv.core().state() = b;
+            if (freeRunning) loadShared(ram.data() + 12 + (k + 1) * 1280);
             drv.rebuildScreen();
             ++out.skipped;
             continue;
         }
+        for (int g = 4; g >= 1; --g) ghostCsv << (k + 1) << ',' << g << ',' << drv.core().ghostCallCycles(g) << '\n';
+        { std::int64_t ghostDraw = 0; for (const auto& c : drv.lastCalls()) if (c.actor >= 1 || c.type == 5 || c.type == 8) ghostDraw += drawCallCycles(c, pack) + c.glue; ghostCsv << (k + 1) << ",0," << ghostDraw << "\n"; }
         std::int64_t mine = drv.tickCycles();
         for (const SoundId id : ev.sounds) mine += soundFreezeCycles(id);   // (the sounds freeze the game; the live program charges that apart from the tick)
         std::int64_t exact = 0;
@@ -522,8 +546,13 @@ CostReplay costReplay(const datapack::Pack& pack, const std::string& path, bool 
             << static_cast<int>(extras[6 * (k + 1) + 4]) << ',' << drv.lastCalls().size();
         for (int t : {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}) csv << ',' << cnt[t];
         csv << '\n';
+        if (mine != oracle && freeRunning && ++out.skipped < 1000000 && out.ticks < 4000) std::printf("      eat tick %zu: mine %lld oracle %lld score %02X%02X%02X dots %u fruit %u level %u g1 %u%u%u%u g2 %u%u%u%u g3 %u%u%u%u g4 %u%u%u%u e4 %u e2 %u e1 %u moved %d\n", k, static_cast<long long>(mine), static_cast<long long>(oracle), b.zp(0x54), b.zp(0x53), b.zp(0x52), b.dotsLeft(), b.zp(0x57), b.level(), a.ghosts[0].b[8], a.ghosts[0].b[9], a.ghosts[0].b[10], a.ghosts[0].b[17], a.ghosts[1].b[8], a.ghosts[1].b[9], a.ghosts[1].b[10], a.ghosts[1].b[17], a.ghosts[2].b[8], a.ghosts[2].b[9], a.ghosts[2].b[10], a.ghosts[2].b[17], a.ghosts[3].b[8], a.ghosts[3].b[9], a.ghosts[3].b[10], a.ghosts[3].b[17], extras[6 * k + 5], extras[6 * k + 1], extras[6 * k], 0);
+        if (mine != oracle && freeRunning && out.ticks < 4000) { std::printf("         calls:"); for (const auto& c : drv.lastCalls()) std::printf(" [%d %X %d %d %d %d a%d]", c.type, c.p[0], c.p[1], c.p[2], c.p[3], c.p[4], c.actor); std::printf("\n"); }
         out.totalOracle += oracle;
         out.totalMine += mine;
+        ++out.ticks;
+        out.exactTicks += mine == oracle;
+        if (ev.acted && mine - oracle == -4 && out.wrapSeen < 0) out.wrapSeen = static_cast<int>(g_stepCounter1F);
         if (drv.lastCalls().empty() && !ev.ate && !ev.energizer && kr.first == kr.second) {   // (a tick in which a key is pressed costs more: the poll runs down its list of keys)
             ++out.idleTicks;
             out.idleExact += mine == oracle;
@@ -531,6 +560,7 @@ CostReplay costReplay(const datapack::Pack& pack, const std::string& path, bool 
             if (mine != oracle && ++idleHist[mine - oracle] <= 3)
                 std::printf("      tick %zu: mine %lld oracle %lld acted %d dir %u req %u z59 %u\n", k, static_cast<long long>(mine), static_cast<long long>(oracle), ev.acted, a.pacDirection(), a.zp(0x63), a.zp(0x59));
         } else {
+
             ++out.otherTicks;
             out.otherErr += mine - oracle;
             out.otherAbs += std::llabs(mine - oracle);
@@ -542,10 +572,10 @@ CostReplay costReplay(const datapack::Pack& pack, const std::string& path, bool 
 
 void reportCost(const char* what, const CostReplay& r) {
     std::printf("    %s: %zu ticks that draw nothing: %zu exact (mean error %.2f cycles); %zu other ticks: mean error %.1f, mean absolute error %.1f; %zu restart / poll-pause ticks left out;"
-                " the whole run: oracle %lld, model %lld (%+.3f %%)\n", what, r.idleTicks, r.idleExact, r.idleTicks ? static_cast<double>(r.idleErr) / static_cast<double>(r.idleTicks) : 0.0, r.otherTicks,
+                " the whole run: oracle %lld, model %lld (%+.3f %%); %zu of %zu ticks exact\n", what, r.idleTicks, r.idleExact, r.idleTicks ? static_cast<double>(r.idleErr) / static_cast<double>(r.idleTicks) : 0.0, r.otherTicks,
                 r.otherTicks ? static_cast<double>(r.otherErr) / static_cast<double>(r.otherTicks) : 0.0, r.otherTicks ? static_cast<double>(r.otherAbs) / static_cast<double>(r.otherTicks) : 0.0, r.skipped,
                 static_cast<long long>(r.totalOracle), static_cast<long long>(r.totalMine),
-                r.totalOracle ? 100.0 * static_cast<double>(r.totalMine - r.totalOracle) / static_cast<double>(r.totalOracle) : 0.0);
+                r.totalOracle ? 100.0 * static_cast<double>(r.totalMine - r.totalOracle) / static_cast<double>(r.totalOracle) : 0.0, r.exactTicks, r.ticks);
 }
 
 }  // namespace
@@ -587,10 +617,15 @@ TEST(tick_cost_in_a_keyboard_game_equals_the_oracles_on_the_ticks_that_draw_noth
         if (readAll(path + ".cyc").empty()) continue;
         const std::size_t slash = path.find_last_of("/\\");
         const std::string name = path.substr(slash == std::string::npos ? 0 : slash + 1);
-        const CostReplay r = costReplay(loaded.pack, path, false, "scratch/tickfit_" + name + ".csv", name == "ticks_D.bin" ? 1093 : 100000);   // (D: from tick 1094 the poked position of Pac-Man leaves the map)
+        // D: from tick 1094 the poked position of Pac-Man leaves the map. V09, V23: from tick 760 / 533 the poked positions make the original draw outside the screen and overwrite its own tables
+        // ($7814-$7816, the shift offsets of the drawing routines: found by watching the memory), so the drawing costs are no longer those of a game that has no such pokes.
+        const std::size_t limit = name == "ticks_D.bin" ? 1093 : name == "ticks_V09.bin" ? 759 : name == "ticks_V23.bin" ? 532 : 100000;
+        const CostReplay r = costReplay(loaded.pack, path, false, "scratch/tickfit_" + name + ".csv", limit, true, 0);
         reportCost(name.c_str(), r);
-        CHECK(r.idleTicks >= 300);
+        CHECK(r.idleTicks >= 100);
         CHECK(r.idleExact == r.idleTicks);
+        CHECK(r.ticks - r.exactTicks <= 1);   // every ordinary tick equal to the oracle's cycles, with ghosts, steps, dots, energizers, bonus routines and the score; except the ghost-eaten tick of D (1 cycle: a page crossing not found yet)
+        CHECK(std::llabs(r.totalMine - r.totalOracle) <= 1);
         ++runs;
     }
     if (runs == 0) std::printf("    SKIPPED (no ticks_X.bin.cyc among the recordings)\n");
