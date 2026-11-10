@@ -1,6 +1,6 @@
 # Resume Prompt
 
-How to use: open Claude Code in `F:\Ports\Pac-Man - Apple II`, then paste everything inside the box below as your first message.
+How to use: open Claude Code in the project folder, then paste everything inside the box below as your first message.
 **Keep this file current:** whenever a task finishes, update the "Current state" and "Next task" sections (ask Claude to do it).
 Last updated: 2026-10-29 (after TASK-013a; added checkpoint-stop rule and objective limits).
 

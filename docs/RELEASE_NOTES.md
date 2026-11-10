@@ -1,6 +1,6 @@
 # Release notes - Pac-Man (Apple II) native Windows port
 
-Draft of 2026-11-10 for the build of commit `65f3036`. Nothing is published; publishing is the owner's decision (docs/M8_PLAN.md, task 033-10).
+Release v1.0.0.
 
 ## What it is
 An unofficial, non-commercial fan project: a native Windows program that plays the 1983 Atari version of Pac-Man for the Apple II. It is **not an emulator**: the game's logic, timing, drawing and sound were rebuilt in C++ and compared tick by tick with a reference model that runs the original program. The game's data comes from **your own copy** of the original disk image; the image and the original code are not part of the download.

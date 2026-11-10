@@ -54,7 +54,7 @@ Ideas that were built and then dropped on purpose: exclusive full screen, HDR, V
 
 ## What is not in the repository, and why
 * **The game itself** (the disk image, its code, graphics, tables and sounds). The repository holds no run of the original's bytes; the data pack is built on the player's machine.
-* **The recordings** (`scratch/`, git-ignored). They are derived from the original program, so they stay out. They can be regenerated from the disk image with the Python tools in `tools/` (`TESTING.md`, `GOLDEN_TRACES.md`); it takes hours, not minutes.
+* **The recordings** (`scratch/`, git-ignored). They are derived from the original program, so they stay out. They can be regenerated from the disk image alone with the Python tools in `tools/`, step by step in [`REGENERATING.md`](REGENERATING.md) (it takes hours, not minutes).
 * **Third-party material** used only for checking (the AppleWin emulator, a DOS 3.3 reference disk).
 
 ## Rebuilding and checking everything

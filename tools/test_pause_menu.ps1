@@ -53,7 +53,7 @@ Key $ha 0x1B; Start-Sleep -Milliseconds 400
 Stop-Process -Id $pa.Id -Force
 
 $root = Split-Path -Parent $PSScriptRoot
-$exe = "F:\Ports\Pac-Man - Apple II\out\bat\pacman_play.exe"
+$exe = Join-Path $root "out\bat\pacman_play.exe"
 $dir = Join-Path $root "scratch"
 $a = "--pack `"$dir\local.pmpk`" --scale 3 --seconds 180 --level 1 --mute --display windowed --settings `"$dir\test_settings.ini`""
 $p = Start-Process -FilePath $exe -ArgumentList $a -WorkingDirectory $root -PassThru
