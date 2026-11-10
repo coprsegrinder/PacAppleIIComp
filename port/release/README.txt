@@ -34,6 +34,7 @@ CONTROLS  (Pause menu > Controls shows them for the device you are using)
 The first screen asks how you want to play: Space for the keyboard, or the confirm button of a
 controller that is plugged in (the screen names it: X or A). Controllers are found automatically,
 also when plugged in while the program runs. Games for two to five players are started from the keyboard.
+Vibration, and on a DualShock 4 or DualSense the light bar (in the game's own colours: white, blue while the ghosts are blue, a flash in a ghost's colour when one is eaten or catches Pac-Man; the DualSense's five small LEDs show the lives), are set under Pause menu > Controls (each Off / Low / Medium / High).
 
 
 THE MENU (Esc, or the menu button of a controller)

@@ -107,6 +107,7 @@ public:
     // What ghost n (1-4) was drawn with in the last tick (the flags and the frightened timer as its own step left them); valid for a ghost that stepped, in the free-running tick only
     GhostDrawInfo ghostDrawInfo(int n) const noexcept { return drawInfo_[static_cast<std::size_t>(n - 1) & 3]; }
     const FreezeLog& freezeLog() const noexcept { return freeze_; }   // the freeze of the last tick (steps empty if no eyes ghost walked)
+    int caughtBy() const noexcept { return caughtBy_; }   // the ghost (0-3) whose contact test caught Pac-Man the last time: the first to touch him in the loop's order, ghost 4 down to 1
     const GameState& caughtState() const noexcept { return caughtState_; }   // the state at the moment of the last catch (before the new life was set up)
     GhostQueues& ghostQueues() noexcept { return queues_; }
     // The level change (TASK-031-3): level + 1, the pristine maze, the counters of a fresh level, the score and the lives kept, then the start of a life.
@@ -155,6 +156,7 @@ private:
     std::uint8_t e5_ = 0, e6_ = 0;       // $E5 / $E6: the 1UP blink counter and phase (outside the logical state)
     GhostShared ghostShared_;
     GameState caughtState_;
+    int caughtBy_ = 0;
     GhostQueues queues_{};
     GhostTables ghostTables_;
     GhostDecisionData ghostData_;

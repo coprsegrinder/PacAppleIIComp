@@ -132,9 +132,26 @@ void GameWindow::setImage(std::span<const std::uint32_t> argb, std::span<const s
     ++pageVersion_;
 }
 
+void GameWindow::setGamepad(GamepadHub* hub) {
+    pad_ = hub;
+    applyLightConfig();
+}
+
+void GameWindow::applyLightConfig() {
+    if (pad_) pad_->lightConfig(lightbarAtomic_.load(), colour_ == ColourMode::NativeMono);
+}
+
+void GameWindow::setLightbar(LightbarLevel l) {
+    lightbarAtomic_ = l;
+    settings_.lightbar = l;
+    saveSettings();
+    applyLightConfig();   // (the light changes at once: that is the test)
+}
+
 void GameWindow::setColourMode(ColourMode m) {
     colour_ = m;
     settings_.colourMode = m;
+    applyLightConfig();   // (Native Black & White: the light shows the phosphor's shades)
     if (hwnd_) InvalidateRect(hwnd_, nullptr, FALSE);
     saveSettings();
 }
@@ -474,6 +491,7 @@ const Settings& GameWindow::settings() {
     settings_.background = background_;
     settings_.colourMode = colour_;
     settings_.vibration = vibrationAtomic_.load();
+    settings_.lightbar = lightbarAtomic_.load();
     settings_.crt = crt_;
     settings_.fps = fps_;
     settings_.desktopScale = desk_.scale;
@@ -576,6 +594,8 @@ void GameWindow::attachSettings(SettingsStore* store, const Settings& initial) {
     background_ = initial.background;
     colour_ = initial.colourMode;
     vibrationAtomic_ = initial.vibration;
+    lightbarAtomic_ = initial.lightbar;
+    applyLightConfig();
     crt_ = initial.crt;
     fps_ = FpsMode::Native;   // the only picture rate: the original's (the other FPS settings were removed; an old settings file's fps key is ignored)
     fpsAtomic_ = FpsMode::Native;
@@ -733,6 +753,7 @@ void GameWindow::currentPixels(std::uint32_t* out, double glowDtSeconds) {
         view.background = background_;
         view.colourMode = colour_;
         view.vibration = vibrationAtomic_.load();
+        view.lightbar = lightbarAtomic_.load();
         view.crt = crt_;
         view.fps = fps_;
         view.achievements = book_ ? book_->mask() : 0;
@@ -777,6 +798,7 @@ void GameWindow::currentPixels(std::uint32_t* out, double glowDtSeconds) {
 
 void GameWindow::menuChanged() {
     menuOpen_ = menu_.open();
+    if (pad_) pad_->lightPaused(menuOpen_);   // the pause menu: the light is dim
     if (menuOpen_ && menu_.page() == PauseMenu::Page::Main && pad_) pad_->stopRumble();   // (the game stands still behind the menu: its pattern ends)
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -795,6 +817,8 @@ void GameWindow::menuAction(PauseMenu::Action a) {
         break;
     case PauseMenu::Action::NextVibration: cycleVibration(1); break;
     case PauseMenu::Action::PreviousVibration: cycleVibration(-1); break;
+    case PauseMenu::Action::NextLightbar: cycleLightbar(1); break;
+    case PauseMenu::Action::PreviousLightbar: cycleLightbar(-1); break;
     case PauseMenu::Action::NextColourMode: cycleColourMode(1); break;
     case PauseMenu::Action::PreviousColourMode: cycleColourMode(-1); break;
     case PauseMenu::Action::NextCrtPreset: stepCrtPreset(1); break;

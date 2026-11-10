@@ -375,6 +375,7 @@ bool GameCore::contactTest(int g, TickEvents& ev) {
     }
     pacmanCaught(s);                                      // $8C0E: DEC $58
     ev.caught = true;
+    caughtBy_ = g;
     if (s.demo == 0) {   // the death animation plays its six steps ($0A = 6 ... 1) in this tick
         for (SoundId d : {SoundId::Death6, SoundId::Death5, SoundId::Death4, SoundId::Death3, SoundId::Death2, SoundId::Death1}) ev.sounds.push_back(d);
     }

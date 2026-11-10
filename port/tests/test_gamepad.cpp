@@ -353,3 +353,58 @@ TEST(the_stick_is_given_to_the_original_paddle_routines_as_two_paddle_positions)
     s.dpadLeft = s.dpadRight = true;                                   // both ends of one axis cancel: the stick decides
     CHECK(app::padPaddles(s).x == 147);
 }
+
+TEST(lightbar_output_reports_of_the_sony_pads_carry_the_light_with_the_motors) {
+    app::PadOutput o;
+    o.strong = 200;
+    o.weak = 100;
+    o.light = true;
+    o.rgb = {10, 20, 30};
+    // DualShock 4, USB: report 5, flags motors + light bar, motors at 4 / 5, the colour at 6..8
+    auto r = app::buildDualShock4Output(32, false, o);
+    CHECK(r.size() == 32 && r[0] == 0x05 && r[1] == 0x03 && r[4] == 100 && r[5] == 200 && r[6] == 10 && r[7] == 20 && r[8] == 30);
+    // DualShock 4, Bluetooth: report 0x11, flags at 3, motors at 6 / 7, the colour at 8..10, the CRC at the end
+    r = app::buildDualShock4Output(78, true, o);
+    CHECK(r.size() == 78 && r[0] == 0x11 && r[1] == 0xC4 && r[3] == 0x03 && r[6] == 100 && r[7] == 200 && r[8] == 10 && r[9] == 20 && r[10] == 30);
+    {
+        std::vector<std::uint8_t> seeded{0xA2};
+        seeded.insert(seeded.end(), r.begin(), r.begin() + 74);
+        const std::uint32_t c = app::crc32(seeded.data(), seeded.size());
+        CHECK(r[74] == (c & 0xFF) && r[75] == ((c >> 8) & 0xFF) && r[76] == ((c >> 16) & 0xFF) && r[77] == ((c >> 24) & 0xFF));
+    }
+    // without the light the report is the motors' report of before, byte for byte
+    app::PadOutput motors;
+    motors.strong = 200;
+    motors.weak = 100;
+    CHECK(app::buildDualShock4Output(32, false, motors) == app::buildDualShock4Rumble(32, false, 200, 100));
+    CHECK(app::buildDualShock4Output(78, true, motors) == app::buildDualShock4Rumble(78, true, 200, 100));
+    CHECK(app::buildDualSenseOutput(64, false, motors, 0) == app::buildDualSenseRumble(64, false, 200, 100, 0));
+    CHECK(app::buildDualSenseOutput(78, true, motors, 7) == app::buildDualSenseRumble(78, true, 200, 100, 7));
+    // DualSense, USB: report 2; flag1 bit 2 = light bar, bit 4 = player LEDs; flag2 at +38 keeps bit 2 (vibration) and gets bit 1 for the set-up; set-up +41, LEDs +43, colour +44..+46
+    o.ledControl = true;
+    o.leds = 0x15;
+    o.lightSetup = true;
+    r = app::buildDualSenseOutput(64, false, o, 0);
+    CHECK(r.size() == 64 && r[0] == 0x02 && r[1] == 0x03 && r[2] == (0x04 | 0x10) && r[3] == 100 && r[4] == 200 && r[39] == (0x04 | 0x02) && r[42] == 0x02 && r[44] == 0x15 && r[45] == 10 && r[46] == 20 && r[47] == 30);
+    // the next report of a take-over has no set-up
+    o.lightSetup = false;
+    r = app::buildDualSenseOutput(64, false, o, 0);
+    CHECK(r[39] == 0x04 && r[42] == 0 && r[45] == 10);
+    // DualSense, Bluetooth: report 0x31, the common block starts at 3; the same fields shifted by two; CRC at the end
+    r = app::buildDualSenseOutput(78, true, o, 3);
+    CHECK(r.size() == 78 && r[0] == 0x31 && r[1] == 0x30 && r[2] == 0x10 && r[3] == 0x03 && r[4] == (0x04 | 0x10) && r[5] == 100 && r[6] == 200 && r[41] == 0x04 && r[46] == 0x15 && r[47] == 10 && r[48] == 20 && r[49] == 30);
+    {
+        std::vector<std::uint8_t> seeded{0xA2};
+        seeded.insert(seeded.end(), r.begin(), r.begin() + 74);
+        const std::uint32_t c = app::crc32(seeded.data(), seeded.size());
+        CHECK(r[74] == (c & 0xFF) && r[77] == ((c >> 24) & 0xFF));
+    }
+    // giving the light back: flag1 bit 3 (release the LEDs), no colour
+    app::PadOutput release;
+    release.release = true;
+    r = app::buildDualSenseOutput(64, false, release, 0);
+    CHECK(r[2] == 0x08 && r[45] == 0 && r[46] == 0 && r[47] == 0);
+    // a DualShock 4 has no release: it is given the colour it shows for the first player
+    const app::Rgb blue64{0, 0, 64};
+    CHECK(app::kDualShock4OwnLight == blue64);
+}

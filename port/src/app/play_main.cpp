@@ -503,6 +503,17 @@ bool runGame(core::GameDriver& drv, const datapack::Pack& pack, app::GameWindow&
             const int achLevel = static_cast<int>(drv.core().state().level()), achPlayer = drv.core().player();   // (what the tick is played in: a level change or a change of player happens inside it)
             const std::uint32_t achScoreBefore = drv.core().state().score();
             const core::TickEvents ev = liveTick(drv, &cartoon, &pack);
+            {   // the light bar of a DualShock 4 / DualSense: the game's moment (white, blue while the ghosts are, the lives on the player LEDs) and its events in the colours of the Apple II screen
+                const core::GameState& ls = drv.core().state();
+                const core::GhostShared& gs = drv.core().ghostShared();
+                const bool inGame = ls.demo == 0;
+                window.lightGame(inGame, inGame && gs.e4 != 0, static_cast<std::uint16_t>(gs.e1 | (gs.e2 << 8)), ls.lives() & 0x7F);
+                if (inGame) {
+                    if (ev.gameOver || ev.caught) window.lightCue(ev.gameOver ? app::LightCue::GameOver : app::LightCue::Caught, drv.core().caughtBy());
+                    else if (ev.ghostEaten[0] || ev.ghostEaten[1] || ev.ghostEaten[2] || ev.ghostEaten[3]) window.lightCue(app::LightCue::GhostEaten, ev.ghostEaten[0] ? 0 : ev.ghostEaten[1] ? 1 : ev.ghostEaten[2] ? 2 : 3);
+                    else if (ev.levelComplete) window.lightCue(app::LightCue::LevelComplete, 0);
+                }
+            }
             if (drv.core().state().demo == 0) {   // controller vibration for the game's events (not in the attract game)
                 if (ev.gameOver) window.vibrate(app::RumbleEvent::GameOver);
                 else if (ev.caught) window.vibrate(app::RumbleEvent::Caught);

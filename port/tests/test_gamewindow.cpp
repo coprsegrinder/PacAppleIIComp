@@ -911,7 +911,7 @@ TEST(pause_menu_keyboard_navigation_pages_and_actions) {
     m.key(PauseMenu::Key::Down);
     CHECK(m.selected() == 2);
     m.setInUseDevice(2);
-    CHECK(m.key(PauseMenu::Key::Select) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Controls && m.itemCount() == 3 && m.controlsDevice() == 2);
+    CHECK(m.key(PauseMenu::Key::Select) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Controls && m.itemCount() == 4 && m.controlsDevice() == 2);
     m.key(PauseMenu::Key::Right);
     CHECK(m.controlsDevice() == 0);
     m.key(PauseMenu::Key::Left);
@@ -924,11 +924,16 @@ TEST(pause_menu_keyboard_navigation_pages_and_actions) {
     m.key(PauseMenu::Key::Down);
     CHECK(m.selected() == 1 && m.key(PauseMenu::Key::Right) == PauseMenu::Action::NextVibration && m.key(PauseMenu::Key::Left) == PauseMenu::Action::PreviousVibration && m.key(PauseMenu::Key::Select) == PauseMenu::Action::NextVibration);
     CHECK(m.controlsDevice() == 2);   // (the device is not touched)
+    // the Light Bar entry: Left / Right / Enter change it
+    m.key(PauseMenu::Key::Down);
+    CHECK(m.selected() == 2 && m.key(PauseMenu::Key::Right) == PauseMenu::Action::NextLightbar && m.key(PauseMenu::Key::Left) == PauseMenu::Action::PreviousLightbar && m.key(PauseMenu::Key::Select) == PauseMenu::Action::NextLightbar);
+    CHECK(m.controlsDevice() == 2);
     CHECK(m.key(PauseMenu::Key::Back) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Main && m.selected() == 2);
     m.key(PauseMenu::Key::Select);
     m.key(PauseMenu::Key::Down);
     m.key(PauseMenu::Key::Down);
-    CHECK(m.selected() == 2 && m.key(PauseMenu::Key::Select) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Main && m.selected() == 2);   // Back entry
+    m.key(PauseMenu::Key::Down);
+    CHECK(m.selected() == 3 && m.key(PauseMenu::Key::Select) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Main && m.selected() == 2);   // Back entry
     // Achievements: a list of 22 followed by Credits, Reset Progress and Back; it scrolls with the selection
     m.key(PauseMenu::Key::Down);
     CHECK(m.selected() == 3);
@@ -1003,7 +1008,8 @@ TEST(pause_menu_mouse_selects_on_hover_activates_on_click_and_ignores_the_rest) 
     CHECK(m.pointerClick(mainItem(2).x, mainItem(2).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Controls);   // Controls by mouse, and its two entries
     CHECK(m.pointerClick(m.itemCenter(0).x, m.itemCenter(0).y) == PauseMenu::Action::None && m.controlsDevice() == 1);
     CHECK(m.pointerClick(m.itemCenter(1).x, m.itemCenter(1).y) == PauseMenu::Action::NextVibration && m.page() == PauseMenu::Page::Controls);   // the Vibration entry by mouse
-    CHECK(m.pointerClick(m.itemCenter(2).x, m.itemCenter(2).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Main);
+    CHECK(m.pointerClick(m.itemCenter(2).x, m.itemCenter(2).y) == PauseMenu::Action::NextLightbar && m.page() == PauseMenu::Page::Controls);   // the Light Bar entry by mouse
+    CHECK(m.pointerClick(m.itemCenter(3).x, m.itemCenter(3).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Main);
     // the Achievements page by mouse: the first rows are on the screen, the rows scrolled out are not there to click
     CHECK(m.pointerClick(mainItem(3).x, mainItem(3).y) == PauseMenu::Action::None && m.page() == PauseMenu::Page::Achievements);
     CHECK(m.pointerClick(m.itemCenter(2).x, m.itemCenter(2).y) == PauseMenu::Action::None && m.selected() == 2);
@@ -5003,4 +5009,166 @@ TEST(vibration_window_plays_the_events_on_the_controller_in_use_and_the_menu_cha
     CHECK(hub.rumbleLogForTests().size() == before + 1 && hub.rumbleLogForTests().back() == app::rumbleFor(RumbleEvent::Test, VibrationLevel::High));
     w.cycleVibration(1);
     CHECK(w.vibration() == VibrationLevel::Off);
+}
+
+// ---------------------------------------------------------------- The light bar (lightbar.h, TASK-034-LIGHTBAR)
+
+TEST(lightbar_setting_names_cycle_and_the_settings_file_keeps_the_choice) {
+    using app::LightbarLevel;
+    CHECK(app::kLightbarLevelCount == 4);
+    CHECK(std::string(app::lightbarKey(LightbarLevel::Off)) == "off" && std::string(app::lightbarKey(LightbarLevel::High)) == "high");
+    CHECK(std::string(app::lightbarLabel(LightbarLevel::Medium)) == "MEDIUM" && std::string(app::lightbarLabel(LightbarLevel::Off)) == "OFF");
+    CHECK(app::nextLightbar(LightbarLevel::Off, 1) == LightbarLevel::Low && app::nextLightbar(LightbarLevel::High, 1) == LightbarLevel::Off && app::nextLightbar(LightbarLevel::Off, -1) == LightbarLevel::High);
+    LightbarLevel l = LightbarLevel::Off;
+    CHECK(app::parseLightbar("low", l) && l == LightbarLevel::Low && !app::parseLightbar("max", l) && l == LightbarLevel::Low);
+    CHECK(app::lightbarPercent(LightbarLevel::Off) == 0 && app::lightbarPercent(LightbarLevel::Low) < app::lightbarPercent(LightbarLevel::Medium) && app::lightbarPercent(LightbarLevel::Medium) < app::lightbarPercent(LightbarLevel::High)
+          && app::lightbarPercent(LightbarLevel::High) == 100);
+    Settings d;
+    CHECK(d.lightbar == LightbarLevel::Medium);
+    Settings s;
+    s.lightbar = LightbarLevel::Off;
+    CHECK(SettingsStore::parse(SettingsStore::format(s)).lightbar == LightbarLevel::Off);
+    CHECK(SettingsStore::parse("lightbar=HIGH\n").lightbar == LightbarLevel::High && SettingsStore::parse("lightbar=bright\n").lightbar == LightbarLevel::Medium);
+    CHECK(SettingsStore::parse("vibration=off\n").lightbar == LightbarLevel::Medium);   // (an older settings file has no such key)
+}
+
+TEST(lightbar_shows_only_colours_the_apple_ii_screen_shows_and_follows_the_moment) {
+    using namespace app;
+    using video::PixelClass;
+    const Rgb white = paletteRgb(PixelClass::White), blue = paletteRgb(PixelClass::Blue);
+    const Rgb fullWhite{255, 255, 255}, paletteBlue{0x14, 0xCF, 0xFD}, black{0, 0, 0}, phosphor{51, 255, 97};
+    // the ghosts' colours as read from the oracle's pages: ghost 1 orange, 2 violet, 3 white, 4 green
+    CHECK(ghostColour(0) == paletteRgb(PixelClass::Orange) && ghostColour(1) == paletteRgb(PixelClass::Violet) && ghostColour(2) == white && ghostColour(3) == paletteRgb(PixelClass::Green));
+    CHECK(white == fullWhite && blue == paletteBlue);   // the numbers of the picture (video/colour.h)
+    LightScene s;
+    s.level = LightbarLevel::High;
+    s.playing = true;
+    s.lives = 3;
+    // Off leaves the pad alone
+    LightScene off = s;
+    off.level = LightbarLevel::Off;
+    CHECK(!lightFor(off, 0).control);
+    // playing: white, scaled by the level
+    CHECK(lightFor(s, 0).control && lightFor(s, 0).rgb == white);
+    s.level = LightbarLevel::Medium;
+    CHECK(lightFor(s, 0).rgb == scaleRgb(white, 70) && lightFor(s, 0).rgb.r == 179);
+    s.level = LightbarLevel::High;
+    // the ghosts are blue: blue above $7F, then blue and white by bit 4 of the low byte (the ghosts' own flashing)
+    s.frightened = true;
+    s.timer = 0x0140;
+    CHECK(lightFor(s, 0).rgb == blue);
+    s.timer = 0x0080;
+    CHECK(lightFor(s, 0).rgb == blue);
+    s.timer = 0x0070;
+    CHECK(lightFor(s, 0).rgb == blue);
+    s.timer = 0x0060;
+    CHECK(lightFor(s, 0).rgb == white);
+    s.timer = 0x0000;
+    CHECK(lightFor(s, 0).rgb == white);
+    s.frightened = false;
+    // the menus, the attract game and the pause menu: dim white
+    LightScene idle = s;
+    idle.playing = false;
+    CHECK(lightFor(idle, 0).rgb == scaleRgb(white, kDimPercent) && lightFor(idle, 0).leds == 0x04);
+    LightScene paused = s;
+    paused.paused = true;
+    CHECK(lightFor(paused, 0).rgb == scaleRgb(white, kDimPercent) && lightFor(paused, 0).leds == playerLedsFor(3));   // (the lives stay on the LEDs)
+    // the player LEDs: Sony's patterns for 1 to 5 lives
+    CHECK(playerLedsFor(0) == 0x00 && playerLedsFor(1) == 0x04 && playerLedsFor(2) == 0x0A && playerLedsFor(3) == 0x15 && playerLedsFor(4) == 0x1B && playerLedsFor(5) == 0x1F && playerLedsFor(9) == 0x1F);
+    CHECK(lightFor(s, 0).leds == 0x15);
+    // a ghost eaten: a flash in that ghost's colour that settles back into the colour of the moment
+    s.cue = LightCue::GhostEaten;
+    s.cueGhost = 1;
+    s.cueStartMs = 1000;
+    CHECK(lightFor(s, 1000).rgb == ghostColour(1) && lightFor(s, 1000 + kCueEatenMs).rgb == white);
+    CHECK(lightFor(s, 1000 + kCueEatenMs / 2).rgb != ghostColour(1) && lightFor(s, 1000 + kCueEatenMs / 2).rgb != white);
+    CHECK(lightFor(s, 500).rgb == white);   // (an event in the future is not shown)
+    // Pac-Man caught: the catcher's colour, then fading to dark, then the light comes back
+    s.cue = LightCue::Caught;
+    s.cueGhost = 0;
+    CHECK(lightFor(s, 1000).rgb == ghostColour(0) && lightFor(s, 1000 + kCueCaughtFlashMs).rgb == ghostColour(0));
+    CHECK(lightFor(s, 1000 + kCueCaughtFlashMs + kCueCaughtFadeMs / 2).rgb == scaleRgb(ghostColour(0), 50));
+    CHECK(lightFor(s, 1000 + kCueCaughtFlashMs + kCueCaughtFadeMs).rgb == black);
+    CHECK(lightFor(s, 1000 + kCueCaughtFlashMs + kCueCaughtFadeMs + kCueFadeInMs / 2).rgb == scaleRgb(white, 50));
+    CHECK(lightFor(s, 1000 + kCueCaughtFlashMs + kCueCaughtFadeMs + kCueFadeInMs).rgb == white);
+    // a level completed: blue and white by turns, then the colour of the moment
+    s.cue = LightCue::LevelComplete;
+    for (int i = 0; i < kCueLevelSteps; ++i) CHECK(lightFor(s, 1000 + static_cast<std::uint64_t>(i) * kCueLevelStepMs + 5).rgb == (i % 2 == 0 ? blue : white));
+    s.frightened = true;
+    s.timer = 0x0140;
+    CHECK(lightFor(s, 1000 + static_cast<std::uint64_t>(kCueLevelSteps) * kCueLevelStepMs).rgb == blue);   // (after the steps: the colour of the moment)
+    s.frightened = false;
+    // the game over: fades out
+    s.cue = LightCue::GameOver;
+    s.cueGhost = 3;   // (the last catch is by a ghost too: its colour flashes first)
+    CHECK(lightFor(s, 1000).rgb == ghostColour(3) && lightFor(s, 1000 + kCueCaughtFlashMs).rgb == ghostColour(3));
+    CHECK(lightFor(s, 1000 + kCueCaughtFlashMs + kCueGameOverMs / 2).rgb == scaleRgb(ghostColour(3), 50) && lightFor(s, 1000 + kCueCaughtFlashMs + kCueGameOverMs).rgb == black);
+    CHECK(lightFor(s, 1000 + kCueCaughtFlashMs + kCueGameOverMs + kCueFadeInMs).rgb == white);
+    // without an event the steady colours are exactly the palette's: white or blue, whatever the timer
+    s.cue = LightCue::None;
+    for (const bool frightened : {false, true}) {
+        s.frightened = frightened;
+        for (const int t : {0x0000, 0x0010, 0x0070, 0x0140}) {
+            s.timer = static_cast<std::uint16_t>(t);
+            const Rgb got = lightFor(s, 0).rgb;
+            CHECK(got == white || got == blue);
+        }
+    }
+    // Native Black & White: the phosphor's colour at the brightness of the colour it replaces (white = the phosphor's peak)
+    LightScene mono;
+    mono.level = LightbarLevel::High;
+    mono.playing = true;
+    mono.mono = true;
+    CHECK(lightFor(mono, 0).rgb == phosphor);
+    mono.frightened = true;
+    mono.timer = 0x0140;
+    const Rgb monoBlue = lightFor(mono, 0).rgb;   // blue is darker than white in the phosphor: the same hue, less light
+    CHECK(monoBlue.g < 255 && monoBlue.g > 100 && monoBlue.r < 51 && monoBlue.b < 97);
+}
+
+TEST(lightbar_window_feeds_the_pad_and_the_level_the_menu_and_the_colour_mode_change_it) {
+    using namespace app;
+    using video::PixelClass;
+    GameWindow w(GameWindowOptions{3, false});
+    CHECK(w.ok());
+    if (!w.ok()) return;
+    GamepadHub hub;
+    const Rgb phosphor{51, 255, 97};
+
+    PadState ps;
+    ps.kind = PadKind::DualSense;
+    hub.injectForTests(ps, true);
+    w.setGamepad(&hub);
+    const Rgb white = paletteRgb(PixelClass::White);
+    w.lightGame(true, false, 0, 3);   // a game, Medium by default
+    CHECK(!hub.lightLogForTests().empty() && hub.lightLogForTests().back().control && hub.lightLogForTests().back().rgb == scaleRgb(white, 70) && hub.lightLogForTests().back().leds == playerLedsFor(3));
+    w.setLightbar(LightbarLevel::Off);   // Off: the pad's own light is left alone
+    CHECK(w.lightbar() == LightbarLevel::Off && !hub.lightLogForTests().back().control);
+    w.setLightbar(LightbarLevel::High);
+    CHECK(hub.lightLogForTests().back().control && hub.lightLogForTests().back().rgb == white);
+    w.cycleLightbar(1);   // High -> Off
+    CHECK(w.lightbar() == LightbarLevel::Off && !hub.lightLogForTests().back().control);
+    w.setLightbar(LightbarLevel::High);
+    // Native Black & White: the light follows the picture's mode
+    w.setColourMode(ColourMode::NativeMono);
+    CHECK(hub.lightLogForTests().back().rgb == phosphor);
+    w.setColourMode(ColourMode::Original);
+    CHECK(hub.lightLogForTests().back().rgb == white);
+    // an event
+    w.lightCue(LightCue::GhostEaten, 3);
+    CHECK(hub.lightLogForTests().back().rgb == ghostColour(3));
+    w.lightCue(LightCue::None, 0);
+    // the power pill: blue
+    w.lightGame(true, true, 0x0200, 3);
+    CHECK(hub.lightLogForTests().back().rgb == paletteRgb(PixelClass::Blue));
+    // the pause menu: Esc opens it and the light goes dim; Esc closes it again
+    w.lightGame(true, false, 0, 3);
+    SendMessageW(w.hwnd(), WM_KEYDOWN, VK_ESCAPE, 1);
+    CHECK(w.menuOpen() && hub.lightLogForTests().back().rgb == scaleRgb(white, kDimPercent));
+    SendMessageW(w.hwnd(), WM_KEYUP, VK_ESCAPE, 1);
+    SendMessageW(w.hwnd(), WM_KEYDOWN, VK_ESCAPE, 1);
+    CHECK(!w.menuOpen() && hub.lightLogForTests().back().rgb == white);
+    // not in a game (the menus, the attract game): dim, with the first player's LED
+    w.lightGame(false, false, 0, 0);
+    CHECK(hub.lightLogForTests().back().rgb == scaleRgb(white, kDimPercent) && hub.lightLogForTests().back().leds == 0x04);
 }

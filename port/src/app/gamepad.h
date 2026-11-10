@@ -11,6 +11,7 @@
 #include <optional>
 #include <vector>
 
+#include "lightbar.h"
 #include "vibration.h"
 
 namespace pacman::app {
@@ -64,6 +65,21 @@ std::uint32_t crc32(const std::uint8_t* data, std::size_t size) noexcept;
 std::vector<std::uint8_t> buildDualShock4Rumble(std::size_t length, bool bluetooth, std::uint8_t strong, std::uint8_t weak);
 std::vector<std::uint8_t> buildDualSenseRumble(std::size_t length, bool bluetooth, std::uint8_t strong, std::uint8_t weak, std::uint8_t sequence);
 
+// The light (TASK-034-LIGHTBAR). One output report carries the motors, the light bar and the player LEDs, so every report the program writes carries ALL it is controlling: the motors as they stand
+// and the light as it stands (a report with only one of them could blank the other on some firmware). `valid` flags tell the pad which parts of the report to apply.
+struct PadOutput {
+    std::uint8_t strong = 0, weak = 0;   // the motors
+    bool light = false;                  // set the light bar to `rgb`
+    Rgb rgb;
+    bool ledControl = false;             // DualSense: set the five player LEDs to `leds`
+    std::uint8_t leds = 0;
+    bool lightSetup = false;             // DualSense, the first report of a take-over: the pad's own start-up light fade is cancelled
+    bool release = false;                // DualSense: give the LEDs back to the pad (its own colour returns)
+};
+std::vector<std::uint8_t> buildDualShock4Output(std::size_t length, bool bluetooth, const PadOutput& o);
+std::vector<std::uint8_t> buildDualSenseOutput(std::size_t length, bool bluetooth, const PadOutput& o, std::uint8_t sequence);
+inline constexpr Rgb kDualShock4OwnLight{0, 0, 64};   // the colour a DualShock 4 shows for the first player: what it is given back (it has no "release")
+
 // The controllers the program knows of and what the newest input came from. Thread-safe: the reading thread writes, any thread reads.
 class GamepadHub {
 public:
@@ -82,6 +98,15 @@ public:
     // also stopped when the pad is pulled out of use, and when the hub stops.
     void rumble(const std::vector<RumbleStep>& steps);
     void stopRumble();
+
+    // The light bar and the player LEDs (lightbar.h): the scene is fed in by the program (the setting and the colour mode, the game's moment, the pause menu, the events) and the reading thread
+    // keeps the controller in use (a DualShock 4 or a DualSense; others are left alone) at lightFor(scene, now). The pad's own light is given back when the setting is Off, when another pad
+    // comes into use, and when the hub stops.
+    void lightConfig(LightbarLevel level, bool mono);
+    void lightGame(bool playing, bool frightened, std::uint16_t timer, int lives);
+    void lightPaused(bool paused);
+    void lightCue(LightCue cue, int ghost);
+    const std::vector<LightOut>& lightLogForTests() const;   // with injectForTests: every different output, in order
 
     // tests and the program's other inputs
     const std::vector<std::vector<RumbleStep>>& rumbleLogForTests() const;   // with injectForTests: the patterns asked for, in order

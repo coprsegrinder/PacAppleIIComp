@@ -140,27 +140,46 @@ void appendBluetoothCrc(std::vector<std::uint8_t>& r) {
 }
 }  // namespace
 
-std::vector<std::uint8_t> buildDualShock4Rumble(std::size_t length, bool bluetooth, std::uint8_t strong, std::uint8_t weak) {
+std::vector<std::uint8_t> buildDualShock4Output(std::size_t length, bool bluetooth, const PadOutput& o) {
     std::vector<std::uint8_t> r((std::max<std::size_t>)(length, bluetooth ? 78 : 32), 0);
+    const std::uint8_t valid = static_cast<std::uint8_t>(0x01 | (o.light ? 0x02 : 0));   // bit 0 the motors, bit 1 the light bar's colour
     if (bluetooth) {
         r[0] = 0x11;
         r[1] = 0xC4;   // HID + CRC flags, poll interval 4
-        r[3] = 0x01;   // "motors": the light bar is left as it is
-        r[6] = weak;
-        r[7] = strong;
+        r[3] = valid;
+        r[6] = o.weak;
+        r[7] = o.strong;
+        if (o.light) {
+            r[8] = o.rgb.r;
+            r[9] = o.rgb.g;
+            r[10] = o.rgb.b;
+        }
         appendBluetoothCrc(r);
     } else {
         r[0] = 0x05;
-        r[1] = 0x01;   // "motors"
-        r[4] = weak;
-        r[5] = strong;
+        r[1] = valid;
+        r[4] = o.weak;
+        r[5] = o.strong;
+        if (o.light) {
+            r[6] = o.rgb.r;
+            r[7] = o.rgb.g;
+            r[8] = o.rgb.b;
+        }
     }
     return r;
 }
 
-std::vector<std::uint8_t> buildDualSenseRumble(std::size_t length, bool bluetooth, std::uint8_t strong, std::uint8_t weak, std::uint8_t sequence) {
+std::vector<std::uint8_t> buildDualShock4Rumble(std::size_t length, bool bluetooth, std::uint8_t strong, std::uint8_t weak) {
+    PadOutput o;
+    o.strong = strong;
+    o.weak = weak;
+    return buildDualShock4Output(length, bluetooth, o);   // the motors only: the light bar is left as it is
+}
+
+std::vector<std::uint8_t> buildDualSenseOutput(std::size_t length, bool bluetooth, const PadOutput& o, std::uint8_t sequence) {
     std::vector<std::uint8_t> r((std::max<std::size_t>)(length, bluetooth ? 78 : 48), 0);
-    // the common block: flag0 (bit 0 compatible vibration, bit 1 haptics select), flag1, right motor, left motor, ... flag2 (bit 2: compatible vibration 2, newer firmware) at +38
+    // the common block: flag0 (bit 0 compatible vibration, bit 1 haptics select), flag1 (bit 2 light bar, bit 3 release the LEDs, bit 4 player LEDs), right motor, left motor, ... flag2 at +38
+    // (bit 1 light bar set-up, bit 2 compatible vibration 2, newer firmware), the set-up at +41, the player LEDs at +43, the light bar's red, green and blue at +44..+46
     const std::size_t c = bluetooth ? 3 : 1;
     if (bluetooth) {
         r[0] = 0x31;
@@ -170,11 +189,26 @@ std::vector<std::uint8_t> buildDualSenseRumble(std::size_t length, bool bluetoot
         r[0] = 0x02;
     }
     r[c + 0] = 0x03;
-    r[c + 2] = weak;
-    r[c + 3] = strong;
-    r[c + 38] = 0x04;
+    r[c + 1] = static_cast<std::uint8_t>((o.light ? 0x04 : 0) | (o.release ? 0x08 : 0) | (o.ledControl ? 0x10 : 0));
+    r[c + 2] = o.weak;
+    r[c + 3] = o.strong;
+    r[c + 38] = static_cast<std::uint8_t>(0x04 | (o.lightSetup ? 0x02 : 0));
+    if (o.lightSetup) r[c + 41] = 0x02;   // "light out": the pad's own start-up fade of the light bar is ended
+    if (o.ledControl) r[c + 43] = o.leds;
+    if (o.light) {
+        r[c + 44] = o.rgb.r;
+        r[c + 45] = o.rgb.g;
+        r[c + 46] = o.rgb.b;
+    }
     if (bluetooth) appendBluetoothCrc(r);
     return r;
+}
+
+std::vector<std::uint8_t> buildDualSenseRumble(std::size_t length, bool bluetooth, std::uint8_t strong, std::uint8_t weak, std::uint8_t sequence) {
+    PadOutput o;
+    o.strong = strong;
+    o.weak = weak;
+    return buildDualSenseOutput(length, bluetooth, o, sequence);
 }
 
 // ------------------------------------------------------------------------------------------------ the part that talks to Windows
@@ -231,6 +265,25 @@ struct GamepadHub::Impl {
     const void* sentTarget = nullptr;
     int sentStrong = 0, sentWeak = 0;
     std::vector<std::vector<RumbleStep>> rumbleLog;   // (injected devices only: what was asked)
+    // the light: the scene (written by any thread under the mutex) and what the reading thread has put on the pad (touched by that thread only)
+    LightScene lightScene;
+    const void* litTarget = nullptr;
+    bool litFirst = false;
+    LightOut litLast;
+    std::uint64_t litLastWrite = 0;
+    std::vector<LightOut> lightLog;   // (injected devices only: every different output)
+    LightOut injectedLightLast;
+    bool injectedLightAny = false;
+
+    // (the mutex is held by the caller) with injected devices there is no reading thread: the output is worked out whenever the scene changes and every different one is logged
+    void logInjectedLight() {
+        if (!injected) return;
+        const LightOut out = lightFor(lightScene, nowMs());
+        if (injectedLightAny && out == injectedLightLast) return;
+        injectedLightAny = true;
+        injectedLightLast = out;
+        lightLog.push_back(out);
+    }
 
     static std::uint64_t nowMs() { return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()); }
 
@@ -448,19 +501,19 @@ struct GamepadHub::Impl {
         return t;
     }
 
-    void writeMotors(const void* id, int strong, int weak) {
+    // one report to a pad: the motors and, for the Sony pads, the light as it is given (every report carries all that the program controls)
+    void writeOutput(const void* id, const PadOutput& o) {
         const SendTarget t = findTarget(id);
         if (!t.found) return;
         if (t.xSlot >= 0) {
             if (xSet) {
-                XInputVibration v{static_cast<WORD>(strong * 257), static_cast<WORD>(weak * 257)};
+                XInputVibration v{static_cast<WORD>(o.strong * 257), static_cast<WORD>(o.weak * 257)};
                 xSet(static_cast<DWORD>(t.xSlot), &v);
             }
             return;
         }
         if (!t.canWrite) return;
-        const std::vector<std::uint8_t> r = t.kind == PadKind::DualShock4 ? buildDualShock4Rumble(t.outLen, t.bluetooth, static_cast<std::uint8_t>(strong), static_cast<std::uint8_t>(weak))
-                                                                           : buildDualSenseRumble(t.outLen, t.bluetooth, static_cast<std::uint8_t>(strong), static_cast<std::uint8_t>(weak), t.sequence);
+        const std::vector<std::uint8_t> r = t.kind == PadKind::DualShock4 ? buildDualShock4Output(t.outLen, t.bluetooth, o) : buildDualSenseOutput(t.outLen, t.bluetooth, o, t.sequence);
         OVERLAPPED ov{};
         ov.hEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
         if (!ov.hEvent) return;
@@ -472,6 +525,82 @@ struct GamepadHub::Impl {
             }
         }
         CloseHandle(ov.hEvent);
+    }
+
+    void writeMotors(const void* id, int strong, int weak) {
+        PadOutput o;
+        o.strong = static_cast<std::uint8_t>(strong);
+        o.weak = static_cast<std::uint8_t>(weak);
+        if (id == litTarget && litTarget) {   // the light as it stands goes with the motors
+            o.light = true;
+            o.rgb = litLast.rgb;
+            o.ledControl = true;
+            o.leds = litLast.leds;
+        }
+        writeOutput(id, o);
+    }
+
+    // ---- the light (all writes on the reading thread, like the motors)
+    void releaseLight(const void* id) {
+        const SendTarget t = findTarget(id);
+        if (!t.found || t.xSlot >= 0 || !t.canWrite) return;
+        PadOutput o;
+        if (id == sentTarget) {
+            o.strong = static_cast<std::uint8_t>(sentStrong);
+            o.weak = static_cast<std::uint8_t>(sentWeak);
+        }
+        if (t.kind == PadKind::DualSense) {
+            o.release = true;                  // the pad takes its LEDs back (its own colour and player pattern)
+        } else {
+            o.light = true;                    // a DualShock 4 has no release: it is given the colour it shows for the first player
+            o.rgb = kDualShock4OwnLight;
+        }
+        writeOutput(id, o);
+    }
+
+    void updateLight() {
+        LightScene sc;
+        const void* target = nullptr;
+        PadKind kind = PadKind::None;
+        {
+            std::lock_guard<std::mutex> lock(m);
+            sc = lightScene;
+            const Source* s = inUse();
+            if (s) {
+                target = s;
+                kind = s->kind;
+            }
+        }
+        const std::uint64_t now = nowMs();
+        const LightOut out = lightFor(sc, now);
+        const bool sony = kind == PadKind::DualShock4 || kind == PadKind::DualSense;
+        if (!target || !sony || !out.control) {   // Off, no pad, or a pad without a light: what was taken is given back
+            if (litTarget) {
+                releaseLight(litTarget);
+                litTarget = nullptr;
+            }
+            return;
+        }
+        if (target != litTarget) {
+            if (litTarget) releaseLight(litTarget);
+            litTarget = target;
+            litFirst = true;
+        }
+        if (!litFirst && (out == litLast || now - litLastWrite < 16)) return;   // (a change is sent at once, but not faster than a Bluetooth link takes it)
+        PadOutput o;
+        if (sentTarget == target) {
+            o.strong = static_cast<std::uint8_t>(sentStrong);
+            o.weak = static_cast<std::uint8_t>(sentWeak);
+        }
+        o.light = true;
+        o.rgb = out.rgb;
+        o.ledControl = true;
+        o.leds = out.leds;
+        o.lightSetup = litFirst;
+        litLast = out;
+        litLastWrite = now;
+        litFirst = false;
+        writeOutput(target, o);
     }
 
     void updateRumble() {
@@ -526,6 +655,7 @@ struct GamepadHub::Impl {
             pollXInput(scanEmpty);
             pollHid();
             updateRumble();
+            updateLight();
             std::this_thread::sleep_for(std::chrono::milliseconds(2));
         }
         {
@@ -533,6 +663,10 @@ struct GamepadHub::Impl {
             rumbleActive = false;
         }
         if (sentTarget && (sentStrong || sentWeak)) writeMotors(sentTarget, 0, 0);   // (the motors must not be left running)
+        if (litTarget) {   // the pad gets its own light back
+            releaseLight(litTarget);
+            litTarget = nullptr;
+        }
         std::vector<HidDevice*> all;
         {
             std::lock_guard<std::mutex> lock(m);
@@ -556,7 +690,7 @@ struct GamepadHub::Impl {
     }
 };
 
-GamepadHub::GamepadHub() : d_(std::make_unique<Impl>()) {}
+GamepadHub::GamepadHub() : d_(std::make_unique<Impl>()) { d_->lightScene.level = LightbarLevel::Off; }   // (the light is the program's only when the window has told the setting)
 GamepadHub::~GamepadHub() { stop(); }
 
 void GamepadHub::start() {
@@ -618,6 +752,40 @@ void GamepadHub::stopRumble() {
 }
 
 const std::vector<std::vector<RumbleStep>>& GamepadHub::rumbleLogForTests() const { return d_->rumbleLog; }
+
+void GamepadHub::lightConfig(LightbarLevel level, bool mono) {
+    std::lock_guard<std::mutex> lock(d_->m);
+    d_->lightScene.level = level;
+    d_->lightScene.mono = mono;
+    d_->logInjectedLight();
+}
+
+void GamepadHub::lightGame(bool playing, bool frightened, std::uint16_t timer, int lives) {
+    std::lock_guard<std::mutex> lock(d_->m);
+    LightScene& s = d_->lightScene;
+    s.playing = playing;
+    s.frightened = frightened;
+    s.timer = timer;
+    s.lives = lives;
+    d_->logInjectedLight();
+}
+
+void GamepadHub::lightPaused(bool paused) {
+    std::lock_guard<std::mutex> lock(d_->m);
+    d_->lightScene.paused = paused;
+    d_->logInjectedLight();
+}
+
+void GamepadHub::lightCue(LightCue cue, int ghost) {
+    std::lock_guard<std::mutex> lock(d_->m);
+    LightScene& s = d_->lightScene;
+    s.cue = cue;
+    s.cueGhost = ghost;
+    s.cueStartMs = Impl::nowMs();
+    d_->logInjectedLight();
+}
+
+const std::vector<LightOut>& GamepadHub::lightLogForTests() const { return d_->lightLog; }
 
 std::uint32_t GamepadHub::changeCount() const { return d_->changes.load(); }
 

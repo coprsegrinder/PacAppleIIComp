@@ -1,6 +1,8 @@
 # Changelog
 
 ## 2026-11-10
+* TASK-034-LIGHTBAR fix (user's test on real pads): the light for a catch showed the wrong ghost's colour when several ghosts were on Pac-Man (nearest ghost, lowest number on a tie): now the ghost whose contact test caught him (`GameCore::caughtBy`); the last catch flashes the catcher's colour before the fade. Test added.
+* TASK-034-LIGHTBAR: light bar and player LEDs of the DualShock 4 and DualSense in the game's own Apple II colours (white in play, blue while the ghosts are blue, flashes in the ghost's colour when one is eaten or catches Pac-Man, blue and white at a level end; the LEDs show the lives); Pause menu > Controls > LIGHT BAR Off / Low / Medium / High, settings key `lightbar`; the pad gets its own light back; Native Black & White gives phosphor shades. `src/app/lightbar.h`, `GamepadHub::light*`, output reports with the light's valid flags (docs/MODERNIZATION.md). Hardware not tried.
 * TASK-034-FREEZE: the ghost-eaten freeze run for real with eyes ghosts: six passes of `$805D` give every eyes ghost twelve full steps (move, drawing, shared timer); new recording GH1 (tools/record_eatchain.py: 15 ghosts eaten, 5 with other ghosts eyes; ghost RAM and cycles by record_ghost_ram.py, calls and pages by record_tick_calls.py GH1), 7,918 ticks equal to the cycle, states, draw calls and 800 pages equal. Also fixed: the score image is drawn with the `$1E` the eaten ghost left (not 1), a ghost's image is chosen by its own step's flags and timer (period ending mid-loop, timer added after the eaten ghost's draw), an item test outside the map costs 82 cycles, and the catch feeds of the tests clear the in-house flag of a ghost stepping off the door.
 
 ## 2026-11-09

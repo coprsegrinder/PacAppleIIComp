@@ -8,6 +8,7 @@
 
 #include "background.h"
 #include "colourmode.h"
+#include "lightbar.h"
 #include "vibration.h"
 #include "crtfilter.h"
 #include "fpsmode.h"
@@ -25,6 +26,7 @@ struct Settings {
     Background background = Background::Black;              // what is drawn around the picture
     ColourMode colourMode = ColourMode::Original;           // the picture as the colour TV showed it, or as a monochrome Apple II monitor showed it
     VibrationLevel vibration = VibrationLevel::Medium;      // controller vibration (Off / Low / Medium / High)
+    LightbarLevel lightbar = LightbarLevel::Medium;         // the light bar of the DualShock 4 / DualSense (Off / Low / Medium / High: the brightness)
     FpsMode fps = FpsMode::Native;                          // how often the window shows the game's pictures (the game itself never depends on it)
     CrtFilter crt;                                          // the CRT filter options (all off = the picture exactly as the program makes it)
     int desktopScale = 0;                                   // the Apple II desktop's window: its picture scale (0 = the largest that fits) and its place (game pixels from the centred place)

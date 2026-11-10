@@ -70,7 +70,7 @@ public:
     // before the game (the boot menus, the attract loop, the prompts) the presses wait for the program in popPadPress(). The last device that gave input (keyboard or a controller) is
     // inputDevice(): 0 keyboard, 1 Xbox, 2 PlayStation, for the controls page.
     enum class PadPress : std::uint8_t { Confirm, Back, Up, Down, Left, Right };
-    void setGamepad(GamepadHub* hub) noexcept { pad_ = hub; }
+    void setGamepad(GamepadHub* hub);   // (the pad is told the light bar's level and the colour mode at once)
     GamepadHub* gamepad() const noexcept { return pad_; }
     // The achievements (core/achievements.h): the book holds the progress and the pop-ups; the window draws a pop-up over the picture and the menu's Achievements page reads the progress.
     void setAchievements(AchievementBook* book) noexcept { book_ = book; }
@@ -138,6 +138,12 @@ public:
     void setVibration(VibrationLevel l);   // (also gives a short test pulse)
     void cycleVibration(int dir) { setVibration(nextVibration(vibrationAtomic_.load(), dir)); }
     void vibrate(RumbleEvent e);
+    // The light bar of a DualShock 4 / DualSense (lightbar.h): the level is kept in the settings; the program feeds the game's moment and its events in (any thread).
+    LightbarLevel lightbar() const noexcept { return lightbarAtomic_.load(); }
+    void setLightbar(LightbarLevel l);
+    void cycleLightbar(int dir) { setLightbar(nextLightbar(lightbarAtomic_.load(), dir)); }
+    void lightGame(bool playing, bool frightened, std::uint16_t timer, int lives) { if (pad_) pad_->lightGame(playing, frightened, timer, lives); }
+    void lightCue(LightCue cue, int ghost) { if (pad_) pad_->lightCue(cue, ghost); }
     FpsMode fps() const noexcept { return fps_; }
     FpsMode fpsForGameThread() const noexcept { return fpsAtomic_.load(); }   // any thread
     void setFps(FpsMode m);
@@ -228,6 +234,8 @@ private:
     CrtFilter crt_, crtDraw_;
     FpsMode fps_ = FpsMode::Native;
     std::atomic<VibrationLevel> vibrationAtomic_{VibrationLevel::Medium};
+    std::atomic<LightbarLevel> lightbarAtomic_{LightbarLevel::Medium};
+    void applyLightConfig();   // the level and the colour mode to the pad's light
     std::atomic<FpsMode> fpsAtomic_{FpsMode::Native};   // the same as fps_, for the game's thread (it chooses the timing of the ticks by it, pacing.h)
     bool paced_ = false;                      // run() is the message loop: pictures are paced by fps_ instead of the window timer
     bool inModalLoop_ = false;                // the user is dragging or sizing the window (Windows runs its own loop then)

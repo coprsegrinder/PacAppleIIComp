@@ -308,3 +308,52 @@ TEST(esc_pauses_the_tick_in_both_input_modes_and_the_jingle_poll_cost_follows_th
         CHECK(!again.paused);
     }
 }
+
+namespace {
+// ghosts that all act in the tick and stay where the test put them
+class AllActing : public GhostSource {
+public:
+    std::array<bool, 4> step(GameState&, bool) override { return {true, true, true, true}; }
+};
+}  // namespace
+
+TEST(the_ghost_that_catches_pacman_is_the_first_to_touch_him_in_the_loops_order_ghost_4_down_to_1) {
+    if (testfw::config().image.empty()) {
+        std::printf("    SKIPPED (needs --image)\n");
+        return;
+    }
+    const auto img = readAll(testfw::config().image);
+    const auto built = datapack::buildPack(img, verify::referenceExpected(), datapack::dataManifest());
+    CHECK_MSG(built.ok, built.reason);
+    if (!built.ok) return;
+    const auto loaded = datapack::loadPack(built.bytes, verify::referenceExpected());
+    CHECK_MSG(loaded.ok, loaded.reason);
+    if (!loaded.ok) return;
+    // which ghosts are on Pac-Man (outside the house, not blue, not eyes) -> the one that catches him (0-3 = ghost 1-4)
+    struct Case { std::array<bool, 4> on; int catcher; };
+    const Case cases[] = {{{true, false, false, true}, 3},    // ghost 1 and ghost 4 together: ghost 4 comes first in the loop (the colour is green, not orange)
+                          {{true, true, false, false}, 1},    // ghost 1 and ghost 2 together: ghost 2 (violet, not orange)
+                          {{true, false, true, false}, 2},
+                          {{true, true, true, true}, 3},
+                          {{true, false, false, false}, 0},
+                          {{false, false, false, true}, 3}};
+    for (const Case& c : cases) {
+        GameCore core;
+        CHECK(core.init(loaded.pack));
+        CHECK(core.newGame(1, 1));
+        GameState& s = core.state();
+        s.zp(0x59) = 5;   // (Pac-Man does not step in this tick)
+        const unsigned px = s.pacX(), py = s.pacY();
+        for (int g = 0; g < 4; ++g) {
+            GhostRecord& gh = s.ghosts[static_cast<std::size_t>(g)];
+            gh.b[8] = gh.b[9] = 0;
+            gh.b[17] = c.on[static_cast<std::size_t>(g)] ? 0 : 1;   // (a ghost still in the house does not touch him)
+            gh.b[0] = static_cast<std::uint8_t>(c.on[static_cast<std::size_t>(g)] ? px : 0x20 + 10 * g);
+            gh.b[1] = static_cast<std::uint8_t>(c.on[static_cast<std::size_t>(g)] ? py : 0x20 + 10 * g);
+        }
+        AllActing ghosts;
+        const TickEvents ev = core.tick(ghosts);
+        CHECK(ev.caught);
+        CHECK(core.caughtBy() == c.catcher);
+    }
+}

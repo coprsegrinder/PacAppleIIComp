@@ -141,7 +141,7 @@ int PauseMenu::itemCount() const noexcept {
     case Page::Achievements: return kAchievementEntries;   // the 22 achievements, Credits, Reset Progress, Back
     case Page::Credits: return 1;    // Back
     case Page::ResetConfirm: return 2;   // Confirm, Cancel
-    case Page::Controls: return 3;   // Device, Vibration, Back
+    case Page::Controls: return 4;   // Device, Vibration, Light Bar, Back
     case Page::Graphics: return 7;   // Display Mode, Resolution, Window Borders, Background, Colour Mode, CRT Filter, Back
     case Page::Crt: return 11;       // Preset, the nine options, Back
     case Page::Confirm: return 2;    // Confirm, Cancel
@@ -223,6 +223,7 @@ PauseMenu::Action PauseMenu::activate() {
             return Action::None;
         }
         if (selected_ == 1) return Action::NextVibration;
+        if (selected_ == 2) return Action::NextLightbar;
         page_ = Page::Main;
         selected_ = 2;
         return Action::None;
@@ -276,6 +277,7 @@ PauseMenu::Action PauseMenu::key(Key k) {
         if (page_ == Page::Graphics && selected_ == 5) return k == Key::Left ? Action::PreviousCrtPreset : Action::NextCrtPreset;
         if (page_ == Page::Crt) return crtStep(k == Key::Left ? -1 : 1);
         if (page_ == Page::Controls && selected_ == 1) return k == Key::Left ? Action::PreviousVibration : Action::NextVibration;
+        if (page_ == Page::Controls && selected_ == 2) return k == Key::Left ? Action::PreviousLightbar : Action::NextLightbar;
         if (page_ == Page::Controls && selected_ == 0) controlsDevice_ = (controlsDevice_ + kControlDevices + (k == Key::Left ? -1 : 1)) % kControlDevices;
         return Action::None;
     case Key::Select: return activate();
@@ -303,7 +305,7 @@ PauseMenu::Action PauseMenu::key(Key k) {
 }
 
 int PauseMenu::rowOfItem(int index) const noexcept {
-    if (page_ == Page::Controls) return index == 0 ? 6 : index == 1 ? 16 : 17;
+    if (page_ == Page::Controls) return index == 0 ? 6 : index == 1 ? 16 : index == 2 ? 17 : 18;
     if (page_ == Page::Credits) return 17;
     if (page_ == Page::Achievements) return (index >= scroll_ && index < scroll_ + kListRows) ? 6 + (index - scroll_) : -1;
     return firstRow() + rowStep() * index;
@@ -391,7 +393,7 @@ void PauseMenu::render(const core::CharacterRom& rom, const View& view, std::vec
         break;
     case Page::Controls:
         title = "CONTROLS";
-        items = {std::string("DEVICE: < ") + controlDeviceName(controlsDevice_) + " >", std::string("VIBRATION: ") + vibrationLabel(view.vibration), "BACK"};
+        items = {std::string("DEVICE: < ") + controlDeviceName(controlsDevice_) + " >", std::string("VIBRATION: ") + vibrationLabel(view.vibration), std::string("LIGHT BAR: ") + lightbarLabel(view.lightbar), "BACK"};
         hint = "UP DOWN  LEFT RIGHT CHANGE  ESC BACK";
         break;
     case Page::Graphics:
@@ -469,7 +471,7 @@ void PauseMenu::render(const core::CharacterRom& rom, const View& view, std::vec
         }
     }
     if (page_ == Page::Graphics && selected_ == 2 && view.displayMode == DisplayMode::Borderless) centred(kBordersNoteRow, "BORDERS APPLY TO WINDOWED MODE", false);   // the entry works, but there is no frame to see in Borderless Fullscreen
-    centred(kHintRow, hint, false);
+    centred(page_ == Page::Controls ? kHintRow + 1 : kHintRow, hint, false);   // (the Controls page has one more entry: its hint is a row lower)
     std::vector<std::uint8_t> text;
     core::renderText(screen, rom, false, -1, -1, text);
     for (std::size_t i = 0; i < pixels.size() && i < text.size(); ++i) pixels[i] = text[i] ? 1 : 0;
