@@ -44,17 +44,17 @@ The pictures show the original game's graphics running in the port.
 |---|---|
 | ![Original colour](docs/images/gameplay.png) | ![Green phosphor](docs/images/green-phosphor.png) |
 
-| CRT filter (Classic preset) | Ambient glow background |
+| CRT filter (Classic preset) | Apple II monitor background |
 |---|---|
-| ![CRT filter](docs/images/crt-filter-classic.png) | ![Ambient glow](docs/images/background-ambient-glow.png) |
+| ![CRT filter](docs/images/crt-filter-classic.png) | ![Apple II monitor](docs/images/background-apple-ii-monitor.png) |
 
-| Apple II monitor background | Apple II desktop background |
+| Apple II desktop background | The pause menu (Esc) |
 |---|---|
-| ![Apple II monitor](docs/images/background-apple-ii-monitor.png) | ![Apple II desktop](docs/images/background-apple-ii-desktop.png) |
+| ![Apple II desktop](docs/images/background-apple-ii-desktop.png) | ![Pause menu](docs/images/pause-menu.png) |
 
-| The pause menu (Esc) | Graphics settings |
-|---|---|
-| ![Pause menu](docs/images/pause-menu.png) | ![Graphics settings](docs/images/graphics-settings.png) |
+| Graphics settings |
+|---|
+| ![Graphics settings](docs/images/graphics-settings.png) |
 
 ## How it was made, and how it is checked
 
