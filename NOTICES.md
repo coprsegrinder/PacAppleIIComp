@@ -10,7 +10,7 @@ Two ROM dumps of the Apple II Plus are kept in the repository and in the release
 * `Apple II plus ROM Pages F8-FF - 341-0020 - Autostart Monitor.bin`
 * `Apple II Character ROM - 341-0036.bin`
 
-Their contents are copyright Apple Computer, Inc. They are included for private use only. **This is the reason the repository is to stay private and the release is not to be redistributed.** Other Apple II ROM dumps that were used for research are not tracked (earlier commits still contain them; see `docs/KNOWN_ISSUES.md`).
+Their contents are copyright Apple Computer, Inc.; they are included because the program needs them to run, and they remain the property of their owner. Other Apple II ROM dumps that were used for research are not tracked (earlier commits still contain them; see `docs/KNOWN_ISSUES.md`).
 
 ## Achievements
 The 22 achievements are from the RetroAchievements set for "Pac-Man" (Apple II), game 13932 (https://retroachievements.org/game/13932). Set by **Kisumebuckets**; logic by **xnaivx**. The titles and descriptions are used with small corrections of spelling and "goblins" written as "ghosts". They are checked by this program itself; nothing is sent to RetroAchievements and no account is used.

@@ -1,6 +1,6 @@
 # Pac-Man (Apple II, Atari 1983): a documented reconstruction and a native Windows port
 
-A private, non-commercial hobby project with two parts:
+A non-commercial hobby project with two parts:
 
 1. **A reconstruction of the original program.** The 1983 Atari release of Pac-Man for the Apple II (a DOS 3.3 disk image the owner already has) was taken apart: its code, tables, graphics routines, ghost logic, level data, sound and intermissions were analysed, and every claim in the notes is marked *Verified*, *Inferred* or *Unknown*.
 2. **A native Windows 10/11 program that plays that game** without an emulator and without reading the disk image while playing. Its game logic, timing, drawing and sound were rebuilt in C++ and compared tick by tick with a reference model that runs the original program; then it was given the options a modern player expects.
@@ -8,6 +8,8 @@ A private, non-commercial hobby project with two parts:
 | | |
 |---|---|
 | ![The game](docs/images/gameplay.png) | ![First screen](docs/images/first-screen.png) |
+
+**How close is it to the original?** Everything that happens in play, in drawing and in timing equals the original on every scenario recorded: all 29,494 ordinary game ticks of 41 recordings (and 7,918 more with ghosts eaten in a row) take exactly the same number of CPU cycles, the game state of every tick is equal, the drawing calls are equal and the screens match pixel for pixel. A short list of rare moments (being caught, the end of a level, the bonus life, the fruit) is timed from measurements instead of being counted; Xbox controller support is implemented from documentation only and has never been tried on a real controller. The whole story, with the numbers and what is not established, is in [`docs/OVERVIEW.md`](docs/OVERVIEW.md).
 
 ## Using it
 
@@ -32,6 +34,25 @@ The release is one zip, `PacMan-AppleII.zip`. Unpack it, put **your own disk ima
 | | | |
 |---|---|---|
 | ![Controls page](docs/images/controls-page.png) | ![Achievements page](docs/images/achievements-page.png) | ![Achievement pop-up](docs/images/achievement-popup.png) |
+
+## Screenshots
+The pictures show the original game's graphics running in the port.
+
+| Original colour | Native Black & White (green phosphor) |
+|---|---|
+| ![Original colour](docs/images/gameplay.png) | ![Green phosphor](docs/images/green-phosphor.png) |
+
+| CRT filter (Classic preset) | Ambient glow background |
+|---|---|
+| ![CRT filter](docs/images/crt-filter-classic.png) | ![Ambient glow](docs/images/background-ambient-glow.png) |
+
+| Apple II monitor background | Apple II desktop background |
+|---|---|
+| ![Apple II monitor](docs/images/background-apple-ii-monitor.png) | ![Apple II desktop](docs/images/background-apple-ii-desktop.png) |
+
+| The pause menu (Esc) | Graphics settings |
+|---|---|
+| ![Pause menu](docs/images/pause-menu.png) | ![Graphics settings](docs/images/graphics-settings.png) |
 
 ## How it was made, and how it is checked
 
@@ -68,10 +89,14 @@ port\release.bat        rem the release zip in out\release
 
 ## What the repository contains, and what it does not
 
-It contains the code, the notes, the tests, the screenshots above (which show the game running) and **two Apple II ROM dumps** (the Autostart Monitor 341-0020 and the character generator 341-0036) that the program needs at run time. It does **not** contain the game's disk image, any bytes extracted from it, or the game's original graphics and sound as files: the program builds its data from the player's own image (`scratch/`, `*.dsk`, `*.pmpk` are ignored by git). Because of the ROM files and the screenshots this repository is meant to stay private. See [`NOTICES.md`](NOTICES.md).
+It contains the code, the notes, the tests, the screenshots above (which show the game running) and **two Apple II ROM dumps** (the Autostart Monitor 341-0020 and the character generator 341-0036) that the program needs at run time. It does **not** contain the game's disk image, any bytes extracted from it, or the game's original graphics and sound as files: the program builds its data from the player's own image (`scratch/`, `*.dsk`, `*.pmpk` are ignored by git).The ROM files remain the property of their owner. See [`NOTICES.md`](NOTICES.md).
 
 ## Principles
 
 * The original gameplay (logic, timing, collisions, input, animations) must not change; modern options are separate, optional and tested one by one.
 * Everything in the result is based on the supplied `.dsk` file.
 * Claims are marked Verified / Inferred / Unknown; a test is never weakened to make it pass.
+
+## Licence
+The source code and the notes of this project are licensed under the **GNU General Public License v3.0** ([`LICENSE`](LICENSE)). The licence does not cover the game (its disk image, code, graphics and sounds are not part of this repository), the two Apple II ROM files in `Apple II roms/`, or the screenshots, which show the original game's graphics. This is an unofficial fan project, not affiliated with or endorsed by Atari, Namco, Apple or RetroAchievements; see [`NOTICES.md`](NOTICES.md).
+

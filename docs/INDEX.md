@@ -6,6 +6,8 @@ The notes were written while the project was made, in the order of the work; the
 | Note | What it is |
 |---|---|
 | [`../README.md`](../README.md) | what the project is, what it does, how to build and use it |
+| [`OVERVIEW.md`](OVERVIEW.md) | the whole story: how it was made, how close it is to 1:1 (the numbers), the modernization features |
+| [`RELEASE_NOTES.md`](RELEASE_NOTES.md) | what the release is, what it needs, its limits |
 | [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) | what is open, unverified or limited |
 | [`MODERNIZATION.md`](MODERNIZATION.md) | every option added beyond the original (display, backgrounds, colour, CRT filter, controls, achievements) with how each was checked |
 | [`CONTROLS.md`](CONTROLS.md) | the original's input routine, and the keys and controllers of the port |
