@@ -25,7 +25,7 @@ The release is one zip, `PacMan-AppleII.zip`. Unpack it, put **your own disk ima
 * Backgrounds: black, an ambient glow, an Apple II monitor with its bezel, or the Apple II desktop.
 * Colour: original colour (solid colour for the patterns of every second dot, as a colour display shows them) or green phosphor with the half-dot positions of a monochrome monitor.
 * CRT filter: scanlines, softness, transition, glow, colour blend, curvature, afterglow, brightness and contrast, with presets.
-* **Controls:** keyboard, Xbox (XInput) controllers, DualShock 4 and DualSense (USB or Bluetooth) with vibration and, on the DualShock 4 and DualSense, a light bar in the game's own colours (each Off / Low / Medium / High on the Controls page), found automatically, also when plugged in while the program runs. The first menu, the players prompt and the "press return" prompt name the buttons of the controller that is plugged in. A Controls page in the menu lists the controls of each device with their symbols and follows the device in use.
+* **Controls:** keyboard, Xbox (XInput) controllers (implemented from Microsoft's documentation, not tried on a real one), DualShock 4 and DualSense (USB or Bluetooth) with vibration and, on the DualShock 4 and DualSense, a light bar in the game's own colours (each Off / Low / Medium / High on the Controls page), found automatically, also when plugged in while the program runs. The first menu, the players prompt and the "press return" prompt name the buttons of the controller that is plugged in. A Controls page in the menu lists the controls of each device with their symbols and follows the device in use.
 * **Achievements:** the 22 achievements (190 points) of the RetroAchievements set for this game, checked by the program while you play, with pop-ups, a page in the menu and a local save. Nothing is sent anywhere.
 * Settings are kept between runs.
 
@@ -37,7 +37,7 @@ The release is one zip, `PacMan-AppleII.zip`. Unpack it, put **your own disk ima
 
 The disk image was analysed with Python tools (a 6502 disassembler, a 6502 core and a model of the Apple II, written for this project and checked against an Apple II emulator). That model, the **oracle**, runs the original program; its behaviour was recorded per tick (state, drawing calls, sound clicks). The C++ port rebuilds each routine and is compared with those recordings: tens of thousands of ticks of free-running play, every drawn page, every sound, the level ends and the intermissions. Where the port could not be compared, the notes say so.
 
-* **Tests:** 265 C++ tests (`port/tests`), many of which need the disk image to compare with the oracle's recordings; Python tests for the tools (`tests`).
+* **Tests:** 287 C++ tests (`port/tests`), many of which need the disk image to compare with the oracle's recordings; Python tests for the tools (`tests`).
 * **Notes:** `docs/` holds the findings, the plans and the decisions; start with [`docs/INDEX.md`](docs/INDEX.md). [`docs/KNOWN_ISSUES.md`](docs/KNOWN_ISSUES.md) lists what is open.
 
 ## Building

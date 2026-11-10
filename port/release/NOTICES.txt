@@ -16,7 +16,7 @@ Two ROM dumps of the Apple II Plus are included because the program needs them t
   Apple II plus ROM Pages F8-FF - 341-0020 - Autostart Monitor.bin
   Apple II Character ROM - 341-0036.bin
 The contents are copyright Apple Computer, Inc. They are included for private use only, to run this
-program, and remain the property of their owner. This download is not meant to be redistributed.
+program, and remain the property of their owner.
 
 Achievements
 ------------
