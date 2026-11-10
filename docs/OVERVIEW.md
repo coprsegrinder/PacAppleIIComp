@@ -1,5 +1,7 @@
 # Overview: how the port was made, and how close it is to the original
 
+> **Disclosure:** I am not a programmer. This entire project - the analysis of the original game, the C++ code, the tests and the documentation - was done with the assistance of Claude, Anthropic's AI model, working in Claude Code. I set the goals, made the decisions and played the results; Claude wrote the code, the tests and the notes.
+
 This is the one-document story of the project. Every number below comes from a note or a test in this repository; the notes (start with [`INDEX.md`](INDEX.md)) say how each was measured and whether it is *Verified*, *Inferred* or *Unknown*.
 
 ## What the project is

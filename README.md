@@ -1,5 +1,7 @@
 # Pac-Man (Apple II, Atari 1983): a documented reconstruction and a native Windows port
 
+> **Disclosure:** I am not a programmer. This entire project - the analysis of the original game, the C++ code, the tests and the documentation - was done with the assistance of Claude, Anthropic's AI model, working in Claude Code. I set the goals, made the decisions and played the results; Claude wrote the code, the tests and the notes.
+
 A non-commercial hobby project with two parts:
 
 1. **A reconstruction of the original program.** The 1983 Atari release of Pac-Man for the Apple II (a DOS 3.3 disk image the owner already has) was taken apart: its code, tables, graphics routines, ghost logic, level data, sound and intermissions were analysed, and every claim in the notes is marked *Verified*, *Inferred* or *Unknown*.

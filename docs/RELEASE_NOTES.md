@@ -1,5 +1,7 @@
 # Release notes - Pac-Man (Apple II) native Windows port
 
+> **Disclosure:** I am not a programmer. This entire project - the analysis of the original game, the C++ code, the tests and the documentation - was done with the assistance of Claude, Anthropic's AI model, working in Claude Code. I set the goals, made the decisions and played the results; Claude wrote the code, the tests and the notes.
+
 Release v1.0.0.
 
 ## What it is
