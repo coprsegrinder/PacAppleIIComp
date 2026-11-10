@@ -48,7 +48,7 @@ The pictures show the original game's graphics running in the port.
 |---|---|
 | ![CRT filter](docs/images/crt-filter-classic.png) | ![Apple II monitor](docs/images/background-apple-ii-monitor.png) |
 
-| Apple II desktop background | The pause menu (Esc) |
+| Desktop background | The pause menu (Esc) |
 |---|---|
 | ![Apple II desktop](docs/images/background-apple-ii-desktop.png) | ![Pause menu](docs/images/pause-menu.png) |
 
